@@ -46,17 +46,42 @@ def test_streaming_sales_mode():
         "conversation_id": "conv_sales_stream"
     }
 
+    def mock_generator_stream(*args, **kwargs):
+        tokens_list = [
+            "Hi Admin, ",
+            "I hear how overwhelming it is when communication pauses. ",
+            "\n\n### Recommended Next Step for Your Journey\n",
+            "- Healing Anxious Attachment Masterclass ($97): Comprehensive course."
+        ]
+        for t in tokens_list:
+            yield {"token": t, "done": False}
+        yield {
+            "token": "",
+            "done": True,
+            "full_answer": "".join(tokens_list),
+            "recommended_products": [{"name": "Healing Anxious Attachment Masterclass", "price": "$97"}]
+        }
+
+    # If no GROQ_API_KEY is configured (e.g. in automated CI), mock the LLM generator stream
+    if not os.getenv("GROQ_API_KEY"):
+        from unittest.mock import patch
+        cm = patch("src.generator.OpenAIGeneratorService.generate_answer_stream", side_effect=mock_generator_stream)
+    else:
+        from contextlib import nullcontext
+        cm = nullcontext()
+
     tokens = []
     done_payload = None
-    with client.stream("POST", "/api/v1/ask/stream", json=payload, headers=headers) as response:
-        assert response.status_code == 200
-        for line in response.iter_lines():
-            if line and line.startswith("data: "):
-                data = json.loads(line[6:])
-                if "token" in data:
-                    tokens.append(data["token"])
-                elif data.get("done") or data.get("success"):
-                    done_payload = data
+    with cm:
+        with client.stream("POST", "/api/v1/ask/stream", json=payload, headers=headers) as response:
+            assert response.status_code == 200
+            for line in response.iter_lines():
+                if line and line.startswith("data: "):
+                    data = json.loads(line[6:])
+                    if "token" in data:
+                        tokens.append(data["token"])
+                    elif data.get("done") or data.get("success"):
+                        done_payload = data
 
     full_streamed = "".join(tokens)
     print("Sales stream output length:", len(full_streamed))
