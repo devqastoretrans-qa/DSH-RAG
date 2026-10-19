@@ -78,39 +78,5 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script_stop: true
           script: |
-            echo "=== Starting Automated Zero-Downtime Deployment ==="
+            bash -c 'set -e; for dir in /home/ubuntu/RAG-DSH /home/ubuntu/dsh-rag "$HOME/RAG-DSH"; do [ -d "$dir" ] && [ -f "$dir/app.py" ] && cd "$dir" && break; done; if [ ! -f "app.py" ]; then cd $(find /home/ubuntu -maxdepth 2 -name "app.py" -exec dirname {} \; 2>/dev/null | head -n 1); fi; echo "Deploying in: $(pwd)"; git fetch origin main; git reset --hard origin/main; chmod +x scripts/deploy_ec2.sh 2>/dev/null || true; if [ -f "scripts/deploy_ec2.sh" ]; then ./scripts/deploy_ec2.sh; else [ -d "venv" ] && source venv/bin/activate && pip install --no-cache-dir -r requirements.txt; sudo systemctl restart dsh-rag 2>/dev/null || true; fi'
 
-            # Detect project directory on EC2 host
-            if [ -d "/home/ubuntu/RAG-DSH" ]; then
-              APP_DIR="/home/ubuntu/RAG-DSH"
-            elif [ -d "/home/ubuntu/dsh-rag" ]; then
-              APP_DIR="/home/ubuntu/dsh-rag"
-            else
-              APP_DIR="$HOME/RAG-DSH"
-            fi
-
-            echo "Target application directory: $APP_DIR"
-            cd "$APP_DIR"
-
-            echo "Pulling latest release from GitHub main..."
-            git fetch origin main
-            git reset --hard origin/main
-
-            if [ -d "venv" ]; then
-              echo "Installing updated dependencies in virtual environment..."
-              source venv/bin/activate
-              pip install --no-cache-dir -r requirements.txt
-            fi
-
-            echo "Restarting application service..."
-            if systemctl is-active --quiet dsh-rag; then
-              sudo systemctl restart dsh-rag
-            elif systemctl is-active --quiet dsh_rag; then
-              sudo systemctl restart dsh_rag
-            fi
-
-            echo "Performing post-deploy health check..."
-            sleep 4
-            curl -f -s http://127.0.0.1:8000/health || curl -f -s https://agent.doctorsarahhensley.com/health || exit 1
-
-            echo "=== Deployment Successful & Verified Healthy ==="
