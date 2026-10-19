@@ -1,0 +1,58 @@
+# =============================================================================
+# Docker Ignore Rules for Doctor Sarah Hensley AI RAG
+# CRITICAL SECURITY: Never bake environment secrets, credentials, or databases into image layers!
+# =============================================================================
+
+# Python bytecode & virtual environments
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Git & VCS
+.git/
+.gitignore
+.github/
+
+# Environment Secrets & Private Credentials
+.env
+.env.*
+!.env.example
+service_account.json
+*.pem
+*.key
+*.crt
+
+# Local Databases & Vector Stores (Must be mounted via persistent volumes)
+*.db
+*.sqlite
+*.sqlite3
+qdrant_db
+qdrant_db/**
+qdrant_storage
+qdrant_storage/**
+
+# Runtime Logs, Temporary Files & Cache
+logs
+logs/**
+*.log
+scratch
+scratch/**
+scratch_answer.txt
+.cache
+.cache/**
+
+# Report Output & Asset Generation Artifacts
+readiness_charts/
+readiness_data.json
+Production_Readiness_*.html
+Production_Readiness_*.pdf
+production_readiness_report.html
+build_prr_*.py
+generate_prr_*.py
+
+# OS Metadata
+.DS_Store
+Thumbs.db

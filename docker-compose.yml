@@ -1,0 +1,124 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: dsh_rag_app
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      - qdrant
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=production
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_COLLECTION_NAME=documents
+      - QDRANT_TIMEOUT=10.0
+      - ENABLE_DRIVE_MONITOR=false
+    volumes:
+      - ./documents:/app/documents
+      - ./logs:/app/logs
+      - ./users_data.db:/app/users_data.db
+      - ./ingestion_tracker.db:/app/ingestion_tracker.db
+      - ./service_account.json:/app/service_account.json:ro
+    # Resource limits to prevent host memory starvation & OOM kernel panics
+    mem_limit: 1024m
+    mem_reservation: 384m
+    cpus: 1.5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 1024M
+        reservations:
+          cpus: '0.25'
+          memory: 384M
+    # Container stdout log rotation to prevent Docker daemon disk exhaustion
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  drive_sync_worker:
+    build: .
+    container_name: dsh_rag_drive_worker
+    restart: unless-stopped
+    command: ["python", "-m", "src.drive_monitor"]
+    depends_on:
+      - qdrant
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=production
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_COLLECTION_NAME=documents
+      - QDRANT_TIMEOUT=10.0
+      - ENABLE_DRIVE_MONITOR=true
+    volumes:
+      - ./documents:/app/documents
+      - ./logs:/app/logs
+      - ./users_data.db:/app/users_data.db
+      - ./ingestion_tracker.db:/app/ingestion_tracker.db
+      - ./service_account.json:/app/service_account.json:ro
+    # Dedicated resource limits for background ingestion
+    mem_limit: 768m
+    mem_reservation: 256m
+    cpus: 0.75
+    deploy:
+      resources:
+        limits:
+          cpus: '0.75'
+          memory: 768M
+        reservations:
+          cpus: '0.10'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant_service
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    # Dedicated resource limits for Qdrant vector database
+    mem_limit: 512m
+    mem_reservation: 128m
+    cpus: 0.75
+    deploy:
+      resources:
+        limits:
+          cpus: '0.75'
+          memory: 512M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:6333/readyz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  qdrant_storage:

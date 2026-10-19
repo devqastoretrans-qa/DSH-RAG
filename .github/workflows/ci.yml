@@ -1,0 +1,59 @@
+name: CI Pipeline - Doctor Sarah Hensley AI RAG
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - staging
+      - develop
+  pull_request:
+    branches:
+      - main
+      - master
+      - staging
+
+jobs:
+  test:
+    name: Lint, Validate & Run Regression Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      ENVIRONMENT: test
+      RAG_API_KEY: dsh_rag_secret_key_2026
+      PYTHONIOENCODING: utf-8
+      ENABLE_DRIVE_MONITOR: "false"
+      QDRANT_TIMEOUT: "10.0"
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install PyTorch (CPU)
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install Pinned Dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Verify Dependency Graph (pip check)
+        run: |
+          pip check
+
+      - name: Syntax & Bytecode Compilation Check
+        run: |
+          python -m py_compile app.py
+          python -m compileall src/
+
+      - name: Run Automated Regression Test Suite
+        run: |
+          python test_new_enhancements.py

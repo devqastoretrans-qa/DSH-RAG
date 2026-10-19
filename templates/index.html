@@ -1,0 +1,1315 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dr. Sarah Hensley | Relationship Science AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        :root {
+            --font-heading: 'Playfair Display', Georgia, serif;
+            --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+
+            /* Brand Colors */
+            --bg-body: #F4F1EA;
+            --bg-surface: #FFFFFF;
+            --bg-chat: #FAF7F2;
+            --border-color: #E2DBD0;
+            --border-light: #EFEBE4;
+
+            --brand-black: #151515;
+            --brand-charcoal: #22252A;
+            --brand-forest: #113C2C;
+            --brand-coral: #EF3E46;
+            --brand-gold: #CBB490;
+
+            --user-bubble-bg: #1F2421;
+            --user-bubble-text: #F8F9FA;
+
+            --bot-bubble-bg: #FFFFFF;
+            --bot-bubble-border: #E8E2D8;
+            --bot-bubble-text: #1A1A1A;
+
+            --text-primary: #151515;
+            --text-secondary: #5A5E66;
+            --text-muted: #8E929A;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html,
+        body {
+            height: 100%;
+            height: 100dvh;
+            overflow: hidden;
+            font-family: var(--font-body);
+            background-color: var(--bg-body);
+            color: var(--text-primary);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Full-window App Container */
+        .chat-app {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            height: 100dvh;
+            max-width: 960px;
+            margin: 0 auto;
+            background: var(--bg-surface);
+            border-left: 1px solid var(--border-color);
+            border-right: 1px solid var(--border-color);
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.05);
+            position: relative;
+        }
+
+        /* Fixed Header */
+        .chat-header {
+            flex-shrink: 0;
+            background: #FFFFFF;
+            border-bottom: 1px solid var(--border-color);
+            padding: 0.75rem 1.15rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            z-index: 10;
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .brand-title {
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+        }
+
+        .brand-badge {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: var(--brand-forest);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-heading);
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+
+        .brand-text h1 {
+            font-family: var(--font-heading);
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: var(--brand-black);
+            line-height: 1.2;
+        }
+
+        .brand-text p {
+            font-size: 0.73rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .lane-badge {
+            display: inline-block;
+            font-size: 0.65rem;
+            font-weight: 700;
+            padding: 0.15rem 0.55rem;
+            border-radius: 50px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: all 0.2s ease;
+        }
+
+        .lane-clinical {
+            background: #E8F3EE;
+            color: var(--brand-forest);
+            border: 1px solid #C8E3D7;
+        }
+
+        .lane-sales {
+            background: #FDF4E7;
+            color: #9C6818;
+            border: 1px solid #F5DEB3;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-new-chat {
+            background: var(--bg-chat);
+            border: 1px solid var(--border-color);
+            color: var(--brand-black);
+            font-size: 0.78rem;
+            font-weight: 600;
+            padding: 0.4rem 0.85rem;
+            border-radius: 50px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            transition: all 0.2s ease;
+        }
+
+        .btn-new-chat:hover {
+            background: var(--brand-black);
+            color: #fff;
+            border-color: var(--brand-black);
+        }
+
+        /* Controls Toolbar */
+        .controls-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            font-size: 0.78rem;
+        }
+
+        .mode-toggle {
+            display: flex;
+            background: var(--bg-chat);
+            border: 1px solid var(--border-color);
+            border-radius: 50px;
+            padding: 2px;
+        }
+
+        .mode-btn {
+            background: transparent;
+            border: none;
+            padding: 0.25rem 0.75rem;
+            border-radius: 50px;
+            font-size: 0.74rem;
+            cursor: pointer;
+            font-weight: 500;
+            color: var(--text-secondary);
+            transition: all 0.2s;
+        }
+
+        .mode-btn.active {
+            background: var(--brand-black);
+            color: #FFFFFF;
+            font-weight: 600;
+        }
+
+        .persona-select-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            color: var(--text-muted);
+            font-size: 0.74rem;
+        }
+
+        .persona-select {
+            padding: 0.25rem 0.65rem;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background: #FFFFFF;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--brand-black);
+            outline: none;
+            cursor: pointer;
+        }
+
+        /* Scrollable Message Area */
+        .message-area {
+            flex: 1;
+            overflow-y: auto;
+            background: var(--bg-chat);
+            padding: 1.25rem 1.15rem 1.5rem 1.15rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.15rem;
+            scroll-behavior: smooth;
+            position: relative;
+        }
+
+        /* Message Turn Row */
+        .message-row {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+        }
+
+        .message-row.user-row {
+            align-items: flex-end;
+        }
+
+        .message-row.bot-row {
+            align-items: flex-start;
+        }
+
+        /* Bubbles */
+        .bubble {
+            max-width: 78%;
+            padding: 0.85rem 1.15rem;
+            border-radius: 18px;
+            font-size: 0.92rem;
+            line-height: 1.58;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+            position: relative;
+        }
+
+        /* User Bubble: RIGHT-aligned */
+        .user-bubble {
+            background: var(--user-bubble-bg);
+            color: var(--user-bubble-text);
+            border-bottom-right-radius: 4px;
+            border-bottom-left-radius: 18px;
+        }
+
+        /* Bot Bubble: LEFT-aligned */
+        .bot-bubble {
+            background: var(--bot-bubble-bg);
+            color: var(--bot-bubble-text);
+            border: 1px solid var(--bot-bubble-border);
+            border-bottom-left-radius: 4px;
+            border-bottom-right-radius: 18px;
+        }
+
+        /* Bubble Markdown Typography */
+        .bot-bubble h1,
+        .bot-bubble h2,
+        .bot-bubble h3,
+        .bot-bubble h4 {
+            font-family: var(--font-heading);
+            color: var(--brand-forest);
+            margin-top: 0.75rem;
+            margin-bottom: 0.35rem;
+            line-height: 1.3;
+        }
+
+        .bot-bubble h3 {
+            font-size: 1.05rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.25rem;
+        }
+
+        .bot-bubble p {
+            margin-bottom: 0.55rem;
+        }
+
+        .bot-bubble p:last-child {
+            margin-bottom: 0;
+        }
+
+        .bot-bubble ul,
+        .bot-bubble ol {
+            padding-left: 1.25rem;
+            margin: 0.45rem 0 0.55rem 0;
+        }
+
+        .bot-bubble li {
+            margin-bottom: 0.25rem;
+        }
+
+        .bot-bubble strong {
+            color: var(--brand-black);
+            font-weight: 600;
+        }
+
+        .bot-bubble a {
+            color: var(--brand-coral);
+            font-weight: 600;
+            text-decoration: underline;
+            text-underline-offset: 2px;
+        }
+
+        .bot-bubble blockquote {
+            border-left: 3px solid var(--brand-gold);
+            padding-left: 0.75rem;
+            color: var(--text-secondary);
+            margin: 0.5rem 0;
+            font-style: italic;
+        }
+
+        /* Timestamp */
+        .bubble-meta {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+            padding: 0 4px;
+        }
+
+        .user-row .bubble-meta {
+            text-align: right;
+        }
+
+        .bot-row .bubble-meta {
+            text-align: left;
+        }
+
+        /* Typing indicator dots */
+        .typing-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 0.25rem 0.5rem;
+        }
+
+        .typing-indicator span {
+            width: 7px;
+            height: 7px;
+            background: var(--text-muted);
+            border-radius: 50%;
+            display: inline-block;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+
+        .typing-indicator span:nth-child(1) {
+            animation-delay: -0.32s;
+        }
+
+        .typing-indicator span:nth-child(2) {
+            animation-delay: -0.16s;
+        }
+
+        @keyframes bounce {
+            0%,
+            80%,
+            100% {
+                transform: scale(0);
+            }
+
+            40% {
+                transform: scale(1);
+            }
+        }
+
+        /* Floating "Scroll to latest" button */
+        .scroll-bottom-btn {
+            position: absolute;
+            bottom: 85px;
+            right: 20px;
+            background: #FFFFFF;
+            border: 1px solid var(--border-color);
+            color: var(--brand-black);
+            font-size: 0.74rem;
+            font-weight: 600;
+            padding: 0.4rem 0.85rem;
+            border-radius: 50px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            gap: 0.35rem;
+            z-index: 5;
+            transition: all 0.2s;
+        }
+
+        .scroll-bottom-btn:hover {
+            background: var(--brand-black);
+            color: #fff;
+        }
+
+        /* Clickable Starter Questions Grid */
+        .starter-questions-wrapper {
+            margin-top: 1.15rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.65rem;
+        }
+
+        .starter-questions-header {
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+            font-size: 0.74rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .starter-questions-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.65rem;
+        }
+
+        @media (max-width: 640px) {
+            .starter-questions-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .starter-card {
+            background: #FFFFFF;
+            border: 1.5px solid var(--border-color);
+            border-radius: 12px;
+            padding: 0.85rem 1rem;
+            text-align: left;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+            position: relative;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+        }
+
+        .starter-card:hover {
+            border-color: var(--brand-forest);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(17, 60, 44, 0.1);
+            background: #FFFFFF;
+        }
+
+        .starter-card:active {
+            transform: translateY(0);
+        }
+
+        .starter-card-tag {
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: var(--brand-forest);
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .starter-card-text {
+            font-size: 0.86rem;
+            font-weight: 500;
+            line-height: 1.4;
+            color: var(--brand-black);
+            margin: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+
+        .starter-card-arrow {
+            color: var(--text-muted);
+            font-size: 1rem;
+            transition: transform 0.2s ease, color 0.2s ease;
+            flex-shrink: 0;
+            line-height: 1.2;
+        }
+
+        .starter-card:hover .starter-card-arrow {
+            color: var(--brand-coral);
+            transform: translateX(3px);
+        }
+
+        /* Action Chips */
+        .chips-container {
+            display: flex;
+            gap: 0.5rem;
+            overflow-x: auto;
+            padding: 0.5rem 1.15rem;
+            background: #FFFFFF;
+            border-top: 1px solid var(--border-light);
+            scrollbar-width: none;
+        }
+
+        .chips-container::-webkit-scrollbar {
+            display: none;
+        }
+
+        .chip-btn {
+            white-space: nowrap;
+            background: var(--bg-chat);
+            border: 1px solid var(--border-color);
+            font-size: 0.76rem;
+            font-weight: 500;
+            padding: 0.35rem 0.85rem;
+            border-radius: 50px;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            flex-shrink: 0;
+        }
+
+        .chip-btn:hover {
+            border-color: var(--brand-forest);
+            color: var(--brand-forest);
+            background: #FFFFFF;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Fixed Input Bar */
+        .chat-input-bar {
+            flex-shrink: 0;
+            background: #FFFFFF;
+            border-top: 1px solid var(--border-color);
+            padding: 0.75rem 1.15rem;
+            display: flex;
+            align-items: flex-end;
+            gap: 0.65rem;
+        }
+
+        .input-wrapper {
+            flex: 1;
+            position: relative;
+            display: flex;
+        }
+
+        .chat-textarea {
+            width: 100%;
+            min-height: 44px;
+            max-height: 120px;
+            padding: 0.65rem 1rem;
+            font-family: var(--font-body);
+            font-size: 0.92rem;
+            border: 1.5px solid var(--border-color);
+            border-radius: 22px;
+            outline: none;
+            resize: none;
+            line-height: 1.4;
+            background: var(--bg-chat);
+            transition: border-color 0.2s;
+        }
+
+        .chat-textarea:focus {
+            border-color: var(--brand-forest);
+            background: #FFFFFF;
+        }
+
+        .btn-send {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: var(--brand-forest);
+            color: #FFFFFF;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .btn-send:hover:not(:disabled) {
+            background: var(--brand-coral);
+            transform: scale(1.04);
+        }
+
+        .btn-send:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-send svg {
+            width: 18px;
+            height: 18px;
+            fill: currentColor;
+            margin-left: 2px;
+        }
+
+        /* Sales Product Recommendation Card */
+        .product-card {
+            background: #FFFFFF;
+            border: 1.5px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-top: 0.75rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+        }
+
+        .product-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+        }
+
+        .product-title {
+            font-weight: 700;
+            font-size: 0.92rem;
+            color: var(--brand-black);
+        }
+
+        .product-price {
+            font-weight: 700;
+            color: var(--brand-coral);
+            font-size: 0.98rem;
+        }
+
+        .product-desc {
+            font-size: 0.79rem;
+            color: var(--text-secondary);
+            line-height: 1.45;
+        }
+
+        .btn-checkout {
+            display: inline-block;
+            background: var(--brand-coral);
+            color: #FFFFFF;
+            font-size: 0.78rem;
+            font-weight: 600;
+            padding: 0.45rem 1rem;
+            border-radius: 50px;
+            text-decoration: none;
+            text-align: center;
+            margin-top: 0.35rem;
+            transition: opacity 0.2s;
+        }
+
+        .btn-checkout:hover {
+            opacity: 0.9;
+        }
+
+        /* Mobile Viewport Optimizations (375px) */
+        @media (max-width: 600px) {
+            .chat-app {
+                border-left: none;
+                border-right: none;
+            }
+
+            .bubble {
+                max-width: 86%;
+                font-size: 0.88rem;
+                padding: 0.75rem 0.95rem;
+            }
+
+            .chat-header {
+                padding: 0.65rem 0.85rem;
+            }
+
+            .controls-bar {
+                font-size: 0.72rem;
+            }
+
+            .chat-input-bar {
+                padding: 0.65rem 0.85rem;
+            }
+
+            .brand-text h1 {
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="chat-app">
+        <!-- FIXED HEADER -->
+        <header class="chat-header">
+            <div class="header-top">
+                <div class="brand-title">
+                    <div class="brand-badge">H</div>
+                    <div class="brand-text">
+                        <h1>Dr. Sarah Hensley</h1>
+                        <p><span id="headerSubtitle">Relationship Science AI Assistant</span> <span class="lane-badge lane-clinical" id="laneBadge">Clinical Mode</span></p>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button class="btn-new-chat" id="btnNewChat" onclick="startNewChat()">
+                        <span>+</span> New Chat
+                    </button>
+                </div>
+            </div>
+
+            <!-- CONTROLS TOOLBAR -->
+            <div class="controls-bar">
+                <div class="mode-toggle">
+                    <button class="mode-btn active" id="modeGenericBtn" onclick="switchMode('generic')">Clinical
+                        Educator</button>
+                    <button class="mode-btn" id="modeSalesBtn" onclick="switchMode('sales')">Program Advisor</button>
+                </div>
+
+                <div class="persona-select-wrapper">
+                    <span>Persona:</span>
+                    <select class="persona-select" id="personaSelect" onchange="changePersona(this.value)">
+                        <option value="admin">Admin (WP ID: 1 - Live)</option>
+                        <option value="john">John (ADHD / Calm)</option>
+                        <option value="sarah">Sarah (Habits / Focus)</option>
+                        <option value="guest">Guest User (Unauthenticated)</option>
+                    </select>
+                </div>
+            </div>
+        </header>
+
+        <!-- INDEPENDENTLY SCROLLABLE MESSAGE AREA -->
+        <main class="message-area" id="messageContainer" aria-live="polite">
+            <!-- Initial Bot Welcome Message -->
+            <div class="message-row bot-row" id="initialGreetingRow">
+                <div class="bubble bot-bubble" id="initialGreetingBubble">
+                    <p>Hi there,</p>
+                    <p>I am Doctor Sarah Hensley's Relationship Science AI Assistant. I can provide clinically validated
+                        strategies on attachment theory, somatic regulation, communication frameworks, and boundary
+                        tools.</p>
+                    <p>What relationship topic or challenge would you like to explore today?</p>
+
+                    <!-- Clickable Starter Questions Grid -->
+                    <div class="starter-questions-wrapper">
+                        <div class="starter-questions-header">
+                            <span>✨ Suggested Starter Questions — Tap to Ask:</span>
+                        </div>
+                        <div class="starter-questions-grid">
+                            <button class="starter-card" onclick="sendPresetMessage('What is the 1-1-1 journal reflection method for emotional regulation?')">
+                                <span class="starter-card-tag">📓 Reflective Journaling</span>
+                                <p class="starter-card-text">
+                                    <span>What is the 1-1-1 journal reflection method for emotional regulation?</span>
+                                    <span class="starter-card-arrow">&rarr;</span>
+                                </p>
+                            </button>
+                            <button class="starter-card" onclick="sendPresetMessage('How does the SOLACE communication tool help resolve conflict?')">
+                                <span class="starter-card-tag">🤝 Communication Framework</span>
+                                <p class="starter-card-text">
+                                    <span>How does the SOLACE communication tool help resolve conflict?</span>
+                                    <span class="starter-card-arrow">&rarr;</span>
+                                </p>
+                            </button>
+                            <button class="starter-card" onclick="sendPresetMessage('What are the core differences between anxious and avoidant attachment?')">
+                                <span class="starter-card-tag">🧠 Attachment Theory</span>
+                                <p class="starter-card-text">
+                                    <span>What are the core differences between anxious and avoidant attachment?</span>
+                                    <span class="starter-card-arrow">&rarr;</span>
+                                </p>
+                            </button>
+                            <button class="starter-card" onclick="sendPresetMessage('How can I calm an anxious trigger when my partner deactivates?')">
+                                <span class="starter-card-tag">🛡️ Trigger Management</span>
+                                <p class="starter-card-text">
+                                    <span>How can I calm an anxious trigger when my partner deactivates?</span>
+                                    <span class="starter-card-arrow">&rarr;</span>
+                                </p>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="bubble-meta" id="initialGreetingTime">Just now</div>
+            </div>
+        </main>
+
+        <!-- FLOATING SCROLL TO BOTTOM BUTTON -->
+        <button class="scroll-bottom-btn" id="scrollBottomBtn" onclick="scrollToBottom(true)">
+            &darr; Scroll to latest
+        </button>
+
+        <!-- ACTION CHIPS (HORIZONTAL SCROLL) -->
+        <div class="chips-container" id="chipsContainer">
+            <button class="chip-btn"
+                onclick="sendPresetMessage('What is the 1-1-1 journal reflection method for emotional regulation?')">📓 1-1-1 Journaling</button>
+            <button class="chip-btn" onclick="sendPresetMessage('How does the SOLACE communication tool help resolve conflict?')">🤝 SOLACE Framework</button>
+            <button class="chip-btn" onclick="sendPresetMessage('What are the core differences between anxious and avoidant attachment?')">🧠 Attachment Styles</button>
+            <button class="chip-btn" onclick="sendPresetMessage('How can I calm an anxious trigger when my partner deactivates?')">🛡️ Anxious Triggers</button>
+        </div>
+
+        <!-- FIXED INPUT BAR -->
+        <footer class="chat-input-bar">
+            <div class="input-wrapper">
+                <textarea class="chat-textarea" id="chatInput" placeholder="Ask Dr. Sarah Hensley's AI..." rows="1"
+                    onkeydown="handleKeyDown(event)" oninput="handleInput(event)"></textarea>
+            </div>
+            <button class="btn-send" id="btnSend" onclick="sendMessage()" disabled title="Send message">
+                <svg viewBox="0 0 24 24">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                </svg>
+            </button>
+        </footer>
+    </div>
+
+    <script>
+        // State variables
+        let currentUserId = 'admin';
+        let currentMode = 'generic';
+        let isWaitingForResponse = false;
+        let isUserScrolledUp = false;
+
+        function generateSessionId(prefix = 'sess') {
+            return prefix + '_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+        }
+
+        function formatTimestamp() {
+            const now = new Date();
+            return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        // Separate Chat Profiles & History Stores for Both Bots
+        const botChats = {
+            generic: {
+                sessionId: generateSessionId('clinical'),
+                title: 'Clinical Educator',
+                subtitle: 'Relationship Science AI Assistant',
+                badgeText: 'Clinical Mode',
+                badgeClass: 'lane-badge lane-clinical',
+                placeholder: 'Ask Dr. Sarah Hensley about relationship psychology...',
+                html: null,
+                chips: [
+                    { label: '📓 1-1-1 Journaling', text: 'What is the 1-1-1 journal reflection method for emotional regulation?' },
+                    { label: '🤝 SOLACE Framework', text: 'How does the SOLACE communication tool help resolve conflict?' },
+                    { label: '🧠 Attachment Styles', text: 'What are the core differences between anxious and avoidant attachment?' },
+                    { label: '🛡️ Anxious Triggers', text: 'How can I calm an anxious trigger when my partner deactivates?' }
+                ],
+                getWelcomeHtml: () => `
+                    <div class="message-row bot-row" id="initialGreetingRow_generic">
+                        <div class="bubble bot-bubble">
+                            <p>Hi there,</p>
+                            <p>I am Doctor Sarah Hensley's Relationship Science AI Assistant. I can provide clinically validated strategies on attachment theory, somatic regulation, communication frameworks, and boundary tools.</p>
+                            <p>What relationship topic or challenge would you like to explore today?</p>
+                            <div class="starter-questions-wrapper">
+                                <div class="starter-questions-header">
+                                    <span>✨ Suggested Starter Questions — Tap to Ask:</span>
+                                </div>
+                                <div class="starter-questions-grid">
+                                    <button class="starter-card" onclick="sendPresetMessage('What is the 1-1-1 journal reflection method for emotional regulation?')">
+                                        <span class="starter-card-tag">📓 Reflective Journaling</span>
+                                        <p class="starter-card-text">
+                                            <span>What is the 1-1-1 journal reflection method for emotional regulation?</span>
+                                            <span class="starter-card-arrow">&rarr;</span>
+                                        </p>
+                                    </button>
+                                    <button class="starter-card" onclick="sendPresetMessage('How does the SOLACE communication tool help resolve conflict?')">
+                                        <span class="starter-card-tag">🤝 Communication Framework</span>
+                                        <p class="starter-card-text">
+                                            <span>How does the SOLACE communication tool help resolve conflict?</span>
+                                            <span class="starter-card-arrow">&rarr;</span>
+                                        </p>
+                                    </button>
+                                    <button class="starter-card" onclick="sendPresetMessage('What are the core differences between anxious and avoidant attachment?')">
+                                        <span class="starter-card-tag">🧠 Attachment Theory</span>
+                                        <p class="starter-card-text">
+                                            <span>What are the core differences between anxious and avoidant attachment?</span>
+                                            <span class="starter-card-arrow">&rarr;</span>
+                                        </p>
+                                    </button>
+                                    <button class="starter-card" onclick="sendPresetMessage('How can I calm an anxious trigger when my partner deactivates?')">
+                                        <span class="starter-card-tag">🛡️ Trigger Management</span>
+                                        <p class="starter-card-text">
+                                            <span>How can I calm an anxious trigger when my partner deactivates?</span>
+                                            <span class="starter-card-arrow">&rarr;</span>
+                                        </p>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bubble-meta">${formatTimestamp()}</div>
+                    </div>
+                `
+            },
+            sales: {
+                sessionId: generateSessionId('sales'),
+                title: 'Program Advisor',
+                subtitle: 'Senior Relationship Program Advisor',
+                badgeText: 'Sales & Programs',
+                badgeClass: 'lane-badge lane-sales',
+                placeholder: 'Ask about masterclasses, coaching, or enrollment...',
+                html: null,
+                chips: [
+                    { label: '🎯 Course Match', text: 'Which masterclass or course is best suited for my attachment style?' },
+                    { label: '💡 Anxious Masterclass', text: 'What is covered in the Healing Anxious Attachment Masterclass?' },
+                    { label: '👥 Private Coaching', text: 'What are the options and pricing for private 1-on-1 coaching?' },
+                    { label: '📖 Guided Workbooks', text: 'Which guided workbooks or bundles do you recommend starting with?' }
+                ],
+                getWelcomeHtml: () => `
+                    <div class="message-row bot-row" id="initialGreetingRow_sales">
+                        <div class="bubble bot-bubble">
+                            <p>Hi there!</p>
+                            <p>I'm Dr. Sarah Hensley's official <strong>Program & Relationship Advisor</strong>.</p>
+                            <p>Whether you're exploring which masterclass, workbook, or private coaching session can deepen your healing journey, how can I support you today?</p>
+                            <div class="starter-questions-wrapper">
+                                <div class="starter-questions-header">
+                                    <span>✨ Suggested Program Inquiries — Tap to Ask:</span>
+                                </div>
+                                <div class="starter-questions-grid">
+                                    <button class="starter-card" onclick="sendPresetMessage('Which masterclass or course is best suited for my attachment style?')">
+                                        <span class="starter-card-tag">🎯 Course Matching</span>
+                                        <p class="starter-card-text">
+                                            <span>Which masterclass or course is best suited for my attachment style?</span>
+                                            <span class="starter-card-arrow">&rarr;</span>
+                                        </p>
+                                    </button>
+                                    <button class="starter-card" onclick="sendPresetMessage('What is covered in the Healing Anxious Attachment Masterclass?')">
+                                        <span class="starter-card-tag">💡 Anxious Masterclass</span>
+                                        <p class="starter-card-text">
+                                            <span>What is covered in the Healing Anxious Attachment Masterclass?</span>
+                                            <span class="starter-card-arrow">&rarr;</span>
+                                        </p>
+                                    </button>
+                                    <button class="starter-card" onclick="sendPresetMessage('What are the options and pricing for private 1-on-1 coaching?')">
+                                        <span class="starter-card-tag">👥 Private Coaching</span>
+                                        <p class="starter-card-text">
+                                            <span>What are the options and pricing for private 1-on-1 coaching?</span>
+                                            <span class="starter-card-arrow">&rarr;</span>
+                                        </p>
+                                    </button>
+                                    <button class="starter-card" onclick="sendPresetMessage('Which guided workbooks or bundles do you recommend starting with?')">
+                                        <span class="starter-card-tag">📖 Guided Workbooks</span>
+                                        <p class="starter-card-text">
+                                            <span>Which guided workbooks or bundles do you recommend starting with?</span>
+                                            <span class="starter-card-arrow">&rarr;</span>
+                                        </p>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bubble-meta">${formatTimestamp()}</div>
+                    </div>
+                `
+            }
+        };
+
+        // Configure Marked.js
+        if (typeof marked !== 'undefined') {
+            marked.setOptions({
+                breaks: true,
+                gfm: true
+            });
+        }
+
+        // Initialize greeting time
+        const initGreetingTime = document.getElementById('initialGreetingTime');
+        if (initGreetingTime) initGreetingTime.innerText = formatTimestamp();
+
+        // Scroll listener to toggle "Scroll to latest" button
+        const messageContainer = document.getElementById('messageContainer');
+        const scrollBottomBtn = document.getElementById('scrollBottomBtn');
+
+        messageContainer.addEventListener('scroll', () => {
+            const distanceFromBottom = messageContainer.scrollHeight - messageContainer.scrollTop - messageContainer.clientHeight;
+            if (distanceFromBottom > 90) {
+                isUserScrolledUp = true;
+                scrollBottomBtn.style.display = 'flex';
+            } else {
+                isUserScrolledUp = false;
+                scrollBottomBtn.style.display = 'none';
+            }
+        });
+
+        function scrollToBottom(force = false) {
+            if (force || !isUserScrolledUp) {
+                messageContainer.scrollTop = messageContainer.scrollHeight;
+                if (force) {
+                    isUserScrolledUp = false;
+                    scrollBottomBtn.style.display = 'none';
+                }
+            }
+        }
+
+        function handleInput(e) {
+            const textarea = e.target;
+            textarea.style.height = 'auto';
+            textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+
+            const btnSend = document.getElementById('btnSend');
+            const hasText = textarea.value.trim().length > 0;
+            btnSend.disabled = !hasText || isWaitingForResponse;
+        }
+
+        function handleKeyDown(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (!document.getElementById('btnSend').disabled) {
+                    sendMessage();
+                }
+            }
+        }
+
+        function sendPresetMessage(text) {
+            const input = document.getElementById('chatInput');
+            input.value = text;
+            handleInput({ target: input });
+            sendMessage();
+        }
+
+        function renderChips(chips) {
+            const container = document.getElementById('chipsContainer');
+            container.innerHTML = chips.map(c => `
+                <button class="chip-btn" onclick="sendPresetMessage(${JSON.stringify(c.text)})">
+                    ${escapeHtml(c.label)}
+                </button>
+            `).join('');
+        }
+
+        // Switch between Clinical Mode and Sales Mode with Independent Chat Histories
+        function switchMode(newMode) {
+            if (newMode === currentMode) return;
+            if (isWaitingForResponse) {
+                alert('Please wait for the current response to complete before switching modes.');
+                return;
+            }
+
+            // 1. Save current bot's messages HTML
+            botChats[currentMode].html = messageContainer.innerHTML;
+
+            // 2. Switch mode
+            currentMode = newMode;
+            const chatConfig = botChats[newMode];
+
+            // 3. Update Toggle Buttons
+            const btnGen = document.getElementById('modeGenericBtn');
+            const btnSales = document.getElementById('modeSalesBtn');
+            if (newMode === 'sales') {
+                btnSales.classList.add('active');
+                btnGen.classList.remove('active');
+            } else {
+                btnGen.classList.add('active');
+                btnSales.classList.remove('active');
+            }
+
+            // 4. Update Header Subtitle and Lane Badge
+            document.getElementById('headerSubtitle').innerText = chatConfig.subtitle;
+            const badge = document.getElementById('laneBadge');
+            badge.className = chatConfig.badgeClass;
+            badge.innerText = chatConfig.badgeText;
+
+            // 5. Update Input Placeholder
+            document.getElementById('chatInput').placeholder = chatConfig.placeholder;
+
+            // 6. Restore or Initialize Message Container for the newly active bot
+            if (chatConfig.html && chatConfig.html.trim().length > 0) {
+                messageContainer.innerHTML = chatConfig.html;
+            } else {
+                messageContainer.innerHTML = chatConfig.getWelcomeHtml();
+                chatConfig.html = messageContainer.innerHTML;
+            }
+
+            // 7. Update Action Chips
+            renderChips(chatConfig.chips);
+
+            // 8. Snap to bottom
+            scrollToBottom(true);
+        }
+
+        function changePersona(userId) {
+            currentUserId = userId;
+        }
+
+        async function startNewChat() {
+            if (isWaitingForResponse) return;
+
+            const activeChat = botChats[currentMode];
+
+            // Reset backend history in SQLite and memory for THIS active bot only
+            try {
+                await fetch('/chat/reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: activeChat.sessionId,
+                        user_id: currentUserId,
+                        mode: currentMode
+                    })
+                });
+            } catch (err) {
+                console.warn('Chat reset request failed:', err);
+            }
+
+            // Create fresh session ID for THIS bot only
+            activeChat.sessionId = generateSessionId(currentMode === 'sales' ? 'sales' : 'clinical');
+
+            // Reset message container to fresh welcome greeting for THIS bot
+            messageContainer.innerHTML = activeChat.getWelcomeHtml();
+            activeChat.html = messageContainer.innerHTML;
+            scrollToBottom(true);
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            if (!message || isWaitingForResponse) return;
+
+            const activeChat = botChats[currentMode];
+
+            // 1. Render User Bubble (LEFT-aligned)
+            const userRow = document.createElement('div');
+            userRow.className = 'message-row user-row';
+            userRow.innerHTML = `
+                <div class="bubble user-bubble">${escapeHtml(message)}</div>
+                <div class="bubble-meta">${formatTimestamp()}</div>
+            `;
+            messageContainer.appendChild(userRow);
+
+            // Clear input
+            input.value = '';
+            input.style.height = 'auto';
+            document.getElementById('btnSend').disabled = true;
+            isWaitingForResponse = true;
+
+            scrollToBottom();
+
+            // 2. Render Bot Typing Bubble (RIGHT-aligned)
+            const botRow = document.createElement('div');
+            botRow.className = 'message-row bot-row';
+            const botBubbleId = 'botBubble_' + Date.now();
+            botRow.innerHTML = `
+                <div class="bubble bot-bubble" id="${botBubbleId}">
+                    <div class="typing-indicator">
+                        <span></span><span></span><span></span>
+                    </div>
+                </div>
+                <div class="bubble-meta">${formatTimestamp()}</div>
+            `;
+            messageContainer.appendChild(botRow);
+            scrollToBottom();
+
+            const botBubble = document.getElementById(botBubbleId);
+
+            // 3. Request Live Answer via Streaming SSE or Fallback POST
+            try {
+                const response = await fetch('/chat/stream', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: activeChat.sessionId,
+                        message: message,
+                        user_id: currentUserId,
+                        mode: currentMode
+                    })
+                });
+
+                if (!response.ok || !response.body) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                let accumulatedText = '';
+                let isFirstToken = true;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const payload = JSON.parse(line.substring(6));
+                                if (payload.token) {
+                                    if (isFirstToken) {
+                                        botBubble.innerHTML = '';
+                                        isFirstToken = false;
+                                    }
+                                    accumulatedText += payload.token;
+                                    renderBotContent(botBubble, accumulatedText);
+                                    scrollToBottom();
+                                } else if (payload.done || payload.answer) {
+                                    const finalAns = payload.answer || payload.full_answer || accumulatedText;
+                                    renderBotContent(botBubble, finalAns, payload.recommended_products);
+                                    scrollToBottom();
+                                }
+                            } catch (e) {
+                                // Ignore non-json lines
+                            }
+                        }
+                    }
+                }
+
+                if (isFirstToken && accumulatedText.length === 0) {
+                    // Fallback to regular fetch if no tokens streamed
+                    await fallbackChatFetch(message, botBubble, activeChat.sessionId);
+                }
+
+            } catch (err) {
+                console.warn('Streaming failed, trying standard endpoint:', err);
+                await fallbackChatFetch(message, botBubble, activeChat.sessionId);
+            } finally {
+                isWaitingForResponse = false;
+                const hasText = input.value.trim().length > 0;
+                document.getElementById('btnSend').disabled = !hasText;
+                // Save current message history into active bot's store
+                botChats[currentMode].html = messageContainer.innerHTML;
+                scrollToBottom();
+            }
+        }
+
+        async function fallbackChatFetch(message, botBubble, sessionId) {
+            try {
+                const res = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        message: message,
+                        user_id: currentUserId,
+                        mode: currentMode
+                    })
+                });
+                const data = await res.json();
+                if (data.answer) {
+                    renderBotContent(botBubble, data.answer, data.recommended_products);
+                } else {
+                    botBubble.innerText = 'Unable to generate an answer at this moment.';
+                }
+            } catch (e) {
+                botBubble.innerText = 'Connection error. Please try again.';
+            } finally {
+                botChats[currentMode].html = messageContainer.innerHTML;
+            }
+        }
+
+        function renderBotContent(container, markdownText, recommendedProducts = []) {
+            let cleanHtml = '';
+            if (typeof marked !== 'undefined' && marked.parse) {
+                cleanHtml = marked.parse(markdownText);
+            } else {
+                cleanHtml = escapeHtml(markdownText);
+            }
+
+            container.innerHTML = cleanHtml;
+
+            // Append product recommendation cards if in sales mode and present
+            if (recommendedProducts && recommendedProducts.length > 0) {
+                const productsHtml = recommendedProducts.map(p => `
+                    <div class="product-card">
+                        <div class="product-card-header">
+                            <span class="product-title">${escapeHtml(p.name)}</span>
+                            <span class="product-price">${escapeHtml(p.price)}</span>
+                        </div>
+                        <p class="product-desc">${escapeHtml(p.description)}</p>
+                        <a href="${escapeHtml(p.checkout_url)}" target="_blank" class="btn-checkout">
+                            Enroll / Checkout &rarr;
+                        </a>
+                    </div>
+                `).join('');
+
+                container.insertAdjacentHTML('beforeend', productsHtml);
+            }
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        // Initialize Clinical initial state & chips
+        botChats.generic.html = messageContainer.innerHTML;
+        renderChips(botChats.generic.chips);
+    </script>
+</body>
+
+</html>

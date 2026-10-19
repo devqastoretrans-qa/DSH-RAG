@@ -1,0 +1,55 @@
+# =============================================================================
+# Git Ignore Rules for Doctor Sarah Hensley AI RAG (DSH-RAG)
+# =============================================================================
+
+# Python Virtual Environments & Bytecode
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment Secrets & Private Credentials
+.env
+.env.*
+!.env.example
+service_account.json
+*.pem
+*.key
+
+# Local Databases & Vector Stores
+ingestion_tracker.db
+users_data.db
+*.db
+*.sqlite
+*.sqlite3
+qdrant_db/
+.qdrant_storage/
+
+# Document Storage (Ignore real clinical files, keep sample & placeholder)
+documents/*
+!documents/sample.pdf
+!documents/.gitkeep
+
+# Runtime Logs & Scratch Files
+logs/
+logs/**
+*.log
+scratch/
+scratch/**
+scratch_answer.txt
+
+# Security & Production Readiness Audit Reports
+# (Keeps server IP 18.118.138.91 and vulnerability assessments private)
+readiness_charts/
+readiness_data.json
+Production_Readiness_*.html
+Production_Readiness_*.pdf
+production_readiness_report.html
+build_prr_*.py
+generate_prr_*.py
+
+# Operating System Metadata
+.DS_Store
+Thumbs.db
