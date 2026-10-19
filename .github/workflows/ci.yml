@@ -42,7 +42,7 @@ jobs:
       - name: Install PyTorch (CPU)
         run: |
           python -m pip install --upgrade pip
-          pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
       - name: Install Pinned Dependencies
         run: |
