@@ -101,15 +101,18 @@ app = FastAPI(
 is_production = os.getenv("ENVIRONMENT", "").strip().lower() in ("production", "prod")
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "").strip()
 
-if allowed_origins_env:
+trusted_production_origins = [
+    "https://doctorsarahhensley.com",
+    "https://www.doctorsarahhensley.com",
+    "https://dshstaging.doctorsarahhensley.com",
+    "https://agent.doctorsarahhensley.com"
+]
+
+if allowed_origins_env and allowed_origins_env != "*":
     allowed_origins = [o.strip() for o in allowed_origins_env.split(",") if o.strip()]
 elif is_production:
-    # Secure trusted defaults in production
-    allowed_origins = [
-        "https://doctorsarahhensley.com",
-        "https://www.doctorsarahhensley.com",
-        "https://dshstaging.doctorsarahhensley.com"
-    ]
+    logger.warning("[Security] Wildcard or empty CORS detected in production. Restricting strictly to trusted practice domains.")
+    allowed_origins = trusted_production_origins
 else:
     allowed_origins = ["*"]
 
