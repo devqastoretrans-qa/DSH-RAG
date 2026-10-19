@@ -1,4 +1,4 @@
-name: CI Pipeline - Doctor Sarah Hensley AI RAG
+name: CI/CD Pipeline - Doctor Sarah Hensley AI RAG
 
 on:
   push:
@@ -14,6 +14,9 @@ on:
       - staging
 
 jobs:
+  # =========================================================================
+  # STAGE 1: Continuous Integration (Automated Quality Gate)
+  # =========================================================================
   test:
     name: Lint, Validate & Run Regression Tests
     runs-on: ubuntu-latest
@@ -57,3 +60,57 @@ jobs:
       - name: Run Automated Regression Test Suite
         run: |
           python test_new_enhancements.py
+
+  # =========================================================================
+  # STAGE 2: Continuous Deployment (Zero-Downtime AWS EC2 Rollout)
+  # =========================================================================
+  deploy:
+    name: Deploy to AWS EC2 Production
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to AWS EC2 via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST || '18.118.138.91' }}
+          username: ${{ secrets.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script_stop: true
+          script: |
+            echo "=== Starting Automated Zero-Downtime Deployment ==="
+
+            # Detect project directory on EC2 host
+            if [ -d "/home/ubuntu/RAG-DSH" ]; then
+              APP_DIR="/home/ubuntu/RAG-DSH"
+            elif [ -d "/home/ubuntu/dsh-rag" ]; then
+              APP_DIR="/home/ubuntu/dsh-rag"
+            else
+              APP_DIR="$HOME/RAG-DSH"
+            fi
+
+            echo "Target application directory: $APP_DIR"
+            cd "$APP_DIR"
+
+            echo "Pulling latest release from GitHub main..."
+            git fetch origin main
+            git reset --hard origin/main
+
+            if [ -d "venv" ]; then
+              echo "Installing updated dependencies in virtual environment..."
+              source venv/bin/activate
+              pip install --no-cache-dir -r requirements.txt
+            fi
+
+            echo "Restarting application service..."
+            if systemctl is-active --quiet dsh-rag; then
+              sudo systemctl restart dsh-rag
+            elif systemctl is-active --quiet dsh_rag; then
+              sudo systemctl restart dsh_rag
+            fi
+
+            echo "Performing post-deploy health check..."
+            sleep 4
+            curl -f -s http://127.0.0.1:8000/health || curl -f -s https://agent.doctorsarahhensley.com/health || exit 1
+
+            echo "=== Deployment Successful & Verified Healthy ==="
