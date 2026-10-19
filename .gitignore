@@ -19,13 +19,17 @@ service_account.json
 *.key
 
 # Local Databases & Vector Stores
-ingestion_tracker.db
-users_data.db
+ingestion_tracker.db*
+users_data.db*
 *.db
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
 qdrant_db/
 .qdrant_storage/
+backups/
+*.gz
 
 # Document Storage (Ignore real clinical files, keep sample & placeholder)
 documents/*
