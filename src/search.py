@@ -277,12 +277,12 @@ def search_similar_chunks(
         norm_b = (c["bm25_score"] - min_b) / range_b
         c["hybrid_score"] = round((w_dense * norm_v) + (w_sparse * norm_b), 4)
 
-    # Sort candidates by RRF score before re-ranking and keep a wide pool (16) for Cross-Encoder
+    # Sort candidates by RRF score before re-ranking and keep a wide pool (16-20) for Cross-Encoder
     candidates.sort(key=lambda x: x.get("rrf_score", 0.0), reverse=True)
     if candidates and len(candidates) > top_k:
         top_rrf = candidates[0].get("rrf_score", 0.0)
         pruned = [c for c in candidates if c.get("rrf_score", 0.0) >= (top_rrf * 0.35)]
-        candidates = pruned[:max(top_k * 3, 16)] if pruned else candidates[:max(top_k * 2, 10)]
+        candidates = pruned[:max(top_k * 4, 20)] if pruned else candidates[:max(top_k * 3, 16)]
 
     # 4. Cross-Encoder Re-Ranking (Smart / Conditional)
     actually_reranked = False
@@ -320,8 +320,13 @@ def search_similar_chunks(
     disambiguation_options = []
     seen_tools = set()
 
-    # Scan the candidate pool to identify distinct tools/documents matching the query
-    pool_for_options = ranked if 'ranked' in locals() and ranked else final_results
+    # Scan ranked results first, and supplement from candidate pool to ensure all relevant tools are offered
+    pool_for_options = []
+    if 'ranked' in locals() and ranked:
+        pool_for_options.extend(ranked)
+    if 'candidates' in locals() and candidates:
+        pool_for_options.extend(candidates[:20])
+
     for c in pool_for_options:
         doc_raw = c.get("document_name") or c.get("file_name") or c.get("filename") or ""
         tool_name = clean_document_title(doc_raw)
@@ -339,7 +344,7 @@ def search_similar_chunks(
     if len(disambiguation_options) < 2:
         disambiguation_options = []
     else:
-        disambiguation_options = disambiguation_options[:4]
+        disambiguation_options = disambiguation_options[:5]
 
     return {
         "query": clean_query,

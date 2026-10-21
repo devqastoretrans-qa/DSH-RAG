@@ -1380,7 +1380,7 @@
                         </div>
                         <div class="disambiguation-chips">
                             ${disambiguationOptions.map(opt => `
-                                <button type="button" class="disambiguation-chip" onclick="handleDisambiguationClick('${escapeHtml(opt.query || opt.name)}')">
+                                <button type="button" class="disambiguation-chip" data-query="${escapeHtml(opt.query || opt.name)}" onclick="handleDisambiguationClick(this)">
                                     <span class="chip-folder">${escapeHtml(opt.folder || 'Tools')}</span>
                                     <span class="chip-name">${escapeHtml(opt.name)}</span>
                                 </button>
@@ -1392,10 +1392,12 @@
             }
         }
 
-        window.handleDisambiguationClick = function(queryText) {
+        window.handleDisambiguationClick = function(btn) {
+            const queryText = (typeof btn === 'string') ? btn : (btn.getAttribute('data-query') || btn.innerText);
             const input = document.getElementById('chatInput');
-            if (input) {
+            if (input && queryText) {
                 input.value = queryText;
+                handleInput({ target: input });
                 const sendBtn = document.getElementById('btnSend');
                 if (sendBtn) {
                     sendBtn.disabled = false;

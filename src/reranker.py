@@ -44,8 +44,9 @@ class RerankerService:
         if not candidate_chunks:
             return []
 
-        # Prune candidates to top 6-8 max to avoid wasted Cross-Encoder compute
-        pruned_candidates = candidate_chunks[:max(top_k + 2, 7)]
+        # Evaluate up to 16-20 candidates to ensure multi-tool and cross-subfolder queries find relevant documents
+        max_pool = int(os.getenv("RERANK_MAX_CANDIDATES", "16"))
+        pruned_candidates = candidate_chunks[:max(top_k * 3, max_pool)]
         pairs = [(query, chunk.get("text", "")[:600]) for chunk in pruned_candidates]
 
         try:
