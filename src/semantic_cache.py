@@ -16,7 +16,7 @@ class SemanticQueryCache:
 
     def __init__(self, max_size: int = 500, similarity_threshold: Optional[float] = None):
         self.max_size = max_size
-        env_threshold = float(os.getenv("SEMANTIC_CACHE_THRESHOLD", "0.88"))
+        env_threshold = float(os.getenv("SEMANTIC_CACHE_THRESHOLD", "0.92"))
         self.similarity_threshold = similarity_threshold if similarity_threshold is not None else env_threshold
         self._lock = threading.RLock()
         # Storage: list of dicts { user_id, vector, response, timestamp }

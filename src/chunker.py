@@ -103,19 +103,22 @@ def clean_document_title(filename: str) -> str:
     """
     Sanitizes raw filenames into clean, natural document titles.
     E.g. 'Gamification_FAQ_V1.docx.pdf' -> 'Gamification FAQ'
-         '15-Day_AI_ML_to_AI_Security_Course_Syllabus_4998.pdf' -> '15-Day AI ML to AI Security Course Syllabus'
-         'Todays Thoughts Journal FAQ V1.docx.pdf' -> 'Todays Thoughts Journal FAQ'
+         'Todays Thoughts Journal FAQ V1.docx (2).pdf' -> 'Todays Thoughts Journal FAQ'
+         'Personal & Attachment Needs FAQ V1.docx (1).pdf' -> 'Personal & Attachment Needs FAQ'
     """
     if not filename:
         return "Document"
-    # Strip extensions
-    name = re.sub(r'\.(pdf|docx|doc|txt)$', '', filename, flags=re.IGNORECASE)
-    name = re.sub(r'\.(pdf|docx|doc|txt)$', '', name, flags=re.IGNORECASE)
-    # Remove version tags like _V1, _v2, _4998, etc.
-    name = re.sub(r'_[vV]\d+', '', name)
+    name = filename
+    # Strip duplicate download markers like ' (1)', ' (2)', etc.
+    name = re.sub(r'\s*\(\d+\)', '', name)
+    # Strip common file extensions (even if chained like .docx.pdf)
+    name = re.sub(r'\.(pdf|docx|doc|txt)', '', name, flags=re.IGNORECASE)
+    # Remove version tags like _V1,  V1, _v2, etc.
+    name = re.sub(r'[_ ]+[vV]\d+', '', name)
     name = re.sub(r'_\d{3,}$', '', name)
-    # Replace underscores and hyphens with spaces
-    name = re.sub(r'[_\-]+', ' ', name).strip()
+    # Replace underscores and multiple spaces with a single space
+    name = re.sub(r'[_\-]+', ' ', name)
+    name = re.sub(r'\s+', ' ', name).strip()
     return name or filename
 
 

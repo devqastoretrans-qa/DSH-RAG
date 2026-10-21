@@ -367,10 +367,16 @@ def execute_rag_pipeline(
             conv_memory=conv_memory
         )
 
-    # 3. Semantic Query Cache Lookup (bypassed on follow-ups)
+    # 3. Semantic Query Cache Lookup (bypassed on follow-ups and tool-specific disambiguation queries)
     cache = get_semantic_cache()
+    is_tool_disambiguation = bool(re.search(r"\bfor\s+[A-Za-z0-9]", clean_query, re.I))
     if generate_answer and not is_follow_up:
         cached_result = cache.lookup(query_vector, user_id=user_id, mode=mode)
+        # Never serve an ambiguous multi-tool cached response to a query that specifically chose a tool
+        if cached_result and is_tool_disambiguation and cached_result.get("disambiguation_options"):
+            logger.info(f"[RAG] Bypassing semantic cache: query '{clean_query}' explicitly specifies a tool.")
+            cached_result = None
+
         if cached_result:
             cache_duration_ms = (time.time() - start_time) * 1000
             cached_result["duration_ms"] = round(cache_duration_ms, 2)

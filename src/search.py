@@ -328,9 +328,16 @@ def search_similar_chunks(
         if t_name and t_name.lower() not in ("unknown", "document") and t_name not in tools_in_final:
             tools_in_final.append(t_name)
 
-    # Check if user already explicitly specified a tool in their query
-    q_lower = clean_query.lower()
-    tool_already_named = any(t.lower() in q_lower for t in tools_in_final)
+    # Check if user already explicitly specified a tool in their query (punctuation-insensitive)
+    def _norm(s: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+    q_norm = _norm(clean_query)
+    # Match full normalized tool name or core base name (e.g. "todaysthoughts", "boundaryladder")
+    tool_already_named = any(
+        _norm(t) in q_norm or (_norm(t).replace("faq", "").strip() and _norm(t).replace("faq", "").strip() in q_norm)
+        for t in tools_in_final
+    ) or bool(re.search(r"\bfor\s+[A-Za-z0-9]", clean_query, re.I))
 
     # Only provide disambiguation if:
     # 1. There are at least 2 distinct tools in the top matching results, AND
