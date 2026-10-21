@@ -90,13 +90,44 @@ class GoogleDriveService:
         log_application("INFO", f"Google Drive API client initialized for folder: {self.folder_id}")
         return self._service
 
+    def _discover_descendant_folders(self, client, parent_id: str, parent_name: str) -> List[Dict[str, str]]:
+        """
+        Recursively discovers all descendant subfolders under a given folder ID.
+        Returns a list of dicts: [{'id': id, 'name': name}, ...]
+        """
+        results = [{"id": parent_id, "name": parent_name}]
+        queue = [parent_id]
+        visited = {parent_id}
+
+        while queue:
+            curr_id = queue.pop(0)
+            try:
+                q = (
+                    f"'{curr_id}' in parents and "
+                    f"mimeType = 'application/vnd.google-apps.folder' and "
+                    f"trashed = false"
+                )
+                res = client.files().list(
+                    q=q,
+                    fields="files(id, name)",
+                    pageSize=100
+                ).execute()
+                for sf in res.get("files", []):
+                    sf_id = sf.get("id")
+                    if sf_id and sf_id not in visited:
+                        visited.add(sf_id)
+                        results.append({"id": sf_id, "name": sf.get("name", "")})
+                        queue.append(sf_id)
+            except Exception as e:
+                log_application("WARNING", f"Error discovering subfolders of {curr_id}: {e}")
+
+        return results
+
     def list_pdf_files(self) -> List[Dict[str, Any]]:
         """
         Lists all non-trashed PDF files inside the configured Google Drive folder.
-        Automatically discovers 'clinical' and 'sales' subfolders:
-          - 'clinical_knowledge' / 'RAG_Clinical-Knowledge' -> category: 'clinical'
-          - 'sales_catalog' / 'RAG_Sales' -> category: 'sales'
-        If categorized subfolders exist, scans them and tags files with category.
+        Automatically discovers 'clinical' and 'sales' subfolders and recursively
+        scans all nested child subfolders (e.g. Tools, Journals, Reflections, Other).
         Falls back to root folder scanning if no subfolders exist.
         """
         if self._mock_files is not None:
@@ -142,39 +173,50 @@ class GoogleDriveService:
 
         all_pdf_records = []
 
-        # Step 2: If categorized subfolders were found, retrieve PDFs from each subfolder
+        # Step 2: If categorized subfolders were found, retrieve PDFs from each subfolder and all nested children
         if categorized_folders:
             log_application("INFO", f"Drive: Scanning {len(categorized_folders)} categorized subfolders: {[f['name'] for f in categorized_folders]}")
+            seen_file_ids = set()
             for folder_meta in categorized_folders:
-                target_folder_id = folder_meta["id"]
+                top_folder_id = folder_meta["id"]
                 folder_category = folder_meta["category"]
-                folder_name = folder_meta["name"]
+                top_folder_name = folder_meta["name"]
 
-                query = (
-                    f"'{target_folder_id}' in parents and "
-                    f"(mimeType = 'application/pdf' or "
-                    f"mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' or "
-                    f"mimeType = 'text/plain') and "
-                    f"trashed = false"
-                )
-                res = client.files().list(
-                    q=query,
-                    fields="files(id, name, modifiedTime, size, version, mimeType)",
-                    pageSize=100
-                ).execute()
-                for f in res.get("files", []):
-                    fname_low = f.get("name", "").lower()
-                    if any(fname_low.endswith(ext) for ext in (".pdf", ".docx", ".doc", ".txt", ".md", ".vtt", ".srt")):
-                        all_pdf_records.append({
-                            "id": f.get("id"),
-                            "name": f.get("name"),
-                            "modifiedTime": f.get("modifiedTime"),
-                            "size": int(f.get("size", 0)),
-                            "version": str(f.get("version", "1")),
-                            "category": folder_category,
-                            "folder_name": folder_name,
-                            "folder_id": target_folder_id
-                        })
+                descendant_folders = self._discover_descendant_folders(client, top_folder_id, top_folder_name)
+
+                for desc in descendant_folders:
+                    target_folder_id = desc["id"]
+                    folder_name = desc["name"]
+
+                    query = (
+                        f"'{target_folder_id}' in parents and "
+                        f"(mimeType = 'application/pdf' or "
+                        f"mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' or "
+                        f"mimeType = 'text/plain') and "
+                        f"trashed = false"
+                    )
+                    res = client.files().list(
+                        q=query,
+                        fields="files(id, name, modifiedTime, size, version, mimeType)",
+                        pageSize=100
+                    ).execute()
+                    for f in res.get("files", []):
+                        fid = f.get("id")
+                        if not fid or fid in seen_file_ids:
+                            continue
+                        fname_low = f.get("name", "").lower()
+                        if any(fname_low.endswith(ext) for ext in (".pdf", ".docx", ".doc", ".txt", ".md", ".vtt", ".srt")):
+                            seen_file_ids.add(fid)
+                            all_pdf_records.append({
+                                "id": fid,
+                                "name": f.get("name"),
+                                "modifiedTime": f.get("modifiedTime"),
+                                "size": int(f.get("size", 0)),
+                                "version": str(f.get("version", "1")),
+                                "category": folder_category,
+                                "folder_name": folder_name,
+                                "folder_id": target_folder_id
+                            })
             return all_pdf_records
 
         # Step 3: Fallback - if no categorized subfolders found, scan root parent folder directly
