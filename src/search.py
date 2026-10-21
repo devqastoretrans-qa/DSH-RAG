@@ -320,31 +320,44 @@ def search_similar_chunks(
     disambiguation_options = []
     seen_tools = set()
 
-    # Scan ranked results first, and supplement from candidate pool to ensure all relevant tools are offered
-    pool_for_options = []
-    if 'ranked' in locals() and ranked:
-        pool_for_options.extend(ranked)
-    if 'candidates' in locals() and candidates:
-        pool_for_options.extend(candidates[:20])
+    # Identify distinct tools in the verified final results
+    tools_in_final = []
+    for r in final_results:
+        doc_raw = r.get("document_name") or r.get("file_name") or r.get("filename") or ""
+        t_name = clean_document_title(doc_raw)
+        if t_name and t_name.lower() not in ("unknown", "document") and t_name not in tools_in_final:
+            tools_in_final.append(t_name)
 
-    for c in pool_for_options:
-        doc_raw = c.get("document_name") or c.get("file_name") or c.get("filename") or ""
-        tool_name = clean_document_title(doc_raw)
-        folder_disp = c.get("folder_display") or c.get("collection_key") or "Tools"
-        clean_folder = folder_disp.replace("Clinical Knowledge > ", "").strip()
-        if tool_name and tool_name not in seen_tools and tool_name.lower() not in ("unknown", "document"):
-            seen_tools.add(tool_name)
-            disambiguation_options.append({
-                "name": tool_name,
-                "folder": clean_folder,
-                "query": f"{clean_query} for {tool_name}"
-            })
+    # Check if user already explicitly specified a tool in their query
+    q_lower = clean_query.lower()
+    tool_already_named = any(t.lower() in q_lower for t in tools_in_final)
 
-    # Only provide disambiguation if there are at least 2 distinct tools/documents in context
-    if len(disambiguation_options) < 2:
-        disambiguation_options = []
-    else:
+    # Only provide disambiguation if:
+    # 1. There are at least 2 distinct tools in the top matching results, AND
+    # 2. The user did NOT already explicitly name a specific tool in their question
+    if len(tools_in_final) >= 2 and not tool_already_named:
+        # Build options starting with the verified tools in final results
+        pool_for_options = list(final_results)
+        if 'candidates' in locals() and candidates:
+            # Also supplement with other distinct tools from candidates
+            pool_for_options.extend(candidates[:15])
+
+        for c in pool_for_options:
+            doc_raw = c.get("document_name") or c.get("file_name") or c.get("filename") or ""
+            tool_name = clean_document_title(doc_raw)
+            folder_disp = c.get("folder_display") or c.get("collection_key") or "Tools"
+            clean_folder = folder_disp.replace("Clinical Knowledge > ", "").strip()
+            if tool_name and tool_name not in seen_tools and tool_name.lower() not in ("unknown", "document"):
+                seen_tools.add(tool_name)
+                disambiguation_options.append({
+                    "name": tool_name,
+                    "folder": clean_folder,
+                    "query": f"{clean_query} for {tool_name}"
+                })
+
         disambiguation_options = disambiguation_options[:5]
+    else:
+        disambiguation_options = []
 
     return {
         "query": clean_query,
