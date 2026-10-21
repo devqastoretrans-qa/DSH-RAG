@@ -560,6 +560,7 @@ async def search_endpoint(request: SearchQueryRequest):
             "citations": rag_res["citations"],
             "usage": rag_res["usage"],
             "personalized": rag_res["personalized"],
+            "disambiguation_options": rag_res.get("disambiguation_options", []),
             "customer_name": rag_res["user_profile"].get("name") if rag_res["user_profile"] else None,
             "user_profile": rag_res["user_profile"]
         })
@@ -590,6 +591,7 @@ async def search_endpoint(request: SearchQueryRequest):
             "citations": rag_res["citations"],
             "usage": rag_res["usage"],
             "personalized": False,
+            "disambiguation_options": rag_res.get("disambiguation_options", []),
             "customer_name": None,
             "user_profile": rag_res["user_profile"]
         })
@@ -871,6 +873,7 @@ async def ask_api_v1_stream(
 
         query_vector = search_output.get("query_vector")
         retrieved_chunks = search_output.get("results", [])
+        disambiguation_options = search_output.get("disambiguation_options", [])
 
     if not user_profile:
         user_profile = {
@@ -914,6 +917,7 @@ async def ask_api_v1_stream(
                 "answer": cached_ans,
                 "answer_html": cached_result.get("answer_html"),
                 "sources": cached_result.get("sources", []),
+                "disambiguation_options": cached_result.get("disambiguation_options", []),
                 "cached": True,
                 "cache_similarity": cached_result.get("cache_similarity"),
                 "conversation_id": request.conversation_id,
@@ -978,6 +982,7 @@ async def ask_api_v1_stream(
                     "answer": full_answer,
                     "answer_html": answer_html,
                     "recommended_products": event.get("recommended_products", []),
+                    "disambiguation_options": disambiguation_options if 'disambiguation_options' in locals() else [],
                     "sources": sources,
                     "conversation_id": request.conversation_id,
                     "session_id": request.session_id
@@ -1053,6 +1058,7 @@ async def chat_endpoint(request: ChatRequest):
             "answer": rag_res["answer"],
             "answer_html": rag_res.get("answer_html"),
             "recommended_products": rag_res.get("recommended_products", []),
+            "disambiguation_options": rag_res.get("disambiguation_options", []),
             "ai_model": rag_res.get("ai_model"),
             "duration_ms": rag_res.get("duration_ms")
         })
@@ -1077,6 +1083,7 @@ async def chat_endpoint(request: ChatRequest):
             "answer": rag_res["answer"],
             "answer_html": rag_res.get("answer_html"),
             "recommended_products": rag_res.get("recommended_products", []),
+            "disambiguation_options": rag_res.get("disambiguation_options", []),
             "ai_model": rag_res.get("ai_model"),
             "duration_ms": rag_res.get("duration_ms")
         })

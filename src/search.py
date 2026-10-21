@@ -48,13 +48,32 @@ def expand_query_semantics(query: str) -> str:
     return query.strip()
 
 
+STOPWORDS = {
+    'a', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and', 'any', 'are', 
+    'as', 'at', 'be', 'because', 'been', 'before', 'being', 'below', 'between', 'both', 'but', 
+    'by', 'could', 'did', 'do', 'does', 'doing', 'down', 'during', 'each', 'few', 'for', 'from', 
+    'further', 'had', 'has', 'have', 'having', 'he', 'her', 'here', 'hers', 'herself', 'him', 
+    'himself', 'his', 'how', 'i', 'if', 'in', 'into', 'is', 'it', 'its', 'itself', 'let', 'me', 
+    'more', 'most', 'my', 'myself', 'no', 'nor', 'not', 'of', 'off', 'on', 'once', 'only', 'or', 
+    'other', 'ought', 'our', 'ours', 'ourselves', 'out', 'over', 'own', 'same', 'she', 'should', 
+    'so', 'some', 'such', 'than', 'that', 'the', 'their', 'theirs', 'them', 'themselves', 'then', 
+    'there', 'these', 'they', 'this', 'those', 'through', 'to', 'too', 'under', 'until', 'up', 
+    'very', 'was', 'we', 'were', 'what', 'when', 'where', 'which', 'while', 'who', 'whom', 'why', 
+    'with', 'would', 'you', 'your', 'yours', 'yourself', 'yourselves'
+}
+
+
 def compute_bm25_score(query: str, text: str, k1: float = 1.5, b: float = 0.75, avg_doc_len: float = 120.0) -> float:
     """
-    Lightweight, fast BM25 sparse keyword relevance scorer.
+    Lightweight, fast BM25 sparse keyword relevance scorer with stopword awareness.
+    Filters generic stopwords so informative content words carry the true relevance weight.
     """
     query_tokens = [w.lower() for w in re.findall(r'\b\w+\b', query) if len(w) > 1]
     if not query_tokens:
         return 0.0
+
+    content_tokens = [w for w in query_tokens if w not in STOPWORDS]
+    target_tokens = content_tokens if content_tokens else query_tokens
 
     doc_tokens = [w.lower() for w in re.findall(r'\b\w+\b', text)]
     doc_len = len(doc_tokens)
@@ -63,7 +82,7 @@ def compute_bm25_score(query: str, text: str, k1: float = 1.5, b: float = 0.75, 
 
     tf = Counter(doc_tokens)
     score = 0.0
-    for q in query_tokens:
+    for q in target_tokens:
         count = tf.get(q, 0)
         if count > 0:
             numerator = count * (k1 + 1)
@@ -71,7 +90,7 @@ def compute_bm25_score(query: str, text: str, k1: float = 1.5, b: float = 0.75, 
             score += (numerator / denominator)
 
     # Normalize roughly to 0..1 range
-    return min(1.0, score / max(1.0, len(query_tokens) * 2.0))
+    return min(1.0, score / max(1.0, len(target_tokens) * 2.0))
 
 
 from src.config import CLINICAL_COLLECTIONS, get_collection_config
@@ -177,8 +196,8 @@ def search_similar_chunks(
         if not target_keys:
             target_keys = list(CLINICAL_COLLECTIONS.keys())
 
-        # Retrieve candidates from each target collection and merge
-        fetch_per_col = max(top_k * 2, 8) if use_reranker else top_k
+        # Retrieve candidates from each target collection and merge (25 per col for full subfolder coverage)
+        fetch_per_col = max(top_k * 5, 25) if use_reranker else top_k
         for k in target_keys:
             cfg = CLINICAL_COLLECTIONS.get(k)
             if not cfg:
@@ -224,8 +243,8 @@ def search_similar_chunks(
         w_dense = 0.50
         w_sparse = 0.50
     else:
-        w_dense = 0.70
-        w_sparse = 0.30
+        w_dense = 0.60
+        w_sparse = 0.40
 
     for c in candidates:
         text = c.get("text", "") + " " + c.get("parent_context", "")
@@ -258,23 +277,22 @@ def search_similar_chunks(
         norm_b = (c["bm25_score"] - min_b) / range_b
         c["hybrid_score"] = round((w_dense * norm_v) + (w_sparse * norm_b), 4)
 
-    # Sort candidates by RRF score before re-ranking and prune low-relevance outliers
+    # Sort candidates by RRF score before re-ranking and keep a wide pool (16) for Cross-Encoder
     candidates.sort(key=lambda x: x.get("rrf_score", 0.0), reverse=True)
     if candidates and len(candidates) > top_k:
         top_rrf = candidates[0].get("rrf_score", 0.0)
-        pruned = [c for c in candidates if c.get("rrf_score", 0.0) >= (top_rrf * 0.40)]
-        candidates = pruned[:max(top_k + 2, 7)] if pruned else candidates[:top_k]
+        pruned = [c for c in candidates if c.get("rrf_score", 0.0) >= (top_rrf * 0.35)]
+        candidates = pruned[:max(top_k * 3, 16)] if pruned else candidates[:max(top_k * 2, 10)]
 
     # 4. Cross-Encoder Re-Ranking (Smart / Conditional)
     actually_reranked = False
     if use_reranker and candidates:
         top_v = float(candidates[0].get("vector_score", candidates[0].get("score", 0.0)))
-        top_h = float(candidates[0].get("hybrid_score", 0.0))
-        rerank_threshold = float(os.getenv("RERANK_CONFIDENCE_THRESHOLD", "0.85"))
+        rerank_threshold = float(os.getenv("RERANK_CONFIDENCE_THRESHOLD", "0.90"))
 
-        # If top candidate is already an exceptional match (>= threshold), skip heavy Cross-Encoder to save CPU
-        if max(top_v, top_h) >= rerank_threshold:
-            print(f"[Search] High-confidence match (score: {max(top_v, top_h):.3f} >= {rerank_threshold}). Skipping Cross-Encoder to conserve CPU.")
+        # Skip heavy Cross-Encoder ONLY if dense cosine match itself is extraordinarily high (>= 0.90)
+        if top_v >= rerank_threshold:
+            print(f"[Search] High-confidence dense match (vector_score: {top_v:.3f} >= {rerank_threshold}). Skipping Cross-Encoder to conserve CPU.")
             ranked = candidates[:top_k]
             actually_reranked = False
         else:
@@ -297,13 +315,40 @@ def search_similar_chunks(
     else:
         final_results = ranked
 
+    # 6. Multi-Tool Disambiguation Extraction
+    from src.chunker import clean_document_title
+    disambiguation_options = []
+    seen_tools = set()
+
+    # Scan the candidate pool to identify distinct tools/documents matching the query
+    pool_for_options = ranked if 'ranked' in locals() and ranked else final_results
+    for c in pool_for_options:
+        doc_raw = c.get("document_name") or c.get("file_name") or c.get("filename") or ""
+        tool_name = clean_document_title(doc_raw)
+        folder_disp = c.get("folder_display") or c.get("collection_key") or "Tools"
+        clean_folder = folder_disp.replace("Clinical Knowledge > ", "").strip()
+        if tool_name and tool_name not in seen_tools and tool_name.lower() not in ("unknown", "document"):
+            seen_tools.add(tool_name)
+            disambiguation_options.append({
+                "name": tool_name,
+                "folder": clean_folder,
+                "query": f"{clean_query} for {tool_name}"
+            })
+
+    # Only provide disambiguation if there are at least 2 distinct tools/documents in context
+    if len(disambiguation_options) < 2:
+        disambiguation_options = []
+    else:
+        disambiguation_options = disambiguation_options[:4]
+
     return {
         "query": clean_query,
         "expanded_query": expanded_query,
         "query_vector": query_vector,
         "reranked": actually_reranked,
         "hybrid": True,
-        "results": final_results
+        "results": final_results,
+        "disambiguation_options": disambiguation_options
     }
 
 

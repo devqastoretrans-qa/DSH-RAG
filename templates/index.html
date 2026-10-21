@@ -684,6 +684,77 @@
             opacity: 0.9;
         }
 
+        /* Disambiguation Multi-Tool Selector Box */
+        .disambiguation-box {
+            margin-top: 0.85rem;
+            padding: 0.85rem 1rem;
+            background: #FBF9F5;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+
+        .disambiguation-header {
+            display: flex;
+            align-items: center;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+        }
+
+        .disambiguation-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.45rem;
+        }
+
+        .disambiguation-chip {
+            background: #FFFFFF;
+            border: 1.5px solid var(--border-color);
+            border-radius: 50px;
+            padding: 0.4rem 0.85rem;
+            font-family: var(--font-body);
+            font-size: 0.80rem;
+            color: var(--brand-black);
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+            text-align: left;
+        }
+
+        .disambiguation-chip:hover {
+            border-color: var(--brand-forest);
+            background: #F4F7F5;
+            color: var(--brand-forest);
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(17, 60, 44, 0.08);
+        }
+
+        .disambiguation-chip:active {
+            transform: translateY(0);
+        }
+
+        .chip-folder {
+            font-size: 0.68rem;
+            font-weight: 700;
+            color: var(--brand-forest);
+            background: rgba(17, 60, 44, 0.08);
+            padding: 0.12rem 0.4rem;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+
+        .chip-name {
+            font-weight: 600;
+        }
+
         /* Mobile Viewport Optimizations (375px) */
         @media (max-width: 600px) {
             .chat-app {
@@ -1214,7 +1285,7 @@
                                     scrollToBottom();
                                 } else if (payload.done || payload.answer) {
                                     const finalAns = payload.answer || payload.full_answer || accumulatedText;
-                                    renderBotContent(botBubble, finalAns, payload.recommended_products);
+                                    renderBotContent(botBubble, finalAns, payload.recommended_products, payload.disambiguation_options);
                                     scrollToBottom();
                                 }
                             } catch (e) {
@@ -1256,7 +1327,7 @@
                 });
                 const data = await res.json();
                 if (data.answer) {
-                    renderBotContent(botBubble, data.answer, data.recommended_products);
+                    renderBotContent(botBubble, data.answer, data.recommended_products, data.disambiguation_options);
                 } else {
                     botBubble.innerText = 'Unable to generate an answer at this moment.';
                 }
@@ -1267,7 +1338,7 @@
             }
         }
 
-        function renderBotContent(container, markdownText, recommendedProducts = []) {
+        function renderBotContent(container, markdownText, recommendedProducts = [], disambiguationOptions = []) {
             let cleanHtml = '';
             if (typeof marked !== 'undefined' && marked.parse) {
                 cleanHtml = marked.parse(markdownText);
@@ -1294,7 +1365,44 @@
 
                 container.insertAdjacentHTML('beforeend', productsHtml);
             }
+
+            // Append interactive disambiguation quick-reply chips if present
+            if (disambiguationOptions && disambiguationOptions.length > 0) {
+                const optionsHtml = `
+                    <div class="disambiguation-box">
+                        <div class="disambiguation-header">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px; vertical-align: -2px;">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="12" y1="16" x2="12" y2="12"></line>
+                                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                            </svg>
+                            <span>Which tool or subfolder are you asking about?</span>
+                        </div>
+                        <div class="disambiguation-chips">
+                            ${disambiguationOptions.map(opt => `
+                                <button type="button" class="disambiguation-chip" onclick="handleDisambiguationClick('${escapeHtml(opt.query || opt.name)}')">
+                                    <span class="chip-folder">${escapeHtml(opt.folder || 'Tools')}</span>
+                                    <span class="chip-name">${escapeHtml(opt.name)}</span>
+                                </button>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+                container.insertAdjacentHTML('beforeend', optionsHtml);
+            }
         }
+
+        window.handleDisambiguationClick = function(queryText) {
+            const input = document.getElementById('chatInput');
+            if (input) {
+                input.value = queryText;
+                const sendBtn = document.getElementById('btnSend');
+                if (sendBtn) {
+                    sendBtn.disabled = false;
+                    sendBtn.click();
+                }
+            }
+        };
 
         function escapeHtml(str) {
             if (!str) return '';

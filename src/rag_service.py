@@ -497,6 +497,7 @@ def execute_rag_pipeline(
         "answer": ai_answer or "No answer could be generated.",
         "answer_html": answer_html,
         "recommended_products": gen_res.get("recommended_products", []) if 'gen_res' in locals() and gen_res else [],
+        "disambiguation_options": search_output.get("disambiguation_options", []) if 'search_output' in locals() and search_output else [],
         "sources": formatted_sources,
         "raw_chunks": retrieved_chunks,
         "user_profile": user_profile,
