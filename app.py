@@ -1161,6 +1161,56 @@ async def chat_reset_endpoint(request: Request):
     })
 
 
+@app.get(
+    "/api/chat/history",
+    tags=["Chat API"],
+    summary="Get conversation history for session"
+)
+async def get_chat_history_endpoint(session_id: str, user_id: Optional[str] = "guest"):
+    """
+    Returns recent multi-turn conversation turns for the active session.
+    """
+    conv_memory = get_conversation_memory()
+    history = conv_memory.get_chat_history(user_id=user_id, conversation_id=session_id, max_turns=10)
+    return JSONResponse(status_code=200, content={
+        "session_id": session_id,
+        "user_id": user_id,
+        "turns": history
+    })
+
+
+@app.get(
+    "/api/system/stats",
+    tags=["System Health"],
+    summary="Get real-time system stats and database counts"
+)
+async def get_system_stats():
+    """
+    Returns live MySQL table counts, cache metrics, and system status for the UI inspector.
+    """
+    user_db = get_user_db()
+    cache = get_semantic_cache()
+
+    mysql_counts = {}
+    if getattr(user_db, "has_mysql", False):
+        try:
+            with user_db._get_mysql_conn() as conn:
+                with conn.cursor() as cur:
+                    for tbl in ("users", "purchases", "past_records", "conversation_turns"):
+                        cur.execute(f"SELECT COUNT(*) as cnt FROM {tbl}")
+                        res = cur.fetchone()
+                        mysql_counts[tbl] = res.get("cnt") if isinstance(res, dict) else res[0]
+        except Exception:
+            pass
+
+    return JSONResponse(status_code=200, content={
+        "status": "ok",
+        "backend": user_db.backend,
+        "mysql_counts": mysql_counts,
+        "cache_entries": len(getattr(cache, "_cache", {}))
+    })
+
+
 @app.post(
     "/api/v1/woocommerce/webhook",
     tags=["WooCommerce Integration"],

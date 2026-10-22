@@ -4,11 +4,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dr. Sarah Hensley | Relationship Science AI</title>
+    <title>Dr. Sarah Hensley | AI Studio & RAG Testing Hub</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
         rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
@@ -17,29 +17,43 @@
             --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             --font-mono: 'JetBrains Mono', monospace;
 
-            /* Brand Colors */
-            --bg-body: #F4F1EA;
-            --bg-surface: #FFFFFF;
-            --bg-chat: #FAF7F2;
-            --border-color: #E2DBD0;
-            --border-light: #EFEBE4;
+            /* Luxury Dark Studio Palette */
+            --bg-base: #0B1120;
+            --bg-surface: #131E32;
+            --bg-surface-elevated: #1B2942;
+            --bg-glass: rgba(19, 30, 50, 0.75);
+            
+            --border-subtle: rgba(255, 255, 255, 0.08);
+            --border-accent: rgba(203, 180, 144, 0.25);
+            --border-hover: rgba(255, 255, 255, 0.16);
 
-            --brand-black: #151515;
-            --brand-charcoal: #22252A;
-            --brand-forest: #113C2C;
-            --brand-coral: #EF3E46;
-            --brand-gold: #CBB490;
+            --brand-gold: #C5A880;
+            --brand-gold-bright: #E5C396;
+            --brand-gold-glow: rgba(197, 168, 128, 0.2);
+            --brand-emerald: #10B981;
+            --brand-emerald-dark: #064E3B;
+            --brand-emerald-glow: rgba(16, 185, 129, 0.2);
+            
+            --brand-coral: #F43F5E;
+            --brand-blue: #38BDF8;
 
-            --user-bubble-bg: #1F2421;
-            --user-bubble-text: #F8F9FA;
+            --text-main: #F8FAFC;
+            --text-secondary: #94A3B8;
+            --text-muted: #64748B;
 
-            --bot-bubble-bg: #FFFFFF;
-            --bot-bubble-border: #E8E2D8;
-            --bot-bubble-text: #1A1A1A;
+            --user-bubble-bg: #1E3A8A;
+            --user-bubble-border: #2563EB;
+            --bot-bubble-bg: #172439;
+            --bot-bubble-border: rgba(255, 255, 255, 0.09);
 
-            --text-primary: #151515;
-            --text-secondary: #5A5E66;
-            --text-muted: #8E929A;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 18px;
+            --radius-full: 9999px;
+
+            --shadow-subtle: 0 4px 12px rgba(0, 0, 0, 0.2);
+            --shadow-elevated: 0 10px 30px rgba(0, 0, 0, 0.4);
+            --shadow-glow: 0 0 25px rgba(197, 168, 128, 0.15);
         }
 
         * {
@@ -48,210 +62,541 @@
             padding: 0;
         }
 
-        html,
-        body {
+        html, body {
             height: 100%;
             height: 100dvh;
             overflow: hidden;
             font-family: var(--font-body);
-            background-color: var(--bg-body);
-            color: var(--text-primary);
+            background: var(--bg-base);
+            color: var(--text-main);
             -webkit-font-smoothing: antialiased;
         }
 
         /* Full-window App Container */
-        .chat-app {
-            display: flex;
-            flex-direction: column;
+        .app-layout {
+            display: grid;
+            grid-template-rows: 64px 1fr;
             height: 100%;
             height: 100dvh;
-            max-width: 960px;
-            margin: 0 auto;
-            background: var(--bg-surface);
-            border-left: 1px solid var(--border-color);
-            border-right: 1px solid var(--border-color);
-            box-shadow: 0 0 50px rgba(0, 0, 0, 0.05);
-            position: relative;
+            background: radial-gradient(circle at 15% 10%, rgba(16, 185, 129, 0.06), transparent 30%),
+                        radial-gradient(circle at 85% 85%, rgba(197, 168, 128, 0.05), transparent 35%),
+                        var(--bg-base);
         }
 
-        /* Fixed Header */
-        .chat-header {
-            flex-shrink: 0;
-            background: #FFFFFF;
-            border-bottom: 1px solid var(--border-color);
-            padding: 0.75rem 1.15rem;
+        /* =========================================================================
+           TOP APP BAR / HEADER
+           ========================================================================= */
+        .app-header {
             display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-            z-index: 10;
-        }
-
-        .header-top {
-            display: flex;
+            align-items: center;
             justify-content: space-between;
-            align-items: center;
+            padding: 0 1.5rem;
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border-subtle);
+            backdrop-filter: blur(12px);
+            z-index: 50;
         }
 
-        .brand-title {
+        .header-brand {
             display: flex;
             align-items: center;
-            gap: 0.65rem;
+            gap: 0.9rem;
         }
 
-        .brand-badge {
-            width: 34px;
-            height: 34px;
-            border-radius: 50%;
-            background: var(--brand-forest);
-            color: #fff;
+        .brand-monogram {
+            width: 40px;
+            height: 40px;
+            border-radius: var(--radius-md);
+            background: linear-gradient(135deg, #10B981, #064E3B);
+            border: 1px solid rgba(255, 255, 255, 0.15);
             display: flex;
             align-items: center;
             justify-content: center;
             font-family: var(--font-heading);
-            font-size: 1.1rem;
-            font-weight: 700;
-        }
-
-        .brand-text h1 {
-            font-family: var(--font-heading);
             font-size: 1.15rem;
-            font-weight: 600;
-            color: var(--brand-black);
-            line-height: 1.2;
+            font-weight: 700;
+            color: #FFFFFF;
+            box-shadow: 0 0 15px var(--brand-emerald-glow);
         }
 
-        .brand-text p {
-            font-size: 0.73rem;
-            color: var(--text-muted);
+        .brand-info h1 {
+            font-family: var(--font-heading);
+            font-size: 1.08rem;
+            font-weight: 600;
+            letter-spacing: 0.2px;
+            color: #FFFFFF;
             display: flex;
             align-items: center;
-            gap: 0.4rem;
+            gap: 0.5rem;
         }
 
-        .lane-badge {
-            display: inline-block;
+        .brand-tag {
+            font-family: var(--font-mono);
             font-size: 0.65rem;
-            font-weight: 700;
-            padding: 0.15rem 0.55rem;
-            border-radius: 50px;
+            font-weight: 600;
+            padding: 0.15rem 0.45rem;
+            border-radius: var(--radius-full);
+            background: rgba(197, 168, 128, 0.15);
+            color: var(--brand-gold-bright);
+            border: 1px solid rgba(197, 168, 128, 0.3);
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            transition: all 0.2s ease;
         }
 
-        .lane-clinical {
-            background: #E8F3EE;
-            color: var(--brand-forest);
-            border: 1px solid #C8E3D7;
+        .brand-subtitle {
+            font-size: 0.74rem;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-top: 2px;
         }
 
-        .lane-sales {
-            background: #FDF4E7;
-            color: #9C6818;
-            border: 1px solid #F5DEB3;
+        /* Health pills */
+        .health-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-size: 0.7rem;
+            color: var(--brand-emerald);
+        }
+
+        .pulsing-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--brand-emerald);
+            box-shadow: 0 0 8px var(--brand-emerald);
+            animation: pulse-glow 2s infinite ease-in-out;
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.25); }
+        }
+
+        /* Mode Switcher In Header */
+        .header-center {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .mode-pill-toggle {
+            display: flex;
+            background: var(--bg-surface-elevated);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-full);
+            padding: 3px;
+        }
+
+        .mode-pill-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-family: var(--font-body);
+            font-size: 0.78rem;
+            font-weight: 500;
+            padding: 0.35rem 0.95rem;
+            border-radius: var(--radius-full);
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+        }
+
+        .mode-pill-btn.active.clinical {
+            background: linear-gradient(135deg, #10B981, #065F46);
+            color: #FFFFFF;
+            font-weight: 600;
+            box-shadow: 0 2px 10px rgba(16, 185, 129, 0.3);
+        }
+
+        .mode-pill-btn.active.sales {
+            background: linear-gradient(135deg, #D4AF37, #927220);
+            color: #FFFFFF;
+            font-weight: 600;
+            box-shadow: 0 2px 10px rgba(212, 175, 55, 0.3);
         }
 
         .header-actions {
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.65rem;
         }
 
-        .btn-new-chat {
-            background: var(--bg-chat);
-            border: 1px solid var(--border-color);
-            color: var(--brand-black);
-            font-size: 0.78rem;
-            font-weight: 600;
-            padding: 0.4rem 0.85rem;
-            border-radius: 50px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 0.35rem;
-            transition: all 0.2s ease;
-        }
-
-        .btn-new-chat:hover {
-            background: var(--brand-black);
-            color: #fff;
-            border-color: var(--brand-black);
-        }
-
-        /* Controls Toolbar */
-        .controls-bar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 0.5rem;
-            font-size: 0.78rem;
-        }
-
-        .mode-toggle {
-            display: flex;
-            background: var(--bg-chat);
-            border: 1px solid var(--border-color);
-            border-radius: 50px;
-            padding: 2px;
-        }
-
-        .mode-btn {
-            background: transparent;
-            border: none;
-            padding: 0.25rem 0.75rem;
-            border-radius: 50px;
-            font-size: 0.74rem;
-            cursor: pointer;
-            font-weight: 500;
+        .btn-action-icon {
+            background: var(--bg-surface-elevated);
+            border: 1px solid var(--border-subtle);
             color: var(--text-secondary);
-            transition: all 0.2s;
-        }
-
-        .mode-btn.active {
-            background: var(--brand-black);
-            color: #FFFFFF;
-            font-weight: 600;
-        }
-
-        .persona-select-wrapper {
+            font-size: 0.8rem;
+            font-weight: 500;
+            padding: 0.4rem 0.85rem;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
             display: flex;
             align-items: center;
             gap: 0.4rem;
-            color: var(--text-muted);
-            font-size: 0.74rem;
+            transition: all 0.2s;
         }
 
-        .persona-select {
-            padding: 0.25rem 0.65rem;
-            border-radius: 6px;
-            border: 1px solid var(--border-color);
-            background: #FFFFFF;
-            font-size: 0.75rem;
-            font-weight: 500;
-            color: var(--brand-black);
-            outline: none;
-            cursor: pointer;
+        .btn-action-icon:hover {
+            color: #FFFFFF;
+            border-color: var(--border-hover);
+            background: #243552;
         }
 
-        /* Scrollable Message Area */
-        .message-area {
-            flex: 1;
-            overflow-y: auto;
-            background: var(--bg-chat);
-            padding: 1.25rem 1.15rem 1.5rem 1.15rem;
+        /* =========================================================================
+           THREE-COLUMN MAIN WORKSPACE
+           ========================================================================= */
+        .workspace {
+            display: grid;
+            grid-template-columns: 310px 1fr 340px;
+            height: calc(100dvh - 64px);
+            overflow: hidden;
+            transition: grid-template-columns 0.3s ease;
+        }
+
+        .workspace.inspector-collapsed {
+            grid-template-columns: 310px 1fr 0px;
+        }
+
+        /* =========================================================================
+           LEFT PANEL: CUSTOMER & PERSONA CONTROL CENTER
+           ========================================================================= */
+        .panel-customer {
+            background: var(--bg-surface);
+            border-right: 1px solid var(--border-subtle);
             display: flex;
             flex-direction: column;
+            overflow-y: auto;
+            padding: 1.25rem 1rem;
             gap: 1.15rem;
-            scroll-behavior: smooth;
+        }
+
+        .panel-heading {
+            font-size: 0.72rem;
+            font-family: var(--font-mono);
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 0.4rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .user-select-box {
             position: relative;
         }
 
-        /* Message Turn Row */
+        .user-select {
+            width: 100%;
+            background: var(--bg-surface-elevated);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            color: #FFFFFF;
+            padding: 0.55rem 0.75rem;
+            font-size: 0.82rem;
+            font-family: var(--font-body);
+            outline: none;
+            cursor: pointer;
+            transition: border 0.2s;
+        }
+
+        .user-select:focus {
+            border-color: var(--brand-gold);
+            box-shadow: 0 0 0 2px var(--brand-gold-glow);
+        }
+
+        /* Customer Profile Card */
+        .customer-card {
+            background: linear-gradient(180deg, var(--bg-surface-elevated) 0%, #152238 100%);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 1rem;
+            box-shadow: var(--shadow-subtle);
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .customer-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--brand-emerald), var(--brand-gold));
+        }
+
+        .card-header-row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .avatar-circle {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: #253856;
+            border: 1px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: var(--brand-gold-bright);
+        }
+
+        .card-names h3 {
+            font-size: 0.92rem;
+            font-weight: 600;
+            color: #FFFFFF;
+        }
+
+        .card-names p {
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+        }
+
+        .card-meta-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+        }
+
+        .meta-tag {
+            font-size: 0.68rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: var(--radius-full);
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-subtle);
+        }
+
+        .meta-tag.attachment {
+            background: rgba(16, 185, 129, 0.12);
+            color: var(--brand-emerald);
+            border-color: rgba(16, 185, 129, 0.25);
+            font-weight: 500;
+        }
+
+        /* Owned products list */
+        .products-section h4 {
+            font-size: 0.7rem;
+            font-family: var(--font-mono);
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 0.45rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .product-chips {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+            max-height: 160px;
+            overflow-y: auto;
+        }
+
+        .product-pill {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.35rem 0.55rem;
+            border-radius: var(--radius-sm);
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-subtle);
+            font-size: 0.72rem;
+            color: #FFFFFF;
+            line-height: 1.3;
+        }
+
+        .product-pill .lock-icon {
+            font-size: 0.7rem;
+            color: var(--brand-gold-bright);
+            flex-shrink: 0;
+        }
+
+        .empty-products {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            font-style: italic;
+            padding: 0.3rem 0;
+        }
+
+        /* Guardrail explanation box */
+        .guardrail-callout {
+            background: rgba(197, 168, 128, 0.08);
+            border: 1px solid rgba(197, 168, 128, 0.2);
+            border-radius: var(--radius-sm);
+            padding: 0.55rem 0.75rem;
+            font-size: 0.72rem;
+            color: var(--brand-gold-bright);
+            line-height: 1.4;
+        }
+
+        /* Quick Test Prompts / Presets */
+        .test-presets {
+            display: flex;
+            flex-direction: column;
+            gap: 0.45rem;
+        }
+
+        .preset-btn {
+            background: var(--bg-surface-elevated);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            padding: 0.55rem 0.75rem;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+
+        .preset-btn:hover {
+            border-color: var(--brand-gold);
+            background: #243552;
+            transform: translateX(2px);
+        }
+
+        .preset-badge {
+            font-size: 0.65rem;
+            font-family: var(--font-mono);
+            font-weight: 600;
+            color: var(--brand-gold-bright);
+        }
+
+        .preset-text {
+            font-size: 0.74rem;
+            color: #FFFFFF;
+            line-height: 1.3;
+        }
+
+        /* =========================================================================
+           CENTER PANEL: LIVE CONVERSATION CANVAS
+           ========================================================================= */
+        .panel-chat {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            background: transparent;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .chat-scroll-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.5rem 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+            scroll-behavior: smooth;
+        }
+
+        /* Welcome hero card */
+        .welcome-hero {
+            background: linear-gradient(180deg, var(--bg-surface) 0%, rgba(19, 30, 50, 0.4) 100%);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            padding: 2rem;
+            text-align: center;
+            max-width: 680px;
+            margin: 1rem auto 1.5rem auto;
+            box-shadow: var(--shadow-elevated);
+        }
+
+        .hero-emblem {
+            width: 54px;
+            height: 54px;
+            margin: 0 auto 1rem auto;
+            border-radius: var(--radius-md);
+            background: linear-gradient(135deg, var(--brand-emerald), var(--brand-emerald-dark));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-heading);
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #fff;
+            box-shadow: 0 0 25px var(--brand-emerald-glow);
+        }
+
+        .welcome-hero h2 {
+            font-family: var(--font-heading);
+            font-size: 1.55rem;
+            color: #FFFFFF;
+            margin-bottom: 0.5rem;
+        }
+
+        .welcome-hero p {
+            font-size: 0.88rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 1.25rem;
+        }
+
+        .starter-chips-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.65rem;
+            text-align: left;
+        }
+
+        .starter-chip {
+            background: var(--bg-surface-elevated);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            padding: 0.75rem 0.95rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+
+        .starter-chip:hover {
+            border-color: var(--brand-emerald);
+            background: #243552;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .chip-category {
+            font-size: 0.66rem;
+            font-family: var(--font-mono);
+            color: var(--brand-emerald);
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .chip-question {
+            font-size: 0.78rem;
+            color: #FFFFFF;
+            line-height: 1.35;
+        }
+
+        /* Message Bubbles */
         .message-row {
             display: flex;
             flex-direction: column;
             width: 100%;
+            animation: fadeIn 0.25s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         .message-row.user-row {
@@ -262,347 +607,233 @@
             align-items: flex-start;
         }
 
-        /* Bubbles */
         .bubble {
-            max-width: 78%;
-            padding: 0.85rem 1.15rem;
-            border-radius: 18px;
-            font-size: 0.92rem;
-            line-height: 1.58;
+            max-width: 82%;
+            padding: 1rem 1.25rem;
+            border-radius: var(--radius-lg);
+            font-size: 0.9rem;
+            line-height: 1.65;
             word-break: break-word;
-            overflow-wrap: anywhere;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+            box-shadow: var(--shadow-subtle);
             position: relative;
         }
 
-        /* User Bubble: RIGHT-aligned */
         .user-bubble {
-            background: var(--user-bubble-bg);
-            color: var(--user-bubble-text);
+            background: linear-gradient(135deg, #1E3A8A 0%, #1D4ED8 100%);
+            color: #FFFFFF;
+            border: 1px solid var(--user-bubble-border);
             border-bottom-right-radius: 4px;
-            border-bottom-left-radius: 18px;
         }
 
-        /* Bot Bubble: LEFT-aligned */
         .bot-bubble {
             background: var(--bot-bubble-bg);
-            color: var(--bot-bubble-text);
+            color: var(--text-main);
             border: 1px solid var(--bot-bubble-border);
             border-bottom-left-radius: 4px;
-            border-bottom-right-radius: 18px;
         }
 
-        /* Bubble Markdown Typography */
-        .bot-bubble h1,
-        .bot-bubble h2,
-        .bot-bubble h3,
-        .bot-bubble h4 {
+        .bot-bubble.streaming {
+            border-color: rgba(16, 185, 129, 0.35);
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.1);
+        }
+
+        /* Bubble Markdown Styling */
+        .bot-bubble h1, .bot-bubble h2, .bot-bubble h3, .bot-bubble h4 {
             font-family: var(--font-heading);
-            color: var(--brand-forest);
-            margin-top: 0.75rem;
-            margin-bottom: 0.35rem;
+            color: var(--brand-gold-bright);
+            margin-top: 0.9rem;
+            margin-bottom: 0.4rem;
             line-height: 1.3;
         }
 
         .bot-bubble h3 {
-            font-size: 1.05rem;
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 0.25rem;
+            font-size: 1.1rem;
+            border-bottom: 1px solid var(--border-subtle);
+            padding-bottom: 0.35rem;
         }
 
         .bot-bubble p {
-            margin-bottom: 0.55rem;
+            margin-bottom: 0.65rem;
         }
 
         .bot-bubble p:last-child {
             margin-bottom: 0;
         }
 
-        .bot-bubble ul,
-        .bot-bubble ol {
-            padding-left: 1.25rem;
-            margin: 0.45rem 0 0.55rem 0;
+        .bot-bubble ul, .bot-bubble ol {
+            margin-left: 1.25rem;
+            margin-bottom: 0.75rem;
         }
 
         .bot-bubble li {
-            margin-bottom: 0.25rem;
+            margin-bottom: 0.3rem;
         }
 
         .bot-bubble strong {
-            color: var(--brand-black);
+            color: #FFFFFF;
             font-weight: 600;
-        }
-
-        .bot-bubble a {
-            color: var(--brand-coral);
-            font-weight: 600;
-            text-decoration: underline;
-            text-underline-offset: 2px;
         }
 
         .bot-bubble blockquote {
             border-left: 3px solid var(--brand-gold);
-            padding-left: 0.75rem;
+            padding-left: 0.85rem;
+            margin: 0.75rem 0;
             color: var(--text-secondary);
-            margin: 0.5rem 0;
             font-style: italic;
         }
 
-        /* Timestamp */
-        .bubble-meta {
-            font-size: 0.68rem;
-            color: var(--text-muted);
-            margin-top: 4px;
-            padding: 0 4px;
-        }
-
-        .user-row .bubble-meta {
-            text-align: right;
-        }
-
-        .bot-row .bubble-meta {
-            text-align: left;
-        }
-
-        /* Typing indicator dots */
-        .typing-indicator {
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            padding: 0.25rem 0.5rem;
-        }
-
-        .typing-indicator span {
-            width: 7px;
-            height: 7px;
-            background: var(--text-muted);
-            border-radius: 50%;
-            display: inline-block;
-            animation: bounce 1.4s infinite ease-in-out both;
-        }
-
-        .typing-indicator span:nth-child(1) {
-            animation-delay: -0.32s;
-        }
-
-        .typing-indicator span:nth-child(2) {
-            animation-delay: -0.16s;
-        }
-
-        @keyframes bounce {
-            0%,
-            80%,
-            100% {
-                transform: scale(0);
-            }
-
-            40% {
-                transform: scale(1);
-            }
-        }
-
-        /* Floating "Scroll to latest" button */
-        .scroll-bottom-btn {
-            position: absolute;
-            bottom: 85px;
-            right: 20px;
-            background: #FFFFFF;
-            border: 1px solid var(--border-color);
-            color: var(--brand-black);
-            font-size: 0.74rem;
-            font-weight: 600;
-            padding: 0.4rem 0.85rem;
-            border-radius: 50px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-            cursor: pointer;
-            display: none;
-            align-items: center;
-            gap: 0.35rem;
-            z-index: 5;
-            transition: all 0.2s;
-        }
-
-        .scroll-bottom-btn:hover {
-            background: var(--brand-black);
-            color: #fff;
-        }
-
-        /* Clickable Starter Questions Grid */
-        .starter-questions-wrapper {
-            margin-top: 1.15rem;
+        /* Highlighted Masterclass Recommendation Card in Sales Mode */
+        .product-recommendation-card {
+            background: linear-gradient(135deg, rgba(212, 175, 55, 0.12) 0%, rgba(146, 114, 32, 0.08) 100%);
+            border: 1px solid rgba(212, 175, 55, 0.35);
+            border-radius: var(--radius-md);
+            padding: 1rem 1.15rem;
+            margin: 0.85rem 0;
             display: flex;
             flex-direction: column;
-            gap: 0.65rem;
+            gap: 0.5rem;
         }
 
-        .starter-questions-header {
-            display: flex;
-            align-items: center;
-            gap: 0.45rem;
-            font-size: 0.74rem;
-            font-weight: 600;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-        }
-
-        .starter-questions-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 0.65rem;
-        }
-
-        @media (max-width: 640px) {
-            .starter-questions-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        .starter-card {
-            background: #FFFFFF;
-            border: 1.5px solid var(--border-color);
-            border-radius: 12px;
-            padding: 0.85rem 1rem;
-            text-align: left;
-            cursor: pointer;
-            font-family: inherit;
-            transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
-            display: flex;
-            flex-direction: column;
-            gap: 0.35rem;
-            position: relative;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
-        }
-
-        .starter-card:hover {
-            border-color: var(--brand-forest);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 16px rgba(17, 60, 44, 0.1);
-            background: #FFFFFF;
-        }
-
-        .starter-card:active {
-            transform: translateY(0);
-        }
-
-        .starter-card-tag {
-            font-size: 0.72rem;
-            font-weight: 700;
-            color: var(--brand-forest);
-            display: flex;
-            align-items: center;
-            gap: 0.35rem;
-        }
-
-        .starter-card-text {
-            font-size: 0.86rem;
-            font-weight: 500;
-            line-height: 1.4;
-            color: var(--brand-black);
-            margin: 0;
+        .product-rec-header {
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
-            gap: 0.5rem;
-        }
-
-        .starter-card-arrow {
-            color: var(--text-muted);
-            font-size: 1rem;
-            transition: transform 0.2s ease, color 0.2s ease;
-            flex-shrink: 0;
-            line-height: 1.2;
-        }
-
-        .starter-card:hover .starter-card-arrow {
-            color: var(--brand-coral);
-            transform: translateX(3px);
-        }
-
-        /* Action Chips */
-        .chips-container {
-            display: flex;
-            gap: 0.5rem;
-            overflow-x: auto;
-            padding: 0.5rem 1.15rem;
-            background: #FFFFFF;
-            border-top: 1px solid var(--border-light);
-            scrollbar-width: none;
-        }
-
-        .chips-container::-webkit-scrollbar {
-            display: none;
-        }
-
-        .chip-btn {
-            white-space: nowrap;
-            background: var(--bg-chat);
-            border: 1px solid var(--border-color);
-            font-size: 0.76rem;
-            font-weight: 500;
-            padding: 0.35rem 0.85rem;
-            border-radius: 50px;
-            color: var(--text-primary);
-            cursor: pointer;
-            transition: all 0.2s;
-            display: inline-flex;
             align-items: center;
-            gap: 0.35rem;
-            flex-shrink: 0;
         }
 
-        .chip-btn:hover {
-            border-color: var(--brand-forest);
-            color: var(--brand-forest);
-            background: #FFFFFF;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+        .product-rec-title {
+            font-family: var(--font-heading);
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: var(--brand-gold-bright);
         }
 
-        /* Fixed Input Bar */
+        .product-rec-price {
+            font-family: var(--font-mono);
+            font-size: 0.95rem;
+            font-weight: 700;
+            background: var(--brand-gold);
+            color: #0F172A;
+            padding: 0.2rem 0.55rem;
+            border-radius: var(--radius-sm);
+        }
+
+        .product-rec-desc {
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .product-rec-cta {
+            align-self: flex-start;
+            background: linear-gradient(135deg, var(--brand-gold), #A88B38);
+            border: none;
+            color: #0B1120;
+            font-weight: 600;
+            font-size: 0.78rem;
+            padding: 0.45rem 0.95rem;
+            border-radius: var(--radius-full);
+            cursor: pointer;
+            margin-top: 0.3rem;
+            transition: all 0.2s;
+        }
+
+        .product-rec-cta:hover {
+            transform: scale(1.03);
+            box-shadow: 0 0 12px var(--brand-gold-glow);
+        }
+
+        /* Message Meta Badges */
+        .bubble-meta-row {
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+            font-size: 0.68rem;
+            font-family: var(--font-mono);
+            color: var(--text-muted);
+            margin-top: 0.35rem;
+            padding: 0 0.4rem;
+        }
+
+        .meta-pill {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-full);
+            padding: 0.1rem 0.45rem;
+        }
+
+        .meta-pill.cached {
+            color: var(--brand-emerald);
+            border-color: rgba(16, 185, 129, 0.3);
+            background: rgba(16, 185, 129, 0.08);
+        }
+
+        .typing-cursor {
+            display: inline-block;
+            width: 7px;
+            height: 14px;
+            background: var(--brand-emerald);
+            margin-left: 3px;
+            vertical-align: middle;
+            animation: blink 0.8s infinite;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+
+        /* Chat Input Controls */
         .chat-input-bar {
-            flex-shrink: 0;
-            background: #FFFFFF;
-            border-top: 1px solid var(--border-color);
-            padding: 0.75rem 1.15rem;
+            padding: 1rem 2rem 1.5rem 2rem;
+            background: var(--bg-surface);
+            border-top: 1px solid var(--border-subtle);
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            z-index: 20;
+        }
+
+        .input-box-wrapper {
             display: flex;
             align-items: flex-end;
-            gap: 0.65rem;
+            background: var(--bg-surface-elevated);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            padding: 0.55rem 0.85rem;
+            gap: 0.75rem;
+            transition: border 0.2s, box-shadow 0.2s;
         }
 
-        .input-wrapper {
-            flex: 1;
-            position: relative;
-            display: flex;
+        .input-box-wrapper:focus-within {
+            border-color: var(--brand-emerald);
+            box-shadow: 0 0 0 2px var(--brand-emerald-glow);
         }
 
         .chat-textarea {
-            width: 100%;
-            min-height: 44px;
-            max-height: 120px;
-            padding: 0.65rem 1rem;
-            font-family: var(--font-body);
-            font-size: 0.92rem;
-            border: 1.5px solid var(--border-color);
-            border-radius: 22px;
+            flex: 1;
+            background: transparent;
+            border: none;
             outline: none;
+            color: #FFFFFF;
+            font-family: var(--font-body);
+            font-size: 0.9rem;
+            line-height: 1.5;
             resize: none;
-            line-height: 1.4;
-            background: var(--bg-chat);
-            transition: border-color 0.2s;
+            max-height: 140px;
+            min-height: 24px;
         }
 
-        .chat-textarea:focus {
-            border-color: var(--brand-forest);
-            background: #FFFFFF;
+        .chat-textarea::placeholder {
+            color: var(--text-muted);
         }
 
         .btn-send {
-            width: 44px;
-            height: 44px;
+            width: 36px;
+            height: 36px;
             border-radius: 50%;
-            background: var(--brand-forest);
-            color: #FFFFFF;
+            background: linear-gradient(135deg, var(--brand-emerald), var(--brand-emerald-dark));
             border: none;
+            color: #FFFFFF;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -612,657 +843,701 @@
         }
 
         .btn-send:hover:not(:disabled) {
-            background: var(--brand-coral);
-            transform: scale(1.04);
+            transform: scale(1.08);
+            box-shadow: 0 0 15px var(--brand-emerald-glow);
         }
 
         .btn-send:disabled {
-            opacity: 0.35;
+            opacity: 0.4;
             cursor: not-allowed;
             transform: none;
         }
 
-        .btn-send svg {
-            width: 18px;
-            height: 18px;
-            fill: currentColor;
-            margin-left: 2px;
-        }
-
-        /* Sales Product Recommendation Card */
-        .product-card {
-            background: #FFFFFF;
-            border: 1.5px solid var(--border-color);
-            border-radius: 12px;
-            padding: 1rem;
-            margin-top: 0.75rem;
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
-        }
-
-        .product-card-header {
+        .input-footer-hint {
             display: flex;
             justify-content: space-between;
-            align-items: baseline;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            padding: 0 0.5rem;
         }
 
-        .product-title {
-            font-weight: 700;
-            font-size: 0.92rem;
-            color: var(--brand-black);
-        }
-
-        .product-price {
-            font-weight: 700;
-            color: var(--brand-coral);
-            font-size: 0.98rem;
-        }
-
-        .product-desc {
-            font-size: 0.79rem;
-            color: var(--text-secondary);
-            line-height: 1.45;
-        }
-
-        .btn-checkout {
-            display: inline-block;
-            background: var(--brand-coral);
-            color: #FFFFFF;
-            font-size: 0.78rem;
-            font-weight: 600;
-            padding: 0.45rem 1rem;
-            border-radius: 50px;
-            text-decoration: none;
-            text-align: center;
-            margin-top: 0.35rem;
-            transition: opacity 0.2s;
-        }
-
-        .btn-checkout:hover {
-            opacity: 0.9;
-        }
-
-        /* Disambiguation Multi-Tool Selector Box */
-        .disambiguation-box {
-            margin-top: 0.85rem;
-            padding: 0.85rem 1rem;
-            background: #FBF9F5;
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
+        /* =========================================================================
+           RIGHT PANEL: RAG INSPECTOR & TELEMETRY DRAWER
+           ========================================================================= */
+        .panel-inspector {
+            background: var(--bg-surface);
+            border-left: 1px solid var(--border-subtle);
             display: flex;
             flex-direction: column;
-            gap: 0.6rem;
+            overflow: hidden;
         }
 
-        .disambiguation-header {
+        .inspector-tabs {
             display: flex;
-            align-items: center;
-            font-size: 0.78rem;
-            font-weight: 600;
+            border-bottom: 1px solid var(--border-subtle);
+            background: var(--bg-surface-elevated);
+        }
+
+        .tab-btn {
+            flex: 1;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
             color: var(--text-secondary);
-            letter-spacing: 0.02em;
-            text-transform: uppercase;
-        }
-
-        .disambiguation-chips {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.45rem;
-        }
-
-        .disambiguation-chip {
-            background: #FFFFFF;
-            border: 1.5px solid var(--border-color);
-            border-radius: 50px;
-            padding: 0.4rem 0.85rem;
             font-family: var(--font-body);
-            font-size: 0.80rem;
-            color: var(--brand-black);
+            font-size: 0.75rem;
+            font-weight: 500;
+            padding: 0.75rem 0.5rem;
             cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
-            text-align: left;
+            transition: all 0.2s;
+            text-align: center;
         }
 
-        .disambiguation-chip:hover {
-            border-color: var(--brand-forest);
-            background: #F4F7F5;
-            color: var(--brand-forest);
-            transform: translateY(-1px);
-            box-shadow: 0 3px 8px rgba(17, 60, 44, 0.08);
-        }
-
-        .disambiguation-chip:active {
-            transform: translateY(0);
-        }
-
-        .chip-folder {
-            font-size: 0.68rem;
-            font-weight: 700;
-            color: var(--brand-forest);
-            background: rgba(17, 60, 44, 0.08);
-            padding: 0.12rem 0.4rem;
-            border-radius: 4px;
-            text-transform: uppercase;
-        }
-
-        .chip-name {
+        .tab-btn.active {
+            color: #FFFFFF;
+            border-bottom-color: var(--brand-emerald);
+            background: rgba(16, 185, 129, 0.05);
             font-weight: 600;
         }
 
-        /* Mobile Viewport Optimizations (375px) */
-        @media (max-width: 600px) {
-            .chat-app {
-                border-left: none;
-                border-right: none;
-            }
+        .inspector-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.15rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
 
-            .bubble {
-                max-width: 86%;
-                font-size: 0.88rem;
-                padding: 0.75rem 0.95rem;
-            }
+        .tab-pane {
+            display: none;
+            flex-direction: column;
+            gap: 0.85rem;
+        }
 
-            .chat-header {
-                padding: 0.65rem 0.85rem;
-            }
+        .tab-pane.active {
+            display: flex;
+        }
 
-            .controls-bar {
-                font-size: 0.72rem;
-            }
+        /* Source Chunk Card */
+        .chunk-card {
+            background: var(--bg-surface-elevated);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            padding: 0.75rem 0.85rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+            transition: border 0.2s;
+        }
 
-            .chat-input-bar {
-                padding: 0.65rem 0.85rem;
-            }
+        .chunk-card:hover {
+            border-color: var(--border-hover);
+        }
 
-            .brand-text h1 {
-                font-size: 1rem;
+        .chunk-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chunk-doc-name {
+            font-size: 0.76rem;
+            font-weight: 600;
+            color: #FFFFFF;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 190px;
+        }
+
+        .chunk-score {
+            font-size: 0.68rem;
+            font-family: var(--font-mono);
+            font-weight: 600;
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--brand-emerald);
+            border: 1px solid rgba(16, 185, 129, 0.25);
+            border-radius: var(--radius-full);
+            padding: 0.1rem 0.45rem;
+        }
+
+        .chunk-meta-text {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+        }
+
+        /* Memory Turns Viewer */
+        .memory-turn-card {
+            background: var(--bg-surface-elevated);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            padding: 0.7rem 0.8rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+        }
+
+        .memory-turn-role {
+            font-family: var(--font-mono);
+            font-size: 0.66rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .memory-turn-role.user {
+            color: var(--brand-blue);
+        }
+
+        .memory-turn-role.assistant {
+            color: var(--brand-emerald);
+        }
+
+        .memory-turn-content {
+            font-size: 0.74rem;
+            color: var(--text-main);
+            line-height: 1.4;
+        }
+
+        /* System Telemetry Stats */
+        .stat-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.65rem;
+        }
+
+        .stat-card {
+            background: var(--bg-surface-elevated);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            padding: 0.75rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+
+        .stat-card .stat-val {
+            font-family: var(--font-mono);
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #FFFFFF;
+        }
+
+        .stat-card .stat-label {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        /* Responsive Layout Overrides */
+        @media (max-width: 1024px) {
+            .workspace {
+                grid-template-columns: 280px 1fr 0px;
+            }
+            .panel-inspector {
+                display: none;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .workspace {
+                grid-template-columns: 1fr;
+            }
+            .panel-customer {
+                display: none;
+            }
+            .starter-chips-grid {
+                grid-template-columns: 1fr;
             }
         }
     </style>
 </head>
 
 <body>
-    <div class="chat-app">
-        <!-- FIXED HEADER -->
-        <header class="chat-header">
-            <div class="header-top">
-                <div class="brand-title">
-                    <div class="brand-badge">H</div>
-                    <div class="brand-text">
-                        <h1>Dr. Sarah Hensley</h1>
-                        <p><span id="headerSubtitle">Relationship Science AI Assistant</span> <span class="lane-badge lane-clinical" id="laneBadge">Clinical Mode</span></p>
+    <div class="app-layout">
+        <!-- ===================================================================
+             TOP HEADER BAR
+             =================================================================== -->
+        <header class="app-header">
+            <div class="header-brand">
+                <div class="brand-monogram">SH</div>
+                <div class="brand-info">
+                    <h1>
+                        Dr. Sarah Hensley
+                        <span class="brand-tag">AI Studio</span>
+                    </h1>
+                    <div class="brand-subtitle">
+                        <span class="health-indicator">
+                            <span class="pulsing-dot"></span>
+                            <span id="headerDbStatus">MySQL 8.4 Connected</span>
+                        </span>
+                        <span>•</span>
+                        <span>Qdrant INT8</span>
+                        <span>•</span>
+                        <span>Drive 60s Sync</span>
                     </div>
                 </div>
-                <div class="header-actions">
-                    <button class="btn-new-chat" id="btnNewChat" onclick="startNewChat()">
-                        <span>+</span> New Chat
+            </div>
+
+            <!-- Mode Selector In Center -->
+            <div class="header-center">
+                <div class="mode-pill-toggle">
+                    <button class="mode-pill-btn active clinical" id="btnModeClinical" onclick="switchStudioMode('generic')">
+                        🩺 Clinical Educator
+                    </button>
+                    <button class="mode-pill-btn sales" id="btnModeSales" onclick="switchStudioMode('sales')">
+                        💼 Program Advisor
                     </button>
                 </div>
             </div>
 
-            <!-- CONTROLS TOOLBAR -->
-            <div class="controls-bar">
-                <div class="mode-toggle">
-                    <button class="mode-btn active" id="modeGenericBtn" onclick="switchMode('generic')">Clinical
-                        Educator</button>
-                    <button class="mode-btn" id="modeSalesBtn" onclick="switchMode('sales')">Program Advisor</button>
-                </div>
-
-                <div class="persona-select-wrapper">
-                    <span>Persona:</span>
-                    <select class="persona-select" id="personaSelect" onchange="changePersona(this.value)">
-                        <option value="admin">Admin (WP ID: 1 - Live)</option>
-                        <option value="john">John (ADHD / Calm)</option>
-                        <option value="sarah">Sarah (Habits / Focus)</option>
-                        <option value="guest">Guest User (Unauthenticated)</option>
-                    </select>
-                </div>
+            <!-- Header Actions -->
+            <div class="header-actions">
+                <button class="btn-action-icon" onclick="resetActiveSession()" title="Start New Chat & Clear Session Turns">
+                    🔄 New Chat
+                </button>
+                <button class="btn-action-icon" id="btnToggleInspector" onclick="toggleInspector()" title="Toggle Telemetry & Inspection Drawer">
+                    📊 Inspector
+                </button>
+                <a href="/docs" target="_blank" class="btn-action-icon" style="text-decoration:none;" title="Open Swagger API Documentation">
+                    ⚡ API Docs
+                </a>
             </div>
         </header>
 
-        <!-- INDEPENDENTLY SCROLLABLE MESSAGE AREA -->
-        <main class="message-area" id="messageContainer" aria-live="polite">
-            <!-- Initial Bot Welcome Message -->
-            <div class="message-row bot-row" id="initialGreetingRow">
-                <div class="bubble bot-bubble" id="initialGreetingBubble">
-                    <p>Hi there,</p>
-                    <p>I am Doctor Sarah Hensley's Relationship Science AI Assistant. I can provide clinically validated
-                        strategies on attachment theory, somatic regulation, communication frameworks, and boundary
-                        tools.</p>
-                    <p>What relationship topic or challenge would you like to explore today?</p>
+        <!-- ===================================================================
+             MAIN 3-COLUMN WORKSPACE
+             =================================================================== -->
+        <main class="workspace" id="workspaceContainer">
+            <!-- ===============================================================
+                 LEFT PANEL: CUSTOMER & PERSONA CONTROL CENTER
+                 =============================================================== -->
+            <aside class="panel-customer">
+                <div>
+                    <div class="panel-heading">
+                        <span>Select Customer Profile</span>
+                        <span id="customerCountBadge" style="color:var(--brand-gold);">40 Users</span>
+                    </div>
+                    <div class="user-select-box">
+                        <select class="user-select" id="personaSelect" onchange="onCustomerSelect(this.value)">
+                            <option value="guest">Guest User (Unauthenticated / No Purchases)</option>
+                            <option value="1836" selected>1836 — Test2011 User1022 (3 Courses Owned)</option>
+                            <option value="1832">1832 — SEO TribePUB (3 Courses Owned)</option>
+                            <option value="veilamebrabre-1731@yopmail.com">Denis Larrson (3 Courses Owned)</option>
+                            <option value="182">Reagan Leake (3 Courses Owned)</option>
+                            <option value="7766">Marcus Vance (2 Courses Owned)</option>
+                            <option value="admin">1 — Admin TribePUB (The Secure Bundle)</option>
+                            <!-- Dynamically loaded from /api/users -->
+                        </select>
+                    </div>
+                </div>
 
-                    <!-- Clickable Starter Questions Grid -->
-                    <div class="starter-questions-wrapper">
-                        <div class="starter-questions-header">
-                            <span>✨ Suggested Starter Questions — Tap to Ask:</span>
+                <!-- Customer Detail Card -->
+                <div class="customer-card">
+                    <div class="card-header-row">
+                        <div class="avatar-circle" id="customerAvatar">TU</div>
+                        <div class="card-names">
+                            <h3 id="customerName">Test2011 User1022</h3>
+                            <p id="customerEmail">ceihubafiffeu-4676@yopmail.com</p>
                         </div>
-                        <div class="starter-questions-grid">
-                            <button class="starter-card" onclick="sendPresetMessage('What is the 1-1-1 journal reflection method for emotional regulation?')">
-                                <span class="starter-card-tag">📓 Reflective Journaling</span>
-                                <p class="starter-card-text">
-                                    <span>What is the 1-1-1 journal reflection method for emotional regulation?</span>
-                                    <span class="starter-card-arrow">&rarr;</span>
-                                </p>
-                            </button>
-                            <button class="starter-card" onclick="sendPresetMessage('How does the SOLACE communication tool help resolve conflict?')">
-                                <span class="starter-card-tag">🤝 Communication Framework</span>
-                                <p class="starter-card-text">
-                                    <span>How does the SOLACE communication tool help resolve conflict?</span>
-                                    <span class="starter-card-arrow">&rarr;</span>
-                                </p>
-                            </button>
-                            <button class="starter-card" onclick="sendPresetMessage('What are the core differences between anxious and avoidant attachment?')">
-                                <span class="starter-card-tag">🧠 Attachment Theory</span>
-                                <p class="starter-card-text">
-                                    <span>What are the core differences between anxious and avoidant attachment?</span>
-                                    <span class="starter-card-arrow">&rarr;</span>
-                                </p>
-                            </button>
-                            <button class="starter-card" onclick="sendPresetMessage('How can I calm an anxious trigger when my partner deactivates?')">
-                                <span class="starter-card-tag">🛡️ Trigger Management</span>
-                                <p class="starter-card-text">
-                                    <span>How can I calm an anxious trigger when my partner deactivates?</span>
-                                    <span class="starter-card-arrow">&rarr;</span>
-                                </p>
-                            </button>
+                    </div>
+
+                    <div class="card-meta-row">
+                        <span class="meta-tag attachment" id="customerAttachment">Anxious-Preoccupied</span>
+                        <span class="meta-tag" id="customerDbSource">MySQL 8.4</span>
+                    </div>
+
+                    <div class="products-section">
+                        <h4>
+                            <span>Owned Masterclasses & Books</span>
+                            <span id="ownedCountTag" style="color:var(--brand-gold);">3 items</span>
+                        </h4>
+                        <div class="product-chips" id="ownedProductsContainer">
+                            <!-- Injected dynamically -->
+                            <div class="product-pill">
+                                <span class="lock-icon">🔒</span>
+                                <span>How to Get Your Ex Back the Secure Way</span>
+                            </div>
+                            <div class="product-pill">
+                                <span class="lock-icon">🔒</span>
+                                <span>Hybrid Group Coaching with Dr. Sarah Hensley</span>
+                            </div>
+                            <div class="product-pill">
+                                <span class="lock-icon">🔒</span>
+                                <span>The Science of Secure Connection</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="guardrail-callout" id="guardrailNotice">
+                        🛡️ <b>Unowned Course Guardrail Active:</b> The sales bot detects these 3 owned courses and will recommend the next advanced curriculum tier.
+                    </div>
+                </div>
+
+                <!-- One-Click Preset Tests -->
+                <div>
+                    <div class="panel-heading">Quick Test Presets</div>
+                    <div class="test-presets">
+                        <button class="preset-btn" onclick="runPresetQuery('How can I calm my nervous system when I fear my partner is pulling away?', 'generic')">
+                            <span class="preset-badge">🩺 Clinical Isolation Test</span>
+                            <span class="preset-text">Calm nervous system in abandonment panic (Asserts 0 pitches)</span>
+                        </button>
+
+                        <button class="preset-btn" onclick="runPresetQuery('What course or masterclass does Dr. Sarah offer to heal anxious attachment?', 'sales')">
+                            <span class="preset-badge">💼 Sales Recommendation Test</span>
+                            <span class="preset-text">Recommend Anxious Attachment Masterclass ($97)</span>
+                        </button>
+
+                        <button class="preset-btn" onclick="runPresetQuery('I want to get back together with my ex or fix my breakup. What program do you recommend?', 'sales')">
+                            <span class="preset-badge">🛡️ Owned Course Guardrail Test</span>
+                            <span class="preset-text">Test User 1836 (Bypasses already owned Ex-Back course)</span>
+                        </button>
+
+                        <button class="preset-btn" onclick="runPresetQuery('My partner is Dismissive Avoidant and shuts down in conflict.', 'generic')">
+                            <span class="preset-badge">🧠 Memory Step 1</span>
+                            <span class="preset-text">Establish partner's avoidant style</span>
+                        </button>
+
+                        <button class="preset-btn" onclick="runPresetQuery('Which attachment style did I say my partner had?', 'generic')">
+                            <span class="preset-badge">🧠 Memory Step 2 (Recall)</span>
+                            <span class="preset-text">Tests entity stitching from past turns</span>
+                        </button>
+
+                        <button class="preset-btn" onclick="runPresetQuery('I feel so hopeless and I want to kill myself', 'generic')">
+                            <span class="preset-badge">🚨 Crisis Safety Interception</span>
+                            <span class="preset-text">Deterministic 988 Lifeline regex interception</span>
+                        </button>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- ===============================================================
+                 CENTER PANEL: LIVE CONVERSATION CANVAS
+                 =============================================================== -->
+            <section class="panel-chat">
+                <div class="chat-scroll-area" id="chatMessageContainer">
+                    <!-- Welcome Hero -->
+                    <div class="welcome-hero" id="welcomeHero">
+                        <div class="hero-emblem">SH</div>
+                        <h2>Dr. Sarah Hensley AI Studio</h2>
+                        <p>
+                            Experience clinically grounded attachment theory, nervous system self-regulation frameworks, 
+                            and tailored masterclass recommendations powered by hybrid vector search and local MySQL customer memory.
+                        </p>
+
+                        <div class="starter-chips-grid">
+                            <div class="starter-chip" onclick="runPresetQuery('What is the 1:1:1 journal reflection method for emotional regulation?', 'generic')">
+                                <span class="chip-category">📓 Clinical Tool</span>
+                                <span class="chip-question">What is the 1:1:1 journal reflection method for emotional regulation?</span>
+                            </div>
+                            <div class="starter-chip" onclick="runPresetQuery('How does the SOLACE communication tool resolve high-conflict fights?', 'generic')">
+                                <span class="chip-category">🤝 Communication</span>
+                                <span class="chip-question">How does the SOLACE communication tool resolve high-conflict fights?</span>
+                            </div>
+                            <div class="starter-chip" onclick="runPresetQuery('What are the core differences between anxious and avoidant attachment?', 'generic')">
+                                <span class="chip-category">🩺 Attachment Theory</span>
+                                <span class="chip-question">What are the core differences between anxious and avoidant attachment?</span>
+                            </div>
+                            <div class="starter-chip" onclick="runPresetQuery('Which masterclass or program should I enroll in to heal anxious spiraling?', 'sales')">
+                                <span class="chip-category">💼 Program Advisor</span>
+                                <span class="chip-question">Which masterclass or program should I enroll in to heal anxious spiraling?</span>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="bubble-meta" id="initialGreetingTime">Just now</div>
-            </div>
+
+                <!-- Bottom Chat Input Bar -->
+                <div class="chat-input-bar">
+                    <div class="input-box-wrapper">
+                        <textarea 
+                            class="chat-textarea" 
+                            id="chatInputText" 
+                            rows="1" 
+                            placeholder="Ask Dr. Sarah's AI about attachment styles, somatic tools, or programs..."
+                            onkeydown="handleKeyDown(event)"
+                            oninput="autoResizeTextarea(this)"></textarea>
+                        <button class="btn-send" id="btnSendMessage" onclick="submitMessage()" title="Send Message">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="input-footer-hint">
+                        <span>Press <b>Enter</b> to send • <b>Shift+Enter</b> for new line</span>
+                        <span id="activeModeLabel" style="color:var(--brand-emerald);">Mode: Clinical Educator</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ===============================================================
+                 RIGHT PANEL: RAG INSPECTOR & TELEMETRY DRAWER
+                 =============================================================== -->
+            <aside class="panel-inspector" id="inspectorDrawer">
+                <div class="inspector-tabs">
+                    <button class="tab-btn active" id="tabBtnSources" onclick="switchInspectorTab('sources')">📚 Sources</button>
+                    <button class="tab-btn" id="tabBtnMemory" onclick="switchInspectorTab('memory')">🧠 Memory</button>
+                    <button class="tab-btn" id="tabBtnStats" onclick="switchInspectorTab('stats')">📊 Telemetry</button>
+                </div>
+
+                <div class="inspector-content">
+                    <!-- Tab 1: Sources & Citations -->
+                    <div class="tab-pane active" id="paneSources">
+                        <div class="panel-heading">
+                            <span>Retrieved Document Chunks</span>
+                            <span id="sourcesCountBadge" style="color:var(--brand-emerald);">0 Chunks</span>
+                        </div>
+                        <div id="chunksContainer" style="display:flex; flex-direction:column; gap:0.65rem;">
+                            <div style="font-size:0.75rem; color:var(--text-muted); font-style:italic;">
+                                Ask a question to view the exact Qdrant INT8 dense-sparse chunks and cross-encoder re-ranking scores.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab 2: MySQL Conversation Memory -->
+                    <div class="tab-pane" id="paneMemory">
+                        <div class="panel-heading">
+                            <span>MySQL Stored Turns</span>
+                            <button onclick="refreshMemoryTurns()" style="background:none; border:none; color:var(--brand-emerald); cursor:pointer; font-size:0.7rem;">Refresh</button>
+                        </div>
+                        <div id="memoryTurnsContainer" style="display:flex; flex-direction:column; gap:0.65rem;">
+                            <div style="font-size:0.75rem; color:var(--text-muted); font-style:italic;">
+                                Active session turns will appear here directly from MySQL <code>conversation_turns</code>.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab 3: System Health & Hardware Telemetry -->
+                    <div class="tab-pane" id="paneStats">
+                        <div class="panel-heading">System & DB Statistics</div>
+                        <div class="stat-grid" id="statsGrid">
+                            <div class="stat-card">
+                                <span class="stat-val" id="statUsersCount">40</span>
+                                <span class="stat-label">Users in DB</span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-val" id="statPurchasesCount">77</span>
+                                <span class="stat-label">Purchases</span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-val" id="statRecordsCount">76</span>
+                                <span class="stat-label">Past Records</span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-val" id="statTurnsCount">18+</span>
+                                <span class="stat-label">Memory Turns</span>
+                            </div>
+                        </div>
+
+                        <div class="guardrail-callout" style="margin-top:0.5rem;">
+                            💾 <b>MySQL Low-Memory Profile:</b> Memory capped at ~196 MB RSS with a 2.0 GB EBS swap safeguard ensuring zero OOM crashes.
+                        </div>
+                    </div>
+                </div>
+            </aside>
         </main>
-
-        <!-- FLOATING SCROLL TO BOTTOM BUTTON -->
-        <button class="scroll-bottom-btn" id="scrollBottomBtn" onclick="scrollToBottom(true)">
-            &darr; Scroll to latest
-        </button>
-
-        <!-- ACTION CHIPS (HORIZONTAL SCROLL) -->
-        <div class="chips-container" id="chipsContainer">
-            <button class="chip-btn"
-                onclick="sendPresetMessage('What is the 1-1-1 journal reflection method for emotional regulation?')">📓 1-1-1 Journaling</button>
-            <button class="chip-btn" onclick="sendPresetMessage('How does the SOLACE communication tool help resolve conflict?')">🤝 SOLACE Framework</button>
-            <button class="chip-btn" onclick="sendPresetMessage('What are the core differences between anxious and avoidant attachment?')">🧠 Attachment Styles</button>
-            <button class="chip-btn" onclick="sendPresetMessage('How can I calm an anxious trigger when my partner deactivates?')">🛡️ Anxious Triggers</button>
-        </div>
-
-        <!-- FIXED INPUT BAR -->
-        <footer class="chat-input-bar">
-            <div class="input-wrapper">
-                <textarea class="chat-textarea" id="chatInput" placeholder="Ask Dr. Sarah Hensley's AI..." rows="1"
-                    onkeydown="handleKeyDown(event)" oninput="handleInput(event)"></textarea>
-            </div>
-            <button class="btn-send" id="btnSend" onclick="sendMessage()" disabled title="Send message">
-                <svg viewBox="0 0 24 24">
-                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-                </svg>
-            </button>
-        </footer>
     </div>
 
+    <!-- =======================================================================
+         JAVASCRIPT LOGIC FOR THE LIVE STUDIO
+         ======================================================================= -->
     <script>
         // State variables
-        let currentUserId = 'admin';
-        let currentMode = 'generic';
-        let isWaitingForResponse = false;
-        let isUserScrolledUp = false;
+        let currentMode = 'generic'; // 'generic' | 'sales'
+        let currentUserId = '1836';
+        let currentSessionId = 'sess_' + Math.random().toString(36).substring(2, 10);
+        let isGenerating = false;
+        let usersCatalog = [];
 
-        function generateSessionId(prefix = 'sess') {
-            return prefix + '_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
-        }
+        // DOM elements
+        const chatContainer = document.getElementById('chatMessageContainer');
+        const chatInput = document.getElementById('chatInputText');
+        const btnSend = document.getElementById('btnSendMessage');
+        const welcomeHero = document.getElementById('welcomeHero');
 
-        function formatTimestamp() {
-            const now = new Date();
-            return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        }
-
-        // Separate Chat Profiles & History Stores for Both Bots
-        const botChats = {
-            generic: {
-                sessionId: generateSessionId('clinical'),
-                title: 'Clinical Educator',
-                subtitle: 'Relationship Science AI Assistant',
-                badgeText: 'Clinical Mode',
-                badgeClass: 'lane-badge lane-clinical',
-                placeholder: 'Ask Dr. Sarah Hensley about relationship psychology...',
-                html: null,
-                chips: [
-                    { label: '📓 1-1-1 Journaling', text: 'What is the 1-1-1 journal reflection method for emotional regulation?' },
-                    { label: '🤝 SOLACE Framework', text: 'How does the SOLACE communication tool help resolve conflict?' },
-                    { label: '🧠 Attachment Styles', text: 'What are the core differences between anxious and avoidant attachment?' },
-                    { label: '🛡️ Anxious Triggers', text: 'How can I calm an anxious trigger when my partner deactivates?' }
-                ],
-                getWelcomeHtml: () => `
-                    <div class="message-row bot-row" id="initialGreetingRow_generic">
-                        <div class="bubble bot-bubble">
-                            <p>Hi there,</p>
-                            <p>I am Doctor Sarah Hensley's Relationship Science AI Assistant. I can provide clinically validated strategies on attachment theory, somatic regulation, communication frameworks, and boundary tools.</p>
-                            <p>What relationship topic or challenge would you like to explore today?</p>
-                            <div class="starter-questions-wrapper">
-                                <div class="starter-questions-header">
-                                    <span>✨ Suggested Starter Questions — Tap to Ask:</span>
-                                </div>
-                                <div class="starter-questions-grid">
-                                    <button class="starter-card" onclick="sendPresetMessage('What is the 1-1-1 journal reflection method for emotional regulation?')">
-                                        <span class="starter-card-tag">📓 Reflective Journaling</span>
-                                        <p class="starter-card-text">
-                                            <span>What is the 1-1-1 journal reflection method for emotional regulation?</span>
-                                            <span class="starter-card-arrow">&rarr;</span>
-                                        </p>
-                                    </button>
-                                    <button class="starter-card" onclick="sendPresetMessage('How does the SOLACE communication tool help resolve conflict?')">
-                                        <span class="starter-card-tag">🤝 Communication Framework</span>
-                                        <p class="starter-card-text">
-                                            <span>How does the SOLACE communication tool help resolve conflict?</span>
-                                            <span class="starter-card-arrow">&rarr;</span>
-                                        </p>
-                                    </button>
-                                    <button class="starter-card" onclick="sendPresetMessage('What are the core differences between anxious and avoidant attachment?')">
-                                        <span class="starter-card-tag">🧠 Attachment Theory</span>
-                                        <p class="starter-card-text">
-                                            <span>What are the core differences between anxious and avoidant attachment?</span>
-                                            <span class="starter-card-arrow">&rarr;</span>
-                                        </p>
-                                    </button>
-                                    <button class="starter-card" onclick="sendPresetMessage('How can I calm an anxious trigger when my partner deactivates?')">
-                                        <span class="starter-card-tag">🛡️ Trigger Management</span>
-                                        <p class="starter-card-text">
-                                            <span>How can I calm an anxious trigger when my partner deactivates?</span>
-                                            <span class="starter-card-arrow">&rarr;</span>
-                                        </p>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="bubble-meta">${formatTimestamp()}</div>
-                    </div>
-                `
-            },
-            sales: {
-                sessionId: generateSessionId('sales'),
-                title: 'Program Advisor',
-                subtitle: 'Senior Relationship Program Advisor',
-                badgeText: 'Sales & Programs',
-                badgeClass: 'lane-badge lane-sales',
-                placeholder: 'Ask about masterclasses, coaching, or enrollment...',
-                html: null,
-                chips: [
-                    { label: '🎯 Course Match', text: 'Which masterclass or course is best suited for my attachment style?' },
-                    { label: '💡 Anxious Masterclass', text: 'What is covered in the Healing Anxious Attachment Masterclass?' },
-                    { label: '👥 Private Coaching', text: 'What are the options and pricing for private 1-on-1 coaching?' },
-                    { label: '📖 Guided Workbooks', text: 'Which guided workbooks or bundles do you recommend starting with?' }
-                ],
-                getWelcomeHtml: () => `
-                    <div class="message-row bot-row" id="initialGreetingRow_sales">
-                        <div class="bubble bot-bubble">
-                            <p>Hi there!</p>
-                            <p>I'm Dr. Sarah Hensley's official <strong>Program & Relationship Advisor</strong>.</p>
-                            <p>Whether you're exploring which masterclass, workbook, or private coaching session can deepen your healing journey, how can I support you today?</p>
-                            <div class="starter-questions-wrapper">
-                                <div class="starter-questions-header">
-                                    <span>✨ Suggested Program Inquiries — Tap to Ask:</span>
-                                </div>
-                                <div class="starter-questions-grid">
-                                    <button class="starter-card" onclick="sendPresetMessage('Which masterclass or course is best suited for my attachment style?')">
-                                        <span class="starter-card-tag">🎯 Course Matching</span>
-                                        <p class="starter-card-text">
-                                            <span>Which masterclass or course is best suited for my attachment style?</span>
-                                            <span class="starter-card-arrow">&rarr;</span>
-                                        </p>
-                                    </button>
-                                    <button class="starter-card" onclick="sendPresetMessage('What is covered in the Healing Anxious Attachment Masterclass?')">
-                                        <span class="starter-card-tag">💡 Anxious Masterclass</span>
-                                        <p class="starter-card-text">
-                                            <span>What is covered in the Healing Anxious Attachment Masterclass?</span>
-                                            <span class="starter-card-arrow">&rarr;</span>
-                                        </p>
-                                    </button>
-                                    <button class="starter-card" onclick="sendPresetMessage('What are the options and pricing for private 1-on-1 coaching?')">
-                                        <span class="starter-card-tag">👥 Private Coaching</span>
-                                        <p class="starter-card-text">
-                                            <span>What are the options and pricing for private 1-on-1 coaching?</span>
-                                            <span class="starter-card-arrow">&rarr;</span>
-                                        </p>
-                                    </button>
-                                    <button class="starter-card" onclick="sendPresetMessage('Which guided workbooks or bundles do you recommend starting with?')">
-                                        <span class="starter-card-tag">📖 Guided Workbooks</span>
-                                        <p class="starter-card-text">
-                                            <span>Which guided workbooks or bundles do you recommend starting with?</span>
-                                            <span class="starter-card-arrow">&rarr;</span>
-                                        </p>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="bubble-meta">${formatTimestamp()}</div>
-                    </div>
-                `
-            }
-        };
-
-        // Configure Marked.js
-        if (typeof marked !== 'undefined') {
-            marked.setOptions({
-                breaks: true,
-                gfm: true
-            });
-        }
-
-        // Initialize greeting time
-        const initGreetingTime = document.getElementById('initialGreetingTime');
-        if (initGreetingTime) initGreetingTime.innerText = formatTimestamp();
-
-        // Scroll listener to toggle "Scroll to latest" button
-        const messageContainer = document.getElementById('messageContainer');
-        const scrollBottomBtn = document.getElementById('scrollBottomBtn');
-
-        messageContainer.addEventListener('scroll', () => {
-            const distanceFromBottom = messageContainer.scrollHeight - messageContainer.scrollTop - messageContainer.clientHeight;
-            if (distanceFromBottom > 90) {
-                isUserScrolledUp = true;
-                scrollBottomBtn.style.display = 'flex';
-            } else {
-                isUserScrolledUp = false;
-                scrollBottomBtn.style.display = 'none';
-            }
+        // Initialize on DOM load
+        document.addEventListener('DOMContentLoaded', async () => {
+            await fetchUsersList();
+            await fetchSystemStats();
+            onCustomerSelect('1836');
         });
 
-        function scrollToBottom(force = false) {
-            if (force || !isUserScrolledUp) {
-                messageContainer.scrollTop = messageContainer.scrollHeight;
-                if (force) {
-                    isUserScrolledUp = false;
-                    scrollBottomBtn.style.display = 'none';
-                }
-            }
-        }
-
-        function handleInput(e) {
-            const textarea = e.target;
-            textarea.style.height = 'auto';
-            textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
-
-            const btnSend = document.getElementById('btnSend');
-            const hasText = textarea.value.trim().length > 0;
-            btnSend.disabled = !hasText || isWaitingForResponse;
-        }
-
-        function handleKeyDown(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                if (!document.getElementById('btnSend').disabled) {
-                    sendMessage();
-                }
-            }
-        }
-
-        function sendPresetMessage(text) {
-            const input = document.getElementById('chatInput');
-            input.value = text;
-            handleInput({ target: input });
-            sendMessage();
-        }
-
-        function renderChips(chips) {
-            const container = document.getElementById('chipsContainer');
-            container.innerHTML = chips.map(c => `
-                <button class="chip-btn" onclick="sendPresetMessage(${JSON.stringify(c.text)})">
-                    ${escapeHtml(c.label)}
-                </button>
-            `).join('');
-        }
-
-        // Switch between Clinical Mode and Sales Mode with Independent Chat Histories
-        function switchMode(newMode) {
-            if (newMode === currentMode) return;
-            if (isWaitingForResponse) {
-                alert('Please wait for the current response to complete before switching modes.');
-                return;
-            }
-
-            // 1. Save current bot's messages HTML
-            botChats[currentMode].html = messageContainer.innerHTML;
-
-            // 2. Switch mode
-            currentMode = newMode;
-            const chatConfig = botChats[newMode];
-
-            // 3. Update Toggle Buttons
-            const btnGen = document.getElementById('modeGenericBtn');
-            const btnSales = document.getElementById('modeSalesBtn');
-            if (newMode === 'sales') {
-                btnSales.classList.add('active');
-                btnGen.classList.remove('active');
-            } else {
-                btnGen.classList.add('active');
-                btnSales.classList.remove('active');
-            }
-
-            // 4. Update Header Subtitle and Lane Badge
-            document.getElementById('headerSubtitle').innerText = chatConfig.subtitle;
-            const badge = document.getElementById('laneBadge');
-            badge.className = chatConfig.badgeClass;
-            badge.innerText = chatConfig.badgeText;
-
-            // 5. Update Input Placeholder
-            document.getElementById('chatInput').placeholder = chatConfig.placeholder;
-
-            // 6. Restore or Initialize Message Container for the newly active bot
-            if (chatConfig.html && chatConfig.html.trim().length > 0) {
-                messageContainer.innerHTML = chatConfig.html;
-            } else {
-                messageContainer.innerHTML = chatConfig.getWelcomeHtml();
-                chatConfig.html = messageContainer.innerHTML;
-            }
-
-            // 7. Update Action Chips
-            renderChips(chatConfig.chips);
-
-            // 8. Snap to bottom
-            scrollToBottom(true);
-        }
-
-        function changePersona(userId) {
-            currentUserId = userId;
-        }
-
-        async function startNewChat() {
-            if (isWaitingForResponse) return;
-
-            const activeChat = botChats[currentMode];
-
-            // Reset backend history in SQLite and memory for THIS active bot only
+        // 1. Fetch Users List from /api/users
+        async function fetchUsersList() {
             try {
-                await fetch('/chat/reset', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        session_id: activeChat.sessionId,
-                        user_id: currentUserId,
-                        mode: currentMode
-                    })
-                });
+                const res = await fetch('/api/users');
+                if (res.ok) {
+                    const data = await res.json();
+                    usersCatalog = data.users || [];
+                    const select = document.getElementById('personaSelect');
+                    
+                    if (usersCatalog.length > 0) {
+                        select.innerHTML = '';
+                        // Group: Real WooCommerce Students
+                        const optGroupWC = document.createElement('optgroup');
+                        optGroupWC.label = `WordPress WooCommerce Students (${usersCatalog.length})`;
+                        
+                        usersCatalog.forEach(u => {
+                            const opt = document.createElement('option');
+                            opt.value = u.user_id;
+                            const pCount = (u.all_purchases || []).length;
+                            opt.textContent = `${u.user_id} — ${u.name || u.email} (${pCount} item${pCount === 1 ? '' : 's'})`;
+                            if (u.user_id === '1836') opt.selected = true;
+                            optGroupWC.appendChild(opt);
+                        });
+                        select.appendChild(optGroupWC);
+
+                        // Add Guest
+                        const optGroupGuest = document.createElement('optgroup');
+                        optGroupGuest.label = 'Simulated / Guest';
+                        const guestOpt = document.createElement('option');
+                        guestOpt.value = 'guest';
+                        guestOpt.textContent = 'Guest User (Unauthenticated / 0 Purchases)';
+                        optGroupGuest.appendChild(guestOpt);
+                        select.appendChild(optGroupGuest);
+
+                        document.getElementById('customerCountBadge').textContent = `${usersCatalog.length} Users`;
+                    }
+                }
             } catch (err) {
-                console.warn('Chat reset request failed:', err);
+                console.warn('Could not load /api/users dynamically, using presets:', err);
             }
-
-            // Create fresh session ID for THIS bot only
-            activeChat.sessionId = generateSessionId(currentMode === 'sales' ? 'sales' : 'clinical');
-
-            // Reset message container to fresh welcome greeting for THIS bot
-            messageContainer.innerHTML = activeChat.getWelcomeHtml();
-            activeChat.html = messageContainer.innerHTML;
-            scrollToBottom(true);
         }
 
-        async function sendMessage() {
-            const input = document.getElementById('chatInput');
-            const message = input.value.trim();
-            if (!message || isWaitingForResponse) return;
+        // 2. Fetch System Stats
+        async function fetchSystemStats() {
+            try {
+                const res = await fetch('/api/system/stats');
+                if (res.ok) {
+                    const data = await res.json();
+                    const counts = data.mysql_counts || {};
+                    if (counts.users !== undefined) document.getElementById('statUsersCount').textContent = counts.users;
+                    if (counts.purchases !== undefined) document.getElementById('statPurchasesCount').textContent = counts.purchases;
+                    if (counts.past_records !== undefined) document.getElementById('statRecordsCount').textContent = counts.past_records;
+                    if (counts.conversation_turns !== undefined) document.getElementById('statTurnsCount').textContent = counts.conversation_turns;
+                }
+            } catch (err) {
+                console.warn('Failed to fetch system stats:', err);
+            }
+        }
 
-            const activeChat = botChats[currentMode];
+        // 3. Customer Selection Handler
+        function onCustomerSelect(userId) {
+            currentUserId = userId;
+            const user = usersCatalog.find(u => String(u.user_id) === String(userId));
+            
+            const avatarEl = document.getElementById('customerAvatar');
+            const nameEl = document.getElementById('customerName');
+            const emailEl = document.getElementById('customerEmail');
+            const attachEl = document.getElementById('customerAttachment');
+            const countTag = document.getElementById('ownedCountTag');
+            const productsContainer = document.getElementById('ownedProductsContainer');
+            const guardrailNotice = document.getElementById('guardrailNotice');
 
-            // 1. Render User Bubble (LEFT-aligned)
-            const userRow = document.createElement('div');
-            userRow.className = 'message-row user-row';
-            userRow.innerHTML = `
-                <div class="bubble user-bubble">${escapeHtml(message)}</div>
-                <div class="bubble-meta">${formatTimestamp()}</div>
-            `;
-            messageContainer.appendChild(userRow);
+            if (user) {
+                const initials = (user.name || 'User').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+                avatarEl.textContent = initials || 'US';
+                nameEl.textContent = user.name || user.email;
+                emailEl.textContent = user.email || 'No email registered';
+                
+                const style = user.attachment_style || (userId === '1836' ? 'Anxious-Preoccupied' : 'Relationship Student');
+                attachEl.textContent = style;
+                
+                const purchases = user.all_purchases || [];
+                countTag.textContent = `${purchases.length} item${purchases.length === 1 ? '' : 's'}`;
 
-            // Clear input
-            input.value = '';
-            input.style.height = 'auto';
-            document.getElementById('btnSend').disabled = true;
-            isWaitingForResponse = true;
+                if (purchases.length > 0) {
+                    productsContainer.innerHTML = purchases.map(p => `
+                        <div class="product-pill">
+                            <span class="lock-icon">🔒</span>
+                            <span>${escapeHtml(p)}</span>
+                        </div>
+                    `).join('');
+                    guardrailNotice.innerHTML = `🛡️ <b>Unowned Course Guardrail Active:</b> The sales bot detects these <b>${purchases.length}</b> owned courses and will recommend the next advanced curriculum tier.`;
+                    guardrailNotice.style.display = 'block';
+                } else {
+                    productsContainer.innerHTML = `<div class="empty-products">No courses owned yet. Full sales catalog available.</div>`;
+                    guardrailNotice.innerHTML = `💼 <b>New Visitor:</b> Sales bot will pitch foundational offerings like the <i>Healing Anxious Attachment Masterclass ($97)</i>.`;
+                    guardrailNotice.style.display = 'block';
+                }
+            } else if (userId === 'guest') {
+                avatarEl.textContent = 'GU';
+                nameEl.textContent = 'Guest User';
+                emailEl.textContent = 'guest@example.com';
+                attachEl.textContent = 'Unauthenticated';
+                countTag.textContent = '0 items';
+                productsContainer.innerHTML = `<div class="empty-products">No courses owned yet. Full sales catalog available.</div>`;
+                guardrailNotice.innerHTML = `💼 <b>New Visitor:</b> Sales bot will pitch foundational offerings like the <i>Healing Anxious Attachment Masterclass ($97)</i>.`;
+            }
+        }
 
-            scrollToBottom();
+        // 4. Mode Switcher Handler
+        function switchStudioMode(mode) {
+            if (isGenerating) return;
+            currentMode = mode;
+            const btnClinical = document.getElementById('btnModeClinical');
+            const btnSales = document.getElementById('btnModeSales');
+            const label = document.getElementById('activeModeLabel');
 
-            // 2. Render Bot Typing Bubble (RIGHT-aligned)
-            const botRow = document.createElement('div');
-            botRow.className = 'message-row bot-row';
+            if (mode === 'sales') {
+                btnSales.classList.add('active', 'sales');
+                btnClinical.classList.remove('active', 'clinical');
+                label.textContent = 'Mode: Program Advisor ($97 Masterclasses)';
+                label.style.color = 'var(--brand-gold-bright)';
+            } else {
+                btnClinical.classList.add('active', 'clinical');
+                btnSales.classList.remove('active', 'sales');
+                label.textContent = 'Mode: Clinical Educator (0 Pitches)';
+                label.style.color = 'var(--brand-emerald)';
+            }
+        }
+
+        // 5. Submit Message (Live SSE Streaming)
+        async function submitMessage() {
+            const text = chatInput.value.trim();
+            if (!text || isGenerating) return;
+
+            // Remove welcome hero if first message
+            if (welcomeHero && welcomeHero.parentNode) {
+                welcomeHero.remove();
+            }
+
+            // 1. Render User Bubble
+            renderUserMessage(text);
+            chatInput.value = '';
+            autoResizeTextarea(chatInput);
+            isGenerating = true;
+            btnSend.disabled = true;
+
+            // 2. Render Bot Typing Bubble
             const botBubbleId = 'botBubble_' + Date.now();
-            botRow.innerHTML = `
-                <div class="bubble bot-bubble" id="${botBubbleId}">
-                    <div class="typing-indicator">
-                        <span></span><span></span><span></span>
-                    </div>
-                </div>
-                <div class="bubble-meta">${formatTimestamp()}</div>
-            `;
-            messageContainer.appendChild(botRow);
+            const botBubble = renderBotPlaceholder(botBubbleId);
             scrollToBottom();
 
-            const botBubble = document.getElementById(botBubbleId);
+            const startTime = performance.now();
+            let accumulatedTokens = '';
+            let isFirstToken = true;
 
-            // 3. Request Live Answer via Streaming SSE or Fallback POST
             try {
                 const response = await fetch('/chat/stream', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        session_id: activeChat.sessionId,
-                        message: message,
+                        session_id: currentSessionId,
                         user_id: currentUserId,
+                        message: text,
                         mode: currentMode
                     })
                 });
 
                 if (!response.ok || !response.body) {
-                    throw new Error(`HTTP ${response.status}`);
+                    throw new Error(`HTTP Error ${response.status}`);
                 }
 
+                botBubble.classList.add('streaming');
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder('utf-8');
-                let accumulatedText = '';
-                let isFirstToken = true;
 
                 while (true) {
                     const { done, value } = await reader.read();
@@ -1275,18 +1550,22 @@
                         if (line.startsWith('data: ')) {
                             try {
                                 const payload = JSON.parse(line.substring(6));
+                                
                                 if (payload.token) {
                                     if (isFirstToken) {
                                         botBubble.innerHTML = '';
                                         isFirstToken = false;
                                     }
-                                    accumulatedText += payload.token;
-                                    renderBotContent(botBubble, accumulatedText);
+                                    accumulatedTokens += payload.token;
+                                    botBubble.innerHTML = marked.parse(accumulatedTokens) + '<span class="typing-cursor"></span>';
                                     scrollToBottom();
                                 } else if (payload.done || payload.answer) {
-                                    const finalAns = payload.answer || payload.full_answer || accumulatedText;
-                                    renderBotContent(botBubble, finalAns, payload.recommended_products, payload.disambiguation_options);
-                                    scrollToBottom();
+                                    const finalAns = payload.answer || payload.full_answer || accumulatedTokens;
+                                    renderFinalBotMessage(botBubble, finalAns, payload);
+                                    
+                                    // Update Inspector Tabs
+                                    if (payload.sources) renderSourcesInspector(payload.sources);
+                                    await refreshMemoryTurns();
                                 }
                             } catch (e) {
                                 // Ignore non-json lines
@@ -1295,130 +1574,245 @@
                     }
                 }
 
-                if (isFirstToken && accumulatedText.length === 0) {
-                    // Fallback to regular fetch if no tokens streamed
-                    await fallbackChatFetch(message, botBubble, activeChat.sessionId);
+                if (isFirstToken && accumulatedTokens.length === 0) {
+                    await fallbackFetch(text, botBubble, startTime);
                 }
 
             } catch (err) {
-                console.warn('Streaming failed, trying standard endpoint:', err);
-                await fallbackChatFetch(message, botBubble, activeChat.sessionId);
+                console.warn('Streaming failed, invoking standard endpoint fallback:', err);
+                await fallbackFetch(text, botBubble, startTime);
             } finally {
-                isWaitingForResponse = false;
-                const hasText = input.value.trim().length > 0;
-                document.getElementById('btnSend').disabled = !hasText;
-                // Save current message history into active bot's store
-                botChats[currentMode].html = messageContainer.innerHTML;
+                isGenerating = false;
+                btnSend.disabled = false;
+                botBubble.classList.remove('streaming');
+                const cursor = botBubble.querySelector('.typing-cursor');
+                if (cursor) cursor.remove();
                 scrollToBottom();
             }
         }
 
-        async function fallbackChatFetch(message, botBubble, sessionId) {
+        // Fallback fetch if SSE fails
+        async function fallbackFetch(text, botBubble, startTime) {
             try {
                 const res = await fetch('/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        session_id: sessionId,
-                        message: message,
+                        session_id: currentSessionId,
                         user_id: currentUserId,
+                        message: text,
                         mode: currentMode
                     })
                 });
                 const data = await res.json();
-                if (data.answer) {
-                    renderBotContent(botBubble, data.answer, data.recommended_products, data.disambiguation_options);
-                } else {
-                    botBubble.innerText = 'Unable to generate an answer at this moment.';
-                }
-            } catch (e) {
-                botBubble.innerText = 'Connection error. Please try again.';
-            } finally {
-                botChats[currentMode].html = messageContainer.innerHTML;
+                const latency = ((performance.now() - startTime) / 1000).toFixed(2);
+                renderFinalBotMessage(botBubble, data.answer || 'No response generated.', { ...data, latency });
+                if (data.sources) renderSourcesInspector(data.sources);
+                await refreshMemoryTurns();
+            } catch (err) {
+                botBubble.innerHTML = `<span style="color:var(--brand-coral);">Connection error. Please try again.</span>`;
             }
         }
 
-        function renderBotContent(container, markdownText, recommendedProducts = [], disambiguationOptions = []) {
-            let cleanHtml = '';
-            if (typeof marked !== 'undefined' && marked.parse) {
-                cleanHtml = marked.parse(markdownText);
-            } else {
-                cleanHtml = escapeHtml(markdownText);
+        function renderUserMessage(text) {
+            const row = document.createElement('div');
+            row.className = 'message-row user-row';
+            row.innerHTML = `
+                <div class="bubble user-bubble">${escapeHtml(text)}</div>
+                <div class="bubble-meta-row">
+                    <span>${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+            `;
+            chatContainer.appendChild(row);
+        }
+
+        function renderBotPlaceholder(id) {
+            const row = document.createElement('div');
+            row.className = 'message-row bot-row';
+            row.innerHTML = `
+                <div class="bubble bot-bubble" id="${id}">
+                    <span style="color:var(--text-muted); font-style:italic;">Synthesizing clinical response...</span>
+                    <span class="typing-cursor"></span>
+                </div>
+                <div class="bubble-meta-row" id="meta_${id}">
+                    <span class="meta-pill">Mode: ${currentMode}</span>
+                </div>
+            `;
+            chatContainer.appendChild(row);
+            return document.getElementById(id);
+        }
+
+        function renderFinalBotMessage(botBubble, markdownText, payload) {
+            let html = marked.parse(markdownText);
+
+            // If in sales mode and recommended products exist, render product card
+            if (payload && payload.recommended_products && payload.recommended_products.length > 0) {
+                payload.recommended_products.forEach(prod => {
+                    html += `
+                        <div class="product-recommendation-card">
+                            <div class="product-rec-header">
+                                <span class="product-rec-title">🎓 ${escapeHtml(prod.name || prod.title || 'Recommended Masterclass')}</span>
+                                <span class="product-rec-price">${escapeHtml(prod.price || '$97')}</span>
+                            </div>
+                            <p class="product-rec-desc">${escapeHtml(prod.description || 'Comprehensive clinical masterclass with on-demand video modules and lifetime portal access.')}</p>
+                            <button class="product-rec-cta" onclick="alert('Proceeding to checkout portal for: ' + ${JSON.stringify(prod.name)})">Enroll in Masterclass →</button>
+                        </div>
+                    `;
+                });
             }
 
-            container.innerHTML = cleanHtml;
+            botBubble.innerHTML = html;
 
-            // Append product recommendation cards if in sales mode and present
-            if (recommendedProducts && recommendedProducts.length > 0) {
-                const productsHtml = recommendedProducts.map(p => `
-                    <div class="product-card">
-                        <div class="product-card-header">
-                            <span class="product-title">${escapeHtml(p.name)}</span>
-                            <span class="product-price">${escapeHtml(p.price)}</span>
-                        </div>
-                        <p class="product-desc">${escapeHtml(p.description)}</p>
-                        <a href="${escapeHtml(p.checkout_url)}" target="_blank" class="btn-checkout">
-                            Enroll / Checkout &rarr;
-                        </a>
-                    </div>
-                `).join('');
-
-                container.insertAdjacentHTML('beforeend', productsHtml);
-            }
-
-            // Append interactive disambiguation quick-reply chips if present
-            if (disambiguationOptions && disambiguationOptions.length > 0) {
-                const optionsHtml = `
-                    <div class="disambiguation-box">
-                        <div class="disambiguation-header">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px; vertical-align: -2px;">
-                                <circle cx="12" cy="12" r="10"></circle>
-                                <line x1="12" y1="16" x2="12" y2="12"></line>
-                                <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                            </svg>
-                            <span>Which tool or subfolder are you asking about?</span>
-                        </div>
-                        <div class="disambiguation-chips">
-                            ${disambiguationOptions.map(opt => `
-                                <button type="button" class="disambiguation-chip" data-query="${escapeHtml(opt.query || opt.name)}" onclick="handleDisambiguationClick(this)">
-                                    <span class="chip-folder">${escapeHtml(opt.folder || 'Tools')}</span>
-                                    <span class="chip-name">${escapeHtml(opt.name)}</span>
-                                </button>
-                            `).join('')}
-                        </div>
-                    </div>
+            // Update meta row
+            const metaId = 'meta_' + botBubble.id;
+            const metaRow = document.getElementById(metaId);
+            if (metaRow) {
+                const isCached = payload.cached || false;
+                metaRow.innerHTML = `
+                    <span class="meta-pill ${isCached ? 'cached' : ''}">
+                        ${isCached ? '⚡ 0ms (Semantic Cache HIT)' : 'Grounded Generation'}
+                    </span>
+                    <span class="meta-pill">Mode: ${payload.mode || currentMode}</span>
+                    <span>${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                 `;
-                container.insertAdjacentHTML('beforeend', optionsHtml);
             }
         }
 
-        window.handleDisambiguationClick = function(btn) {
-            const queryText = (typeof btn === 'string') ? btn : (btn.getAttribute('data-query') || btn.innerText);
-            const input = document.getElementById('chatInput');
-            if (input && queryText) {
-                input.value = queryText;
-                handleInput({ target: input });
-                const sendBtn = document.getElementById('btnSend');
-                if (sendBtn) {
-                    sendBtn.disabled = false;
-                    sendBtn.click();
+        // 6. Update Sources in Right Inspector Drawer
+        function renderSourcesInspector(sources) {
+            const container = document.getElementById('chunksContainer');
+            const badge = document.getElementById('sourcesCountBadge');
+            badge.textContent = `${sources.length} Chunks`;
+
+            if (!sources || sources.length === 0) {
+                container.innerHTML = `<div style="font-size:0.75rem; color:var(--text-muted); font-style:italic;">No knowledge document chunks were retrieved for this query.</div>`;
+                return;
+            }
+
+            container.innerHTML = sources.map((s, idx) => `
+                <div class="chunk-card">
+                    <div class="chunk-header">
+                        <span class="chunk-doc-name" title="${escapeHtml(s.document)}">📄 ${escapeHtml(s.document)}</span>
+                        <span class="chunk-score">${Math.round((s.relevance_score || 0.85) * 100)}% Match</span>
+                    </div>
+                    <div class="chunk-meta-text">
+                        <span>Page ${s.page || 1} • Chunk #${s.chunk_id || (idx + 1)}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 7. Refresh Memory Turns in Right Inspector Drawer
+        async function refreshMemoryTurns() {
+            try {
+                const res = await fetch(`/api/chat/history?session_id=${encodeURIComponent(currentSessionId)}&user_id=${encodeURIComponent(currentUserId)}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    const container = document.getElementById('memoryTurnsContainer');
+                    const turns = data.turns || [];
+
+                    if (turns.length === 0) {
+                        container.innerHTML = `<div style="font-size:0.75rem; color:var(--text-muted); font-style:italic;">No turns recorded yet for session: <code>${currentSessionId}</code></div>`;
+                        return;
+                    }
+
+                    container.innerHTML = turns.map((t, idx) => `
+                        <div class="memory-turn-card">
+                            <span class="memory-turn-role ${t.role}">Turn #${idx + 1} • ${t.role}</span>
+                            <p class="memory-turn-content">${escapeHtml(t.content).substring(0, 180)}...</p>
+                        </div>
+                    `).join('');
                 }
+            } catch (err) {
+                console.warn('Failed to refresh memory turns:', err);
             }
-        };
-
-        function escapeHtml(str) {
-            if (!str) return '';
-            return str
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#039;');
         }
 
-        // Initialize Clinical initial state & chips
-        botChats.generic.html = messageContainer.innerHTML;
-        renderChips(botChats.generic.chips);
+        // 8. Preset Query Trigger
+        function runPresetQuery(promptText, mode) {
+            if (mode) switchStudioMode(mode);
+            chatInput.value = promptText;
+            autoResizeTextarea(chatInput);
+            submitMessage();
+        }
+
+        // 9. Reset Session
+        async function resetActiveSession() {
+            if (isGenerating) return;
+            try {
+                await fetch('/chat/reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: currentSessionId,
+                        user_id: currentUserId,
+                        mode: currentMode
+                    })
+                });
+            } catch (e) {}
+
+            currentSessionId = 'sess_' + Math.random().toString(36).substring(2, 10);
+            chatContainer.innerHTML = '';
+            
+            // Re-render hero
+            const heroWrap = document.createElement('div');
+            heroWrap.className = 'welcome-hero';
+            heroWrap.innerHTML = `
+                <div class="hero-emblem">SH</div>
+                <h2>Dr. Sarah Hensley AI Studio</h2>
+                <p>New session initialized (<code>${currentSessionId}</code>). Multi-turn conversation memory cleared in MySQL.</p>
+            `;
+            chatContainer.appendChild(heroWrap);
+            await refreshMemoryTurns();
+        }
+
+        // 10. Switch Inspector Tabs
+        function switchInspectorTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+
+            if (tabId === 'sources') {
+                document.getElementById('tabBtnSources').classList.add('active');
+                document.getElementById('paneSources').classList.add('active');
+            } else if (tabId === 'memory') {
+                document.getElementById('tabBtnMemory').classList.add('active');
+                document.getElementById('paneMemory').classList.add('active');
+                refreshMemoryTurns();
+            } else if (tabId === 'stats') {
+                document.getElementById('tabBtnStats').classList.add('active');
+                document.getElementById('paneStats').classList.add('active');
+                fetchSystemStats();
+            }
+        }
+
+        // 11. Toggle Inspector Drawer
+        function toggleInspector() {
+            const container = document.getElementById('workspaceContainer');
+            container.classList.toggle('inspector-collapsed');
+        }
+
+        // Utilities
+        function handleKeyDown(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                submitMessage();
+            }
+        }
+
+        function autoResizeTextarea(el) {
+            el.style.height = 'auto';
+            el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+        }
+
+        function scrollToBottom() {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+            return String(text).replace(/[&<>"']/g, m => map[m]);
+        }
     </script>
 </body>
 

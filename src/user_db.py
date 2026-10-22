@@ -612,22 +612,33 @@ class UserDatabaseManager:
         return self._format_profile(user, purchases, records)
 
     def _format_profile(self, user: Dict[str, Any], purchases: List[Dict[str, Any]], records: List[Dict[str, Any]]) -> Dict[str, Any]:
-        courses = [p["item_title"] for p in purchases if p.get("item_type") in ("course", "session", "consultation")]
-        books = [p["item_title"] for p in purchases if p.get("item_type") == "book"]
-        all_items = [p["item_title"] for p in purchases]
-        past_notes = [f"{r.get('interaction_type', 'Note')}: {r.get('summary_notes', '')}" for r in records]
+        def _clean_val(v):
+            if hasattr(v, "isoformat"):
+                return v.isoformat()
+            if isinstance(v, (bytes, bytearray)):
+                return v.decode("utf-8", errors="replace")
+            return v
+
+        clean_user = {k: _clean_val(v) for k, v in user.items()} if isinstance(user, dict) else {}
+        clean_purchases = [{k: _clean_val(v) for k, v in p.items()} for p in purchases] if purchases else []
+        clean_records = [{k: _clean_val(v) for k, v in r.items()} for r in records] if records else []
+
+        courses = [p["item_title"] for p in clean_purchases if p.get("item_type") in ("course", "session", "consultation")]
+        books = [p["item_title"] for p in clean_purchases if p.get("item_type") == "book"]
+        all_items = [p["item_title"] for p in clean_purchases if p.get("item_title")]
+        past_notes = [f"{r.get('interaction_type', 'Note')}: {r.get('summary_notes', '')}" for r in clean_records]
 
         return {
-            "user_id": user.get("id"),
-            "name": user.get("name"),
-            "email": user.get("email"),
+            "user_id": clean_user.get("id"),
+            "name": clean_user.get("name"),
+            "email": clean_user.get("email"),
             "courses_purchased": courses,
             "books_purchased": books,
             "all_purchases": all_items,
-            "purchases_detail": purchases,
+            "purchases_detail": clean_purchases,
             "past_records": past_notes,
-            "records_detail": records,
-            "has_history": bool(purchases or records),
+            "records_detail": clean_records,
+            "has_history": bool(clean_purchases or clean_records),
             "backend": self.backend
         }
 
@@ -732,6 +743,19 @@ class UserDatabaseManager:
                         p = self.get_user_profile(str(c.get("id")))
                         if p:
                             users_list.append(p)
+            except Exception:
+                pass
+
+        # Also include MySQL users
+        if getattr(self, "has_mysql", False):
+            try:
+                with self._get_mysql_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT id FROM users ORDER BY name ASC")
+                        for r in cur.fetchall():
+                            p = self._get_profile_from_mysql(r["id"])
+                            if p and not any(u["user_id"] == p["user_id"] for u in users_list):
+                                users_list.append(p)
             except Exception:
                 pass
 
