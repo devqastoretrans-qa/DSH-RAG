@@ -94,6 +94,54 @@ class ConversationMemoryManager:
         self.db_path = base_dir / "users_data.db"
         self._init_sqlite()
 
+        # MySQL persistence setup
+        self.mysql_host = os.getenv("MYSQL_HOST", "").strip()
+        self.mysql_port = int(os.getenv("MYSQL_PORT", 3306))
+        self.mysql_user = os.getenv("MYSQL_USER", "").strip()
+        self.mysql_password = os.getenv("MYSQL_PASSWORD", "").strip()
+        self.mysql_db = os.getenv("MYSQL_DATABASE", "rag_users").strip()
+        self.has_mysql = False
+
+        if self.mysql_host:
+            try:
+                import pymysql
+                self._init_mysql()
+                self.has_mysql = True
+            except Exception:
+                self.has_mysql = False
+
+    def _get_mysql_conn(self):
+        import pymysql
+        return pymysql.connect(
+            host=self.mysql_host,
+            port=self.mysql_port,
+            user=self.mysql_user,
+            password=self.mysql_password,
+            database=self.mysql_db,
+            autocommit=True
+        )
+
+    def _init_mysql(self) -> None:
+        try:
+            with self._get_mysql_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS conversation_turns (
+                            id INT AUTO_INCREMENT PRIMARY KEY,
+                            session_key VARCHAR(150) NOT NULL,
+                            user_id VARCHAR(100) NOT NULL,
+                            conversation_id VARCHAR(100) NOT NULL,
+                            role VARCHAR(20) NOT NULL,
+                            content MEDIUMTEXT NOT NULL,
+                            topic VARCHAR(255),
+                            mode VARCHAR(50),
+                            created_at DOUBLE NOT NULL,
+                            INDEX idx_conv_session (session_key, created_at)
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                    """)
+        except Exception:
+            pass
+
     def _get_sqlite_conn(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.execute("PRAGMA journal_mode = WAL;")
@@ -133,6 +181,40 @@ class ConversationMemoryManager:
         key = self._session_key(user_id, conversation_id)
         if key in self._sessions:
             return self._sessions[key]
+
+        # Load from MySQL if active
+        if self.has_mysql:
+            try:
+                now = time.time()
+                cutoff = now - self.ttl_seconds
+                with self._get_mysql_conn() as conn:
+                    with conn.cursor() as cursor:
+                        cursor.execute("""
+                            SELECT role, content, topic, mode, created_at
+                            FROM conversation_turns
+                            WHERE session_key = %s AND created_at >= %s
+                            ORDER BY created_at ASC, id ASC
+                            LIMIT %s
+                        """, (key, cutoff, self.max_turns * 2))
+                        rows = cursor.fetchall()
+                if rows:
+                    cid = conversation_id.strip() if conversation_id and conversation_id.strip() else "default_conv"
+                    session = ConversationSession(conversation_id=cid, user_id=user_id)
+                    last_topic = None
+                    last_mode = "generic"
+                    for role, content, topic, mode, created_at in rows:
+                        session.turns.append({"role": role, "content": content})
+                        if topic:
+                            last_topic = topic
+                        if mode:
+                            last_mode = mode
+                    session.last_topic = last_topic
+                    session.last_mode = last_mode
+                    session.updated_at = rows[-1][4]
+                    self._sessions[key] = session
+                    return session
+            except Exception:
+                pass
 
         # Load from SQLite if exists and within TTL
         try:
@@ -273,7 +355,25 @@ class ConversationMemoryManager:
                 max_turns=self.max_turns
             )
 
-            # Persist to SQLite for cross-worker sharing
+            # Persist to MySQL for zero-lock multi-worker sharing
+            if self.has_mysql:
+                try:
+                    now = time.time()
+                    topic = self._sessions[key].last_topic
+                    with self._get_mysql_conn() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute("""
+                                INSERT INTO conversation_turns (session_key, user_id, conversation_id, role, content, topic, mode, created_at)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            """, (key, user_id, cid, "user", user_query, topic, mode, now))
+                            cur.execute("""
+                                INSERT INTO conversation_turns (session_key, user_id, conversation_id, role, content, topic, mode, created_at)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            """, (key, user_id, cid, "assistant", assistant_answer, topic, mode, now))
+                except Exception:
+                    pass
+
+            # Persist to SQLite as local backup
             try:
                 now = time.time()
                 topic = self._sessions[key].last_topic

@@ -25,6 +25,9 @@ class RAGGenerationError(Exception):
 CRISIS_REGEX = re.compile(
     r"\b("
     r"suicid(e|al)|kill\s+(my\s*self|me)|end\s+my\s+life|want\s+to\s+die|"
+    r"(don'?t|do\s+not)\s+want\s+to\s+(live|be\s+here|exist|wake\s+up)|"
+    r"no\s+reason\s+to\s+live|can'?t\s+go\s+on\s+anymore|end\s+it\s+all|"
+    r"better\s+off\s+dead|tired\s+of\s+living|"
     r"self[- ]?harm|cutting\s+myself|hurt(ing)?\s+myself|"
     r"he\s+hits\s+me|she\s+hits\s+me|physically\s+abusive|beating\s+me|domestic\s+violence|"
     r"threatened\s+to\s+kill\s+me|in\s+immediate\s+danger"

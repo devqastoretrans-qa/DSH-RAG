@@ -71,29 +71,34 @@ class UserDatabaseManager:
         # 1. Initialize local SQLite tables unconditionally as local cache & fallback
         self._init_sqlite()
 
-        # 2. Configure WordPress / WooCommerce REST API if credentials exist
-        if self.wp_url and self.wp_user and self.wp_password:
-            self.backend = "WordPress WooCommerce (REST API)"
-            print(f"[UserDB] Configured WordPress WooCommerce at {self.wp_url} (User: {self.wp_user}) with in-memory caching.")
-            return
-
-        # 3. Configure WordPress PAB Inspect Profile API if WORDPRESS_URL is present
-        if self.wp_url:
-            self.backend = "WordPress PAB Profile API"
-            print(f"[UserDB] Configured WordPress PAB Profile API at {self.wp_url} with in-memory caching.")
-            return
-
-        # 4. Try MySQL
+        # 2. Try MySQL if configured
+        self.has_mysql = False
         if self.mysql_host and PYMYSQL_AVAILABLE:
             try:
                 self._init_mysql()
-                self.backend = "MySQL"
+                self.has_mysql = True
                 print(f"[UserDB] Connected to MySQL database '{self.mysql_db}' at {self.mysql_host}:{self.mysql_port}")
-                return
             except Exception as e:
                 print(f"[UserDB] Failed connecting to MySQL ({e}). Falling back to local SQLite.")
 
-        # 5. Local SQLite Fallback
+        # 3. Configure WordPress / WooCommerce REST API if credentials exist
+        if self.wp_url and self.wp_user and self.wp_password:
+            self.backend = "WordPress WooCommerce (REST API)" + (" + MySQL" if self.has_mysql else "")
+            print(f"[UserDB] Configured WordPress WooCommerce at {self.wp_url} (User: {self.wp_user}) with {'MySQL' if self.has_mysql else 'in-memory'} caching.")
+            return
+
+        # 4. Configure WordPress PAB Inspect Profile API if WORDPRESS_URL is present
+        if self.wp_url:
+            self.backend = "WordPress PAB Profile API" + (" + MySQL" if self.has_mysql else "")
+            print(f"[UserDB] Configured WordPress PAB Profile API at {self.wp_url} with {'MySQL' if self.has_mysql else 'in-memory'} caching.")
+            return
+
+        # 5. Standalone MySQL
+        if self.has_mysql:
+            self.backend = "MySQL"
+            return
+
+        # 6. Local SQLite Fallback
         self.backend = "SQLite (Local Fallback)"
         print(f"[UserDB] Initialized local SQLite customer database at '{self.sqlite_path}'.")
 
@@ -372,7 +377,9 @@ class UserDatabaseManager:
             return profile_data
 
         except Exception as e:
-            print(f"[UserDB] WooCommerce request failed: {e}. Falling back to SQLite.")
+            print(f"[UserDB] WooCommerce request failed: {e}. Falling back to local storage.")
+            if getattr(self, "has_mysql", False):
+                return self._get_profile_from_mysql(identifier)
             return self._get_profile_from_sqlite(identifier)
 
     # -------------------------------------------------------------------------
@@ -464,16 +471,19 @@ class UserDatabaseManager:
         )
 
     def _init_mysql(self):
-        temp_conn = pymysql.connect(
-            host=self.mysql_host,
-            port=self.mysql_port,
-            user=self.mysql_user,
-            password=self.mysql_password,
-            autocommit=True
-        )
-        with temp_conn.cursor() as cur:
-            cur.execute(f"CREATE DATABASE IF NOT EXISTS `{self.mysql_db}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;")
-        temp_conn.close()
+        try:
+            temp_conn = pymysql.connect(
+                host=self.mysql_host,
+                port=self.mysql_port,
+                user=self.mysql_user,
+                password=self.mysql_password,
+                autocommit=True
+            )
+            with temp_conn.cursor() as cur:
+                cur.execute(f"CREATE DATABASE IF NOT EXISTS `{self.mysql_db}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;")
+            temp_conn.close()
+        except Exception:
+            pass
 
         with self._get_mysql_conn() as conn:
             with conn.cursor() as cur:
@@ -531,11 +541,14 @@ class UserDatabaseManager:
         if self.backend == "WordPress PAB Profile API" or self.wp_url:
             profile = self._get_profile_from_pab_api(clean_uid)
 
-        if not profile and self.backend == "WordPress WooCommerce (REST API)":
+        if not profile and (self.backend.startswith("WordPress WooCommerce") or self.wp_url):
             profile = self._get_profile_from_woocommerce(clean_uid)
-        elif not profile and self.backend == "MySQL":
+
+        # Check MySQL before SQLite
+        if not profile and (getattr(self, "has_mysql", False) or self.backend == "MySQL"):
             profile = self._get_profile_from_mysql(clean_uid)
-        elif not profile:
+
+        if not profile:
             profile = self._get_profile_from_sqlite(clean_uid)
 
         if not profile:

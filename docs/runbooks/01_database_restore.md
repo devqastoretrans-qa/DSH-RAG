@@ -99,7 +99,47 @@ sqlite3 ingestion_tracker.db "PRAGMA integrity_check;"
 
 ---
 
-## 4. Restoring Qdrant Vector Database
+## 4. Restoring MySQL Relational Database (rag_users)
+
+If the local MySQL database becomes corrupted or needs to be recovered from a backup snapshot:
+
+### Option A: Restoring from Local Hot Backup (`./backups/`)
+```bash
+cd /home/ubuntu/DSH-RAG
+
+# 1. Locate the latest compressed MySQL dump
+LATEST_MYSQL=$(ls -t backups/rag_users_*.sql.gz | head -n 1)
+echo "Restoring MySQL from: $LATEST_MYSQL"
+
+# 2. Decompress and pipe directly into MySQL
+gunzip -c "$LATEST_MYSQL" | mysql -h 127.0.0.1 -u rag_user -pDshRag_MySQL_2026_x8K2q rag_users
+
+# 3. Verify tables and row counts
+mysql -h 127.0.0.1 -u rag_user -pDshRag_MySQL_2026_x8K2q rag_users -e "
+  SHOW TABLES;
+  SELECT COUNT(*) AS total_users FROM users;
+  SELECT COUNT(*) AS total_purchases FROM purchases;
+  SELECT COUNT(*) AS total_records FROM past_records;
+"
+```
+
+### Option B: Restoring from Cloud S3
+```bash
+cd /home/ubuntu/DSH-RAG
+S3_BUCKET="dsh-rag-backups"
+
+# 1. Download latest archive from S3
+LATEST_S3_KEY=$(aws s3 ls s3://${S3_BUCKET}/database_backups/ --recursive | grep 'rag_users_' | sort | tail -n 1 | awk '{print $4}')
+aws s3 cp s3://${S3_BUCKET}/${LATEST_S3_KEY} ./rag_users_restore.sql.gz
+
+# 2. Restore into MySQL
+gunzip -c ./rag_users_restore.sql.gz | mysql -h 127.0.0.1 -u rag_user -pDshRag_MySQL_2026_x8K2q rag_users
+rm -f ./rag_users_restore.sql.gz
+```
+
+---
+
+## 5. Restoring Qdrant Vector Database
 
 The application uses Qdrant for semantic search and retrieval. If vector data is corrupted:
 

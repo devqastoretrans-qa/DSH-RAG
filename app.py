@@ -666,6 +666,7 @@ async def ask_api_v1(
             "answer": res["answer"],
             "answer_html": res.get("answer_html"),
             "sources": res["sources"],
+            "disambiguation_options": res.get("disambiguation_options", []),
             "conversation_id": request.conversation_id,
             "session_id": request.session_id
         }

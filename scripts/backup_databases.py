@@ -22,9 +22,13 @@ import shutil
 import sqlite3
 import logging
 import argparse
+import subprocess
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Setup dedicated backup logger
 logging.basicConfig(
@@ -90,6 +94,53 @@ def snapshot_sqlite_database(source_path: Path, temp_dest_path: Path) -> bool:
                 src_conn.close()
             except Exception:
                 pass
+
+
+def snapshot_mysql_database(dest_sql_path: Path) -> bool:
+    """
+    Performs a consistent online dump of the MySQL rag_users database using mysqldump.
+    Uses --single-transaction and --no-tablespaces for zero-lock non-blocking backup.
+    """
+    host = os.getenv("MYSQL_HOST", "127.0.0.1").strip()
+    port = os.getenv("MYSQL_PORT", "3306").strip()
+    user = os.getenv("MYSQL_USER", "rag_user").strip()
+    password = os.getenv("MYSQL_PASSWORD", "").strip()
+    db_name = os.getenv("MYSQL_DATABASE", "rag_users").strip()
+
+    if not host or not password:
+        logger.warning("MySQL host or password not configured in .env, skipping MySQL backup.")
+        return False
+
+    dest_sql_path.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        "mysqldump",
+        f"-h{host}",
+        f"-P{port}",
+        f"-u{user}",
+        f"-p{password}",
+        "--single-transaction",
+        "--quick",
+        "--skip-lock-tables",
+        "--no-tablespaces",
+        db_name
+    ]
+
+    try:
+        with open(dest_sql_path, "w", encoding="utf-8") as f_out:
+            res = subprocess.run(cmd, stdout=f_out, stderr=subprocess.PIPE, text=True)
+        if res.returncode == 0:
+            return True
+        else:
+            logger.error(f"mysqldump failed: {res.stderr}")
+            if dest_sql_path.exists():
+                dest_sql_path.unlink()
+            return False
+    except FileNotFoundError:
+        logger.warning("mysqldump CLI utility is not installed on this system.")
+        return False
+    except Exception as e:
+        logger.error(f"Failed to execute mysqldump: {e}")
+        return False
 
 
 def compress_file_gzip(source_path: Path, dest_gz_path: Path) -> int:
@@ -252,7 +303,48 @@ def run_backup(
             "s3_uploaded": s3_ok
         })
 
-    # 4. Prune expired archives
+    # 4. MySQL Database Backup (rag_users)
+    mysql_host = os.getenv("MYSQL_HOST", "").strip()
+    if mysql_host:
+        summary["databases_processed"] += 1
+        db_name = os.getenv("MYSQL_DATABASE", "rag_users").strip()
+        logger.info(f"Processing MySQL Database: {db_name} (Users, Purchases, Records & Conversation Memory)")
+        temp_sql = out_dir / f"{db_name}_{timestamp_str}.sql"
+        final_gz = out_dir / f"{db_name}_{timestamp_str}.sql.gz"
+
+        snap_ok = snapshot_mysql_database(temp_sql)
+        if not snap_ok:
+            summary["failed_backups"] += 1
+        else:
+            orig_size = temp_sql.stat().st_size
+            try:
+                gz_size = compress_file_gzip(temp_sql, final_gz)
+                summary["total_compressed_bytes"] += gz_size
+                ratio = (1.0 - (gz_size / max(orig_size, 1))) * 100.0
+                logger.info(
+                    f"  -> MySQL dump compressed: {orig_size / 1024:.1f} KB -> {gz_size / 1024:.1f} KB "
+                    f"({ratio:.1f}% space saved)"
+                )
+            finally:
+                if temp_sql.exists():
+                    temp_sql.unlink()
+
+            s3_ok = False
+            if bucket:
+                s3_key = f"database_backups/{start_time.strftime('%Y/%m')}/{final_gz.name}"
+                s3_ok = upload_to_s3(final_gz, bucket, s3_key)
+
+            summary["successful_backups"] += 1
+            summary["archives"].append({
+                "database": db_name,
+                "type": "mysql",
+                "archive_name": final_gz.name,
+                "original_bytes": orig_size,
+                "compressed_bytes": gz_size,
+                "s3_uploaded": s3_ok
+            })
+
+    # 5. Prune expired archives
     pruned = prune_old_backups(out_dir, retention_days=retention_days)
     summary["pruned_archives_count"] = pruned
 
