@@ -75,6 +75,14 @@ class SemanticQueryCache:
 
             if match_to_use:
                 cached_data = dict(match_to_use["response"])
+                cached_ans = cached_data.get("answer", "")
+                # Security/Privacy Guard: Never serve a global entry containing personal greetings or names across users
+                if not best_match and match_to_use.get("user_id") == "__global__":
+                    if any(cached_ans.startswith(p) for p in ["Hi ", "Hello ", "Hey ", "Good morning", "Good afternoon", "Good evening"]):
+                        return None
+                    if any(w in cached_ans.lower() for w in ["enrolled in", "your enrolled", "your coaching cohorts"]):
+                        return None
+
                 cached_data["cached"] = True
                 cached_data["cache_similarity"] = round(score_to_use, 4)
                 cached_data["cache_tier"] = "user" if best_match else "global"
@@ -93,6 +101,11 @@ class SemanticQueryCache:
         Stores an answer in the semantic cache partitioned by user_id and mode.
         If the response is non-personalized (pure psychoeducation), also stores in the __global__ tier.
         """
+        ans_text = response.get("answer", "") or ""
+        # Never cache chit-chat, greetings, or error states
+        if any(ans_text.startswith(p) for p in ["Hi ", "Hello ", "Hey ", "Good morning", "Good afternoon", "Good evening"]):
+            return
+
         with self._lock:
             # Evict oldest if limit reached
             if len(self._cache) >= self.max_size:
@@ -107,14 +120,17 @@ class SemanticQueryCache:
                 "timestamp": now
             })
 
-            # Two-Tier Promotion: Store in __global__ tier if unpersonalized generic clinical answer
+            # Two-Tier Promotion: Store in __global__ tier ONLY if truly unpersonalized generic clinical psychoeducation
             is_personalized = bool(response.get("personalized", False))
             cust_name = response.get("customer_name")
-            ans_text = response.get("answer", "")
+            has_personal_mentions = any(w in ans_text.lower() for w in [
+                "enrolled in", "your enrolled", "your coaching", "you've already secured", 
+                "your active dedication", "cohort starting"
+            ])
             
-            # Check that answer is not personally addressed
-            if not is_personalized and mode == "generic" and user_id != "__global__":
-                if not cust_name or not ans_text.startswith(f"Hi {cust_name}"):
+            # Check that answer is completely impersonal
+            if not is_personalized and not has_personal_mentions and mode == "generic" and user_id != "__global__":
+                if not cust_name and not any(ans_text.startswith(p) for p in ["Hi ", "Hello ", "Hey "]):
                     if len(self._cache) >= self.max_size:
                         self._cache.pop(0)
                     self._cache.append({

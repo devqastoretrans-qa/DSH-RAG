@@ -172,10 +172,10 @@ class OpenAIGeneratorService:
             if len(courses) == 1:
                 course_mention = f" I see you're currently enrolled in {cleaned_titles[0]}."
             elif len(courses) == 2:
-                course_mention = f" It's wonderful to connect again, and I see you're actively enrolled in {cleaned_titles[0]} and {cleaned_titles[1]}."
+                course_mention = f" It's wonderful to connect, and I see you're actively enrolled in {cleaned_titles[0]} and {cleaned_titles[1]}."
             else:
                 extra = len(courses) - 2
-                course_mention = f" It's wonderful to connect again, and I see your active dedication across your enrolled programs, including {cleaned_titles[0]} and {cleaned_titles[1]} (and {extra} other coaching curriculum tracks)."
+                course_mention = f" It's wonderful to connect, and I see your active dedication across your enrolled programs, including {cleaned_titles[0]} and {cleaned_titles[1]} (and {extra} other coaching curriculum tracks)."
 
         attach_mention = f" Grounding our work in your {attachment} attachment journey, " if attachment else " "
 
@@ -183,7 +183,7 @@ class OpenAIGeneratorService:
             if course_mention:
                 return (
                     f"{salutation}\n\n"
-                    f"Welcome back to Dr. Sarah Hensley's Relationship & Attachment Practice.{course_mention}\n\n"
+                    f"Welcome to Dr. Sarah Hensley's Relationship & Attachment Practice.{course_mention}\n\n"
                     f"As your Relationship Program Advisor,{attach_mention}I'm here to build upon your current foundation and help guide you toward the right next-step masterclasses, workbooks, or private sessions tailored to your goals. "
                     "How can I help you today?"
                 )
@@ -197,7 +197,7 @@ class OpenAIGeneratorService:
             if course_mention:
                 return (
                     f"{salutation}\n\n"
-                    f"Welcome back to Dr. Sarah Hensley's Relationship Science knowledge assistant.{course_mention}\n\n"
+                    f"Welcome to Dr. Sarah Hensley's Relationship Science knowledge assistant.{course_mention}\n\n"
                     f"{attach_mention}I can provide clinical guidance, reflection protocols, and attachment strategies seamlessly tailored to your ongoing coursework and personal growth. What relationship question or topic would you like to explore today?"
                 )
             else:

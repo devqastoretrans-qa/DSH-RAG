@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -892,9 +893,10 @@ async def ask_api_v1_stream(
             "backend": "Graceful Fallback"
         }
 
-    # Check Semantic Cache for instant response
+    # Check Semantic Cache for instant response (strictly bypassed on greetings & follow-ups)
+    is_greeting = bool(re.match(r"^\s*(hi|hello|hey|greetings|howdy|good\s+(morning|afternoon|evening))\b", clean_query, re.I))
     cached_result = None
-    if query_vector:
+    if query_vector and not is_greeting:
         cached_result = cache.lookup(query_vector, user_id=uid, mode=req_mode)
 
     if request.chat_history is not None:
@@ -983,6 +985,8 @@ async def ask_api_v1_stream(
                     "question": clean_query,
                     "answer": full_answer,
                     "answer_html": answer_html,
+                    "personalized": bool(user_profile and user_profile.get("first_name") and user_profile.get("first_name") != "there"),
+                    "customer_name": user_profile.get("first_name") if user_profile else None,
                     "recommended_products": event.get("recommended_products", []),
                     "disambiguation_options": disambiguation_options if 'disambiguation_options' in locals() else [],
                     "sources": sources,
@@ -1001,8 +1005,8 @@ async def ask_api_v1_stream(
                         mode=req_mode
                     )
 
-                # Store into semantic cache for subsequent calls
-                if query_vector and full_answer and not full_answer.startswith("Error"):
+                # Store into semantic cache for subsequent calls (never cache greetings or errors)
+                if query_vector and full_answer and not full_answer.startswith("Error") and not is_greeting:
                     cache.store(query_vector=query_vector, user_id=uid, response=done_payload, mode=req_mode)
 
                 yield f"event: done\ndata: {json.dumps(done_payload)}\n\n"

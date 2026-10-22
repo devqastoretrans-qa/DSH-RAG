@@ -1471,6 +1471,11 @@
                 productsContainer.innerHTML = `<div class="empty-products">No courses owned yet. Full sales catalog available.</div>`;
                 guardrailNotice.innerHTML = `💼 <b>New Visitor:</b> Sales bot will pitch foundational offerings like the <i>Healing Anxious Attachment Masterclass ($97)</i>.`;
             }
+
+            // Cleanly reset session and chat window for the newly selected customer
+            if (typeof resetActiveSession === 'function') {
+                resetActiveSession();
+            }
         }
 
         // 4. Mode Switcher Handler

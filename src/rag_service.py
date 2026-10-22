@@ -341,10 +341,10 @@ def execute_rag_pipeline(
             if len(purchases) == 1:
                 course_mention = f" I see you're currently enrolled in {cleaned_titles[0]}."
             elif len(purchases) == 2:
-                course_mention = f" It's wonderful to connect again, and I see you're actively enrolled in {cleaned_titles[0]} and {cleaned_titles[1]}."
+                course_mention = f" It's wonderful to connect, and I see you're actively enrolled in {cleaned_titles[0]} and {cleaned_titles[1]}."
             else:
                 extra = len(purchases) - 2
-                course_mention = f" It's wonderful to connect again, and I see your active dedication across your enrolled programs, including {cleaned_titles[0]} and {cleaned_titles[1]} (and {extra} other coaching curriculum tracks)."
+                course_mention = f" It's wonderful to connect, and I see your active dedication across your enrolled programs, including {cleaned_titles[0]} and {cleaned_titles[1]} (and {extra} other coaching curriculum tracks)."
 
         attach_mention = f" Grounding our work in your {attachment} attachment journey, " if attachment else " "
 
@@ -365,7 +365,7 @@ def execute_rag_pipeline(
             if course_mention:
                 greeting_text = (
                     f"Hi {greeting_name}!\n\n"
-                    f"Welcome back to Dr. Sarah Hensley's Relationship Practice.{course_mention}\n\n"
+                    f"Welcome to Dr. Sarah Hensley's Relationship Practice.{course_mention}\n\n"
                     f"As your Relationship Program Advisor,{attach_mention}whether you're looking for guidance on anxious or avoidant dynamics, boundary tools, or exploring which next-step masterclass, workbook, or private session can deepen your healing journey, how can I support you today?"
                 )
             else:
@@ -378,7 +378,7 @@ def execute_rag_pipeline(
             if course_mention:
                 greeting_text = (
                     f"Hi {greeting_name}!\n\n"
-                    f"Welcome back to Doctor Sarah Hensley's Relationship Science knowledge assistant.{course_mention}\n\n"
+                    f"Welcome to Doctor Sarah Hensley's Relationship Science knowledge assistant.{course_mention}\n\n"
                     f"{attach_mention}I can provide clinical guidance, reflection protocols, and attachment strategies seamlessly tailored to your ongoing coursework and personal growth. What relationship question or topic would you like to explore today?"
                 )
             else:
