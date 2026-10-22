@@ -219,11 +219,12 @@ def execute_rag_pipeline(
             query_vector = future_embed.result()
 
     if not user_profile:
+        fallback_name = effective_uid.split("@")[0].replace(".", " ").replace("_", " ").title() if "@" in effective_uid else effective_uid.capitalize()
         user_profile = {
             "user_id": effective_uid,
-            "name": effective_uid.capitalize(),
-            "first_name": effective_uid.capitalize(),
-            "email": f"{effective_uid}@example.com",
+            "name": fallback_name,
+            "first_name": fallback_name.split()[0] if fallback_name else "Guest",
+            "email": f"{effective_uid}@example.com" if "@" not in effective_uid else effective_uid,
             "courses_purchased": [],
             "books_purchased": [],
             "all_purchases": [],
@@ -310,52 +311,82 @@ def execute_rag_pipeline(
         re.I
     )
     if greeting_regex.match(clean_query):
-        greeting_name = (
+        raw_first = (
             user_profile.get("first_name")
             or user_profile.get("name")
             or user_profile.get("display_name")
             or "there"
         )
-        if " " in str(greeting_name).strip():
-            greeting_name = str(greeting_name).strip().split()[0]
+        if "@" in str(raw_first):
+            raw_first = str(raw_first).split("@")[0].replace(".", " ").replace("_", " ").title()
+        if " " in str(raw_first).strip():
+            greeting_name = str(raw_first).strip().split()[0]
+        else:
+            greeting_name = str(raw_first).strip()
 
         is_identity_query = bool(re.search(r"\b(who|what)\s+are\s+you\b|\bwhat\s+can\s+you\s+do\b", clean_query, re.I))
 
-        # Extract streaks if present
-        raw_pab = user_profile.get("raw_pab_profile") or {}
-        streaks = raw_pab.get("gamplify_attachmentos_user_streaks") or user_profile.get("gamplify_attachmentos_user_streaks") or []
-        streak_mentions = []
-        if isinstance(streaks, list):
-            for s in streaks:
-                if isinstance(s, dict) and s.get("habit") and s.get("streak"):
-                    streak_mentions.append(f"{s['habit']} ({s['streak']}-day streak)")
-        streak_text = f" I see you're staying dedicated with your {', '.join(streak_mentions[:2])}." if streak_mentions else ""
+        # Extract purchases, attachment background, and streaks
+        purchases = user_profile.get("courses_purchased") or user_profile.get("all_purchases") or []
+        attachment = user_profile.get("attachment_style")
+        if attachment and str(attachment).lower() in ("relationship student", "unauthenticated", "none", "customer"):
+            attachment = None
+
+        course_mention = ""
+        if purchases:
+            cleaned_titles = []
+            for c in purchases[:2]:
+                title = c.split(":")[0] if ":" in c else c
+                cleaned_titles.append(f"**{title.strip()}**")
+            if len(purchases) == 1:
+                course_mention = f" I see you're currently enrolled in {cleaned_titles[0]}."
+            elif len(purchases) == 2:
+                course_mention = f" It's wonderful to connect again, and I see you're actively enrolled in {cleaned_titles[0]} and {cleaned_titles[1]}."
+            else:
+                extra = len(purchases) - 2
+                course_mention = f" It's wonderful to connect again, and I see your active dedication across your enrolled programs, including {cleaned_titles[0]} and {cleaned_titles[1]} (and {extra} other coaching curriculum tracks)."
+
+        attach_mention = f" Grounding our work in your {attachment} attachment journey, " if attachment else " "
 
         if is_identity_query:
             if mode == "sales":
                 greeting_text = (
-                    f"Hi {greeting_name}! I am Doctor Sarah Hensley's official Program & Relationship Advisor.\n\n"
-                    "I help members identify their attachment dynamics, navigate relationship roadblocks, and connect with the right course, bundle, or consultation tailored to their healing goals. "
+                    f"Hi {greeting_name}! I am Doctor Sarah Hensley's official Program & Relationship Advisor.{course_mention}\n\n"
+                    f"{attach_mention}I help members navigate relationship roadblocks and connect with the right course, bundle, or consultation tailored to their healing goals. "
                     "How can I assist you with your relationship today?"
                 )
             else:
                 greeting_text = (
-                    f"Hi {greeting_name}! I am Doctor Sarah Hensley's Relationship Science AI Assistant.\n\n"
-                    "I provide clinically validated relationship strategies, attachment theory breakdowns, and conflict de-escalation frameworks (such as the 1-1-1 journal and Boundary Ladder) based on Dr. Sarah's verified knowledge base. "
+                    f"Hi {greeting_name}! I am Doctor Sarah Hensley's Relationship Science AI Assistant.{course_mention}\n\n"
+                    f"{attach_mention}I provide clinically validated relationship strategies, attachment theory breakdowns, and conflict de-escalation frameworks (such as the 1-1-1 journal and Boundary Ladder) based on Dr. Sarah's verified knowledge base. "
                     "What relationship topic or challenge would you like to explore?"
                 )
         elif mode == "sales":
-            greeting_text = (
-                f"Hi {greeting_name}!\n\n"
-                f"I'm Dr. Sarah Hensley's official Program & Relationship Advisor.{streak_text}\n\n"
-                "Whether you're looking for guidance on anxious or avoidant dynamics, boundary tools, or exploring which masterclass, workbook, or private session can deepen your healing journey, how can I support you today?"
-            )
+            if course_mention:
+                greeting_text = (
+                    f"Hi {greeting_name}!\n\n"
+                    f"Welcome back to Dr. Sarah Hensley's Relationship Practice.{course_mention}\n\n"
+                    f"As your Relationship Program Advisor,{attach_mention}whether you're looking for guidance on anxious or avoidant dynamics, boundary tools, or exploring which next-step masterclass, workbook, or private session can deepen your healing journey, how can I support you today?"
+                )
+            else:
+                greeting_text = (
+                    f"Hi {greeting_name}!\n\n"
+                    "I'm Dr. Sarah Hensley's official Program & Relationship Advisor.\n\n"
+                    "Whether you're looking for guidance on anxious or avoidant dynamics, boundary tools, or exploring which masterclass, workbook, or private session can deepen your healing journey, how can I support you today?"
+                )
         else:
-            greeting_text = (
-                f"Hi {greeting_name}!\n\n"
-                f"Welcome to Doctor Sarah Hensley's Relationship Science knowledge assistant.{streak_text}\n\n"
-                "I can provide clinical guidance, reflection protocols, and attachment strategies from our verified resource library. What relationship question or topic would you like to explore today?"
-            )
+            if course_mention:
+                greeting_text = (
+                    f"Hi {greeting_name}!\n\n"
+                    f"Welcome back to Doctor Sarah Hensley's Relationship Science knowledge assistant.{course_mention}\n\n"
+                    f"{attach_mention}I can provide clinical guidance, reflection protocols, and attachment strategies seamlessly tailored to your ongoing coursework and personal growth. What relationship question or topic would you like to explore today?"
+                )
+            else:
+                greeting_text = (
+                    f"Hi {greeting_name}!\n\n"
+                    "Welcome to Doctor Sarah Hensley's Relationship Science knowledge assistant.\n\n"
+                    "I can provide clinical guidance, reflection protocols, and attachment strategies from our verified resource library. What relationship question or topic would you like to explore today?"
+                )
 
         logger.info(f"[RAG] Greeting intent handled for user '{user_id}'")
         return _build_fast_response(

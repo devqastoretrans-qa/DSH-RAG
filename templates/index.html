@@ -1382,7 +1382,8 @@
                             const opt = document.createElement('option');
                             opt.value = u.user_id;
                             const pCount = (u.all_purchases || []).length;
-                            opt.textContent = `${u.user_id} — ${u.name || u.email} (${pCount} item${pCount === 1 ? '' : 's'})`;
+                            const displayName = (u.name && u.name !== u.email) ? `${u.name} (${u.email || u.user_id})` : (u.name || u.user_id);
+                            opt.textContent = `${displayName} — ${pCount} item${pCount === 1 ? '' : 's'}`;
                             if (u.user_id === '1836') opt.selected = true;
                             optGroupWC.appendChild(opt);
                         });

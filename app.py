@@ -877,11 +877,12 @@ async def ask_api_v1_stream(
         disambiguation_options = search_output.get("disambiguation_options", [])
 
     if not user_profile:
+        fallback_name = uid.split("@")[0].replace(".", " ").replace("_", " ").title() if "@" in uid else uid.capitalize()
         user_profile = {
             "user_id": uid,
-            "name": uid.capitalize(),
-            "first_name": uid.capitalize(),
-            "email": f"{uid}@example.com",
+            "name": fallback_name,
+            "first_name": fallback_name.split()[0] if fallback_name else "Guest",
+            "email": f"{uid}@example.com" if "@" not in uid else uid,
             "courses_purchased": [],
             "books_purchased": [],
             "all_purchases": [],
@@ -951,7 +952,7 @@ async def ask_api_v1_stream(
                 full_text_accum.append(token)
                 yield f"event: token\ndata: {json.dumps({'token': token})}\n\n"
             else:
-                full_answer = event.get("full_answer", "".join(full_text_accum))
+                full_answer = event.get("full_answer") or event.get("token") or "".join(full_text_accum)
                 from src.generator import strip_citation_markers
                 full_answer = strip_citation_markers(full_answer)
                 # Generate HTML for final output

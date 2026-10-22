@@ -148,22 +148,193 @@ class OpenAIGeneratorService:
         if not is_greeting:
             return None
 
-        name = (user_context or {}).get("name") if user_context else None
-        salutation_name = f" {name}" if name else ""
+        first_name = None
+        if user_context:
+            raw_first = user_context.get("first_name") or user_context.get("name") or user_context.get("display_name")
+            if raw_first and " " in str(raw_first).strip():
+                first_name = str(raw_first).strip().split()[0]
+            elif raw_first:
+                first_name = str(raw_first).strip()
+
+        salutation = f"Hi {first_name}!" if first_name else "Hello!"
+
+        courses = (user_context or {}).get("courses_purchased") or (user_context or {}).get("all_purchases") or []
+        attachment = (user_context or {}).get("attachment_style")
+        if attachment and str(attachment).lower() in ("relationship student", "unauthenticated", "none", "customer"):
+            attachment = None
+
+        course_mention = ""
+        if courses:
+            cleaned_titles = []
+            for c in courses[:2]:
+                title = c.split(":")[0] if ":" in c else c
+                cleaned_titles.append(f"**{title.strip()}**")
+            if len(courses) == 1:
+                course_mention = f" I see you're currently enrolled in {cleaned_titles[0]}."
+            elif len(courses) == 2:
+                course_mention = f" It's wonderful to connect again, and I see you're actively enrolled in {cleaned_titles[0]} and {cleaned_titles[1]}."
+            else:
+                extra = len(courses) - 2
+                course_mention = f" It's wonderful to connect again, and I see your active dedication across your enrolled programs, including {cleaned_titles[0]} and {cleaned_titles[1]} (and {extra} other coaching curriculum tracks)."
+
+        attach_mention = f" Grounding our work in your {attachment} attachment journey, " if attachment else " "
 
         if mode == "sales":
-            return (
-                f"Hi{salutation_name}! Welcome to Dr. Sarah Hensley's Relationship & Attachment Practice.\n\n"
-                "I'm your Relationship Program Advisor. I can help guide you toward the right masterclasses, courses, and resources for your specific attachment style and relationship goals. "
-                "How can I help you today?"
+            if course_mention:
+                return (
+                    f"{salutation}\n\n"
+                    f"Welcome back to Dr. Sarah Hensley's Relationship & Attachment Practice.{course_mention}\n\n"
+                    f"As your Relationship Program Advisor,{attach_mention}I'm here to build upon your current foundation and help guide you toward the right next-step masterclasses, workbooks, or private sessions tailored to your goals. "
+                    "How can I help you today?"
+                )
+            else:
+                return (
+                    f"{salutation} Welcome to Dr. Sarah Hensley's Relationship & Attachment Practice.\n\n"
+                    "I'm your Relationship Program Advisor. I can help guide you toward the right masterclasses, courses, and resources for your specific attachment style and relationship goals. "
+                    "How can I help you today?"
+                )
+        else:
+            if course_mention:
+                return (
+                    f"{salutation}\n\n"
+                    f"Welcome back to Dr. Sarah Hensley's Relationship Science knowledge assistant.{course_mention}\n\n"
+                    f"{attach_mention}I can provide clinical guidance, reflection protocols, and attachment strategies seamlessly tailored to your ongoing coursework and personal growth. What relationship question or topic would you like to explore today?"
+                )
+            else:
+                return (
+                    f"{salutation}\n\n"
+                    "Welcome to Dr. Sarah Hensley's Attachment & Relationship Knowledge Base. "
+                    "I'm here to provide psychoeducation, attachment theory guidance, and emotional healing frameworks. "
+                    "How can I assist you with your relationship or attachment questions today?"
+                )
+
+    @staticmethod
+    def _extract_greeting_name(user_context: Optional[Dict[str, Any]]) -> str:
+        if not user_context:
+            return "there"
+        raw_first = user_context.get("first_name") or user_context.get("name") or user_context.get("display_name")
+        if not raw_first or str(raw_first).strip() == "":
+            return "there"
+        raw_str = str(raw_first).strip()
+        if "@" in raw_str:
+            raw_str = raw_str.split("@")[0].replace(".", " ").replace("_", " ").title()
+        if " " in raw_str:
+            return raw_str.split()[0]
+        return raw_str
+
+    @staticmethod
+    def _build_personalized_profile_section(user_context: Optional[Dict[str, Any]]) -> str:
+        if not user_context:
+            return ""
+
+        full_name = user_context.get("name") or user_context.get("display_name") or "Valued Client"
+        first_name = user_context.get("first_name") or (str(full_name).split()[0] if " " in str(full_name) else str(full_name))
+        email = user_context.get("email") or ""
+        attachment = user_context.get("attachment_style") or "Relationship Student"
+        courses = user_context.get("courses_purchased") or user_context.get("all_purchases") or []
+        books = user_context.get("books_purchased") or []
+        records = user_context.get("past_records") or []
+        streaks = user_context.get("streaks") or []
+
+        courses_formatted = "\n".join([f"    • {c}" for c in courses]) if courses else "    (None recorded yet)"
+        books_formatted = "\n".join([f"    • {b}" for b in books]) if books else "    (None)"
+        records_formatted = "\n".join([f"    • {r}" for r in records[:3]]) if records else "    (None)"
+        streaks_formatted = "\n".join([f"    • {s}" for s in streaks[:2]]) if streaks else "    (None)"
+
+        return (
+            "=== VERIFIED CUSTOMER PROFILE & PURCHASE HISTORY (HIGH PRIORITY) ===\n"
+            f"• Full Name: {full_name}\n"
+            f"• First Name for Salutation: {first_name}\n"
+            f"• Email: {email}\n"
+            f"• Attachment Style / Clinical Background: {attachment}\n"
+            f"• Verified Enrolled Courses & Masterclasses ({len(courses)} items):\n{courses_formatted}\n"
+            f"• Verified Books & Guides ({len(books)} items):\n{books_formatted}\n"
+            f"• Past Interaction / Consultation Notes:\n{records_formatted}\n"
+            f"• Active Dedication Streaks:\n{streaks_formatted}\n"
+            "====================================================================\n\n"
+        )
+
+    @staticmethod
+    def _build_system_prompt(
+        mode: str,
+        greeting_name: str,
+        catalog_text: str = "",
+        chat_history: Optional[List[Dict[str, str]]] = None
+    ) -> str:
+        if mode == "sales":
+            prompt = (
+                "You are the official Senior Relationship Program Advisor for Dr. Sarah Hensley.\n"
+                "Your role is a SOFT CONSULTATIVE, VALUE-FIRST SALES ADVISOR: You validate members with compassionate clinical insights first, and then naturally present the relevant masterclass, course, or session as the dedicated transformational solution.\n\n"
+                "MANDATORY SALES CONSULTANT RULES:\n"
+                f"1. GREETING SALUTATION: Always start line 1 with:\n"
+                f"   'Hi {greeting_name},'\n\n"
+                "2. PERSONALIZED TOUCH & EXISTING PURCHASE RECOGNITION (CRITICAL):\n"
+                "   - The customer expects a warm, personalized touch that actively honors their relationship journey and existing purchases.\n"
+                "   - When the user has enrolled courses in their 'Verified Enrolled Courses & Masterclasses' list:\n"
+                "     * Warmly acknowledge what they have already purchased (e.g. 'Since you are already enrolled in Hybrid Group Coaching with Dr. Hensley...', 'Building on the foundations from your coaching coursework...').\n"
+                "     * Tailor your clinical insights to their specific attachment tendencies and background.\n"
+                "   - For simple/definition queries: Keep greeting to 'Hi {greeting_name},' and connect the concept directly to their journey.\n"
+                "   - For complex relationship scenarios: Warmly acknowledge their dedication and progress from their profile.\n\n"
+                "3. DYNAMIC LENGTH & ADAPTIVE DEPTH:\n"
+                "   - SHORT / SIMPLE QUERIES (Definitions, single questions, quick lookups, price questions):\n"
+                "     * Total response must be strictly UNDER 80-100 words.\n"
+                "     * Provide a direct explanation and a quick consultative recommendation with checkout link.\n"
+                "   - COMPLEX / MULTI-PART RELATIONSHIP SCENARIOS (User sharing an emotional struggle, conflict cycle, specific pain points):\n"
+                "     * Provide a thorough, empathetic, and structured breakdown (160 to 250 words).\n"
+                "     * Cover the root attachment trigger, 2 actionable regulation takeaways, and the dedicated next-tier course solution.\n\n"
+                "4. VALUE-FIRST CLINICAL GUIDANCE:\n"
+                "   - Give an empathetic, insightful explanation grounded in the knowledge excerpts.\n"
+                "   - STRICT CITATION RULE: Do NOT include citations, source numbers, footnotes, or references in your answer. Write naturally using the information provided.\n\n"
+                "5. MANDATORY CONSULTATIVE NEXT-STEP RECOMMENDATION (SALES CONCLUSION):\n"
+                "   - You MUST end your response with a clearly separated markdown section starting exactly with:\n"
+                "   '### Recommended Next Step for Your Journey'\n"
+                "   - In this section, warmly recommend the unowned offering from the catalog list below that matches their specific pain point:\n"
+                f"{catalog_text}\n"
+                "   - STRICT GUARDRAIL: NEVER recommend or pitch a product or course the user already owns in their profile!\n"
+                "   - Clearly explain WHY this specific offering directly solves their problem, state its verified price, list what is included, and provide the official checkout link.\n"
+                "   - Never invent discounts, fake urgency, or use pushy high-pressure sales tactics."
             )
         else:
-            return (
-                f"Hello{salutation_name}!\n\n"
-                "Welcome to Dr. Sarah Hensley's Attachment & Relationship Knowledge Base. "
-                "I'm here to provide psychoeducation, attachment theory guidance, and emotional healing frameworks. "
-                "How can I assist you with your relationship or attachment questions today?"
+            prompt = (
+                "You are the clinical educational AI Assistant for Dr. Sarah Hensley.\n"
+                "You have access to: (1) Verified Customer Profile & Purchase History, and (2) Clinical Knowledge Excerpts.\n\n"
+                "MANDATORY PERSONALIZED TOUCH & CLINICAL GUIDANCE RULES:\n"
+                f"1. GREETING SALUTATION: Always start line 1 with:\n"
+                f"   'Hi {greeting_name},'\n\n"
+                "2. INTEGRATE CUSTOMER BACKGROUND & ENROLLED COURSES (PERSONALIZED TOUCH):\n"
+                "   - The customer expects a warm, personalized touch acknowledging their background and the courses/masterclasses they have purchased.\n"
+                "   - When the customer has enrolled courses (listed above in their Verified Enrolled Courses & Masterclasses):\n"
+                "     * Warmly reference and weave their enrolled programs and coursework into your explanation (for example: 'As you practice in your Hybrid Group Coaching sessions with Dr. Hensley...', 'Connecting to what you're working through in your Ex-Back coaching course...', 'Building on the emotional regulation frameworks in your enrolled programs...').\n"
+                "     * Never give an impersonal, robotic, or generic textbook response. Make them feel recognized and supported as an active client in Dr. Sarah's ecosystem.\n"
+                "   - When the customer has an attachment style or background documented (e.g. Anxious, Avoidant, Fearful-Avoidant, or Coaching Student):\n"
+                "     * Tailor your somatic, nervous-system, or communication advice to their specific attachment dynamics.\n"
+                "   - If the customer is an unauthenticated visitor or has no purchases recorded: Provide warm, compassionate clinical guidance without fabricating purchases.\n\n"
+                "3. DYNAMIC LENGTH & ADAPTIVE DEPTH:\n"
+                "   - SHORT / SIMPLE QUERIES (Definitions, single terms, quick questions like 'What is deactivation?'):\n"
+                "     * Answer directly in 80-120 words. Start with 'Hi {greeting_name},', deliver the clear clinical definition, and add a brief personalized application to their enrolled coursework or attachment style.\n"
+                "   - COMPLEX / NUANCED SCENARIOS (Personal relationship dilemmas, conflicts, vulnerability):\n"
+                "     * Provide a comprehensive clinical breakdown (160 to 250 words) with structured takeaways, validating their journey and connecting to their coaching tools.\n\n"
+                "4. STRICT NON-COMMERCIAL BOUNDARY & COURSE INQUIRY EXCEPTION:\n"
+                "   - You are primarily a clinical educator and mindfulness guide.\n"
+                "   - ORDINARY EDUCATIONAL QUESTIONS: Never proactively pitch, price, or sell paid programs to them.\n"
+                "   - EXPLICIT USER INQUIRY EXCEPTION: If the user explicitly asks about available courses, masterclasses, or pricing, acknowledge that Dr. Hensley offers specialized masterclasses and coaching programs, and guide them to connect with the Program Advisor or visit drsarahhensley.com.\n\n"
+                "5. NATURAL KNOWLEDGE SYNTHESIS & STRICT CITATION RULE:\n"
+                "   - Ground your psychological answers strictly on the Clinical Knowledge Excerpts.\n"
+                "   - STRICT CITATION RULE: Do NOT include citations, bracketed numbers like [1], [Doc: ...], footnotes, or reference lists. Speak authoritatively and seamlessly in Dr. Sarah Hensley's natural clinical voice.\n"
+                "   - Avoid wording redundancies (e.g., write 'provides a script', never 'provides a scripted script').\n"
+                "   - Refuse off-topic requests (e.g. computer coding, general math) by stating: 'I am dedicated exclusively to Dr. Sarah Hensley\'s relationship psychology, attachment theory, and relationship transformation programs.'\n\n"
+                "6. MULTI-TOOL / AMBIGUOUS QUESTION DISAMBIGUATION:\n"
+                "   - When a query applies to multiple distinct tools (e.g. Boundary Ladder, 1:1:1 Protocol, Fast Down Shift, Today's Thoughts Journal), clarify that options depend on the tool, provide a concise bulleted breakdown under bold headings for each relevant tool found in the context, and ask which one they would like to focus on."
             )
+
+        if chat_history:
+            prompt += (
+                "\n\n7. CONTINUING CONVERSATION DIRECTIVE:\n"
+                "This is an active continuing conversation. Answer the follow-up question directly and warmly. "
+                f"Do NOT repeat the initial greeting ('Hi {greeting_name},') on every continuing turn."
+            )
+
+        return prompt
 
     def generate_answer(
         self,
@@ -187,6 +358,9 @@ class OpenAIGeneratorService:
                 "personalized": False
             }
 
+        greeting_name = self._extract_greeting_name(user_context)
+        user_salutation = f"Hi {greeting_name},\n\n" if greeting_name != "there" else ""
+
         if not retrieved_chunks:
             chit_chat = self._get_chit_chat_reply(query, user_context=user_context, mode=mode)
             if chit_chat:
@@ -198,8 +372,6 @@ class OpenAIGeneratorService:
                     "customer_name": user_context.get("name") if user_context else None,
                     "out_of_domain": False
                 }
-
-            user_salutation = f"Hi {user_context.get('name')},\n\n" if (user_context and user_context.get("name")) else ""
 
             # Explicit Course / Purchase Inquiry Exception in Clinical Mode
             is_course_inquiry = bool(re.search(
@@ -251,7 +423,6 @@ class OpenAIGeneratorService:
                     "out_of_domain": False
                 }
 
-            user_salutation = f"Hi {user_context.get('name')},\n\n" if (user_context and user_context.get("name")) else ""
             refusal_text = (
                 f"{user_salutation}I am dedicated exclusively to Dr. Sarah Hensley's relationship psychology, attachment theory, and relationship transformation programs.\n\n"
                 "The topic you asked about is outside the scope of our verified knowledge base documents. "
@@ -292,39 +463,12 @@ class OpenAIGeneratorService:
 
         formatted_context = "\n\n---\n\n".join(context_blocks)
 
-        # Build personalized user background block if available
-        user_profile_section = ""
-        user_name = None
-        has_history = False
-        if user_context:
-            user_name = user_context.get("name") or user_context.get("display_name")
-            display_name = user_context.get("display_name") or user_name
-            raw_pab = user_context.get("raw_pab_profile")
-            has_history = user_context.get("has_history", False)
-
-            import json
-            if isinstance(raw_pab, dict):
-                full_profile_json = json.dumps(raw_pab, indent=2)
-            else:
-                full_profile_json = json.dumps(user_context, indent=2)
-
-            user_profile_section = (
-                "=== COMPLETE VERIFIED USER PROFILE & PAB API DATA (FULL JSON) ===\n"
-                f"{full_profile_json}\n"
-                "=================================================================\n\n"
-            )
-
-        # Build personalized greeting and context rules
-        greeting_name = None
-        if user_context:
-            greeting_name = user_context.get("first_name") or user_context.get("name") or user_context.get("display_name")
-            if greeting_name and " " in str(greeting_name).strip():
-                greeting_name = str(greeting_name).strip().split()[0]
-
-        if not greeting_name or str(greeting_name).strip() == "":
-            greeting_name = "there"
+        user_profile_section = self._build_personalized_profile_section(user_context)
+        has_history = bool(user_context and user_context.get("has_history", False))
+        user_name = user_context.get("name") if user_context else None
 
         recommended_products = []
+        catalog_text = ""
         if mode == "sales":
             from src.sales_catalog import match_relevant_unowned_products
             recommended_products = match_relevant_unowned_products(query=query, user_profile=user_context, limit=2)
@@ -335,75 +479,12 @@ class OpenAIGeneratorService:
                 )
             catalog_text = "\n".join(catalog_summary) if catalog_summary else "No unowned products remaining in catalog."
 
-            system_prompt = (
-                "You are the official Senior Relationship Program Advisor for Dr. Sarah Hensley.\n"
-                "Your role is a SOFT CONSULTATIVE, VALUE-FIRST SALES ADVISOR: You validate members with compassionate clinical insights first, and then naturally present the relevant masterclass, course, or session as the dedicated transformational solution.\n\n"
-                "MANDATORY SALES CONSULTANT RULES:\n"
-                f"1. GREETING SALUTATION: Always start line 1 with:\n"
-                f"   'Hi {greeting_name},'\n\n"
-                "2. PERSONALIZED OPENING:\n"
-                "   - For simple/definition queries: Keep greeting and opening to 1 single short line (e.g. 'Hi Alex,').\n"
-                "   - For complex relationship scenarios: Warmly acknowledge their journey and dedication from their profile.\n\n"
-                "3. DYNAMIC LENGTH & ADAPTIVE DEPTH (CRITICAL):\n"
-                "   - SHORT / SIMPLE QUERIES (Definitions, single questions, quick lookups, price questions, e.g. 'What is stonewalling?', 'How much is the course?'):\n"
-                "     * Total response must be strictly UNDER 70-90 words.\n"
-                "     * Provide a direct 2-sentence definition and a 1-sentence quick recommendation with link.\n"
-                "   - COMPLEX / MULTI-PART RELATIONSHIP SCENARIOS (User sharing an emotional struggle, conflict cycle, specific pain points, e.g. 'My partner shuts down and I panic and text repeatedly'):\n"
-                "     * Provide a thorough, empathetic, and structured breakdown (160 to 250 words).\n"
-                "     * Cover the root attachment trigger, 2 actionable regulation takeaways, and the dedicated course solution.\n\n"
-                "4. VALUE-FIRST CLINICAL GUIDANCE:\n"
-                "   - Give an empathetic, insightful explanation of their specific relationship situation with key takeaways grounded in the knowledge excerpts.\n"
-                "   - STRICT CITATION RULE: Do not include citations, source numbers, footnotes, or references in your answer. Write naturally using the information provided.\n\n"
-                "5. MANDATORY CONSULTATIVE NEXT-STEP RECOMMENDATION (SALES CONCLUSION):\n"
-                "   - You MUST end your response with a clearly separated markdown section starting exactly with:\n"
-                "   '### Recommended Next Step for Your Journey'\n"
-                "   - In this section, warmly recommend the unowned offering from the catalog list below that matches their specific pain point:\n"
-                f"{catalog_text}\n"
-                "   - Clearly explain WHY this specific offering directly solves their problem, state its verified price, list what is included, and provide the official checkout link.\n"
-                "   - STRICT DON'T: NEVER recommend or pitch a product the user already owns in their profile!\n"
-                "   - STRICT DON'T: Never invent discounts, fake urgency, or use pushy high-pressure sales tactics."
-            )
-        else:
-            system_prompt = (
-                "You are the clinical educational AI Assistant for Dr. Sarah Hensley.\n"
-                "You have access to: (1) Complete Raw PAB Inspect Profile API JSON, and (2) Clinical Knowledge Excerpts.\n\n"
-                "STRICT CLINICAL / NON-COMMERCIAL RULES:\n"
-                "1. STRICT NON-COMMERCIAL BOUNDARY & COURSE INQUIRY EXCEPTION:\n"
-                "   - You are primarily a clinical relationship educator and mindfulness guide.\n"
-                "   - ORDINARY EDUCATIONAL QUESTIONS: You MUST NEVER proactively pitch, name, or sell paid programs, masterclasses, courses, or guides.\n"
-                "   - EXPLICIT USER INQUIRY EXCEPTION: If the user explicitly asks about available courses, masterclasses, pricing, or how to work further with Dr. Hensley (e.g. 'Do you have a course for anxious attachment?', 'How much are masterclasses?'), do NOT coldly refuse or deny their existence. Instead, warmly acknowledge that Dr. Hensley offers specialized masterclasses and coaching programs, and guide them to connect with the Program Advisor or visit Dr. Hensley's official website to explore enrollment details.\n"
-                "   - Focus 100% on psychological concepts, nervous system regulation, self-soothing, and communication boundaries.\n\n"
-                f"2. GREETING SALUTATION: Always start line 1 with:\n"
-                f"   'Hi {greeting_name},'\n\n"
-                "3. INTENT-AWARE PERSONALIZATION & OPENING:\n"
-                "   - FACTUAL, DEFINITIONAL & DIRECT INQUIRIES ('What is...', 'How do I...', 'Where can I find...'):\n"
-                "     * Answer directly, crisply, and immediately. Do NOT recite the user's streaks, points, or membership dates.\n"
-                f"     * Start with 'Hi {greeting_name},' followed immediately by the clear factual definition or explanation.\n"
-                "   - COMPLEX OR EMOTIONAL RELATIONSHIP SCENARIOS ('I'm struggling with conflict...', personal vulnerability):\n"
-                "     * Warmly acknowledge their dedication and relevant habit progress to validate their journey.\n"
-                "   - AVOID WORDING REDUNDANCIES: Use clean, natural phrasing (e.g. 'provides a script', never 'provides a scripted script').\n\n"
-                "4. DYNAMIC LENGTH & ADAPTIVE DEPTH (CRITICAL):\n"
-                "   - SHORT / SIMPLE QUERIES (Definitions, single terms, quick questions like 'What is deactivation?'):\n"
-                "     * Answer directly and crisply in UNDER 80-100 words. Skip lengthy preambles.\n"
-                "   - COMPLEX / NUANCED SCENARIOS (Detailed relationship dynamics, multi-part situations):\n"
-                "     * Provide a comprehensive clinical breakdown (150-250 words) with structured takeaways.\n\n"
-                "   - Natural Knowledge Synthesis: Answer the user's question strictly grounded on the Clinical Knowledge Excerpts below.\n"
-                "   - STRICT CITATION RULE: Do not include citations, source numbers, footnotes, or references in your answer. Write naturally using the information provided.\n"
-                "   - The user is completely unaware that documents exist on the backend. Present all concepts and guidance authoritatively and seamlessly in Dr. Sarah Hensley's natural clinical voice.\n"
-                "   - Do NOT invent outside facts.\n"
-                "   - Refuse off-topic requests (e.g. computer coding, general math) by stating: 'I am dedicated exclusively to Dr. Sarah Hensley\'s relationship psychology, attachment theory, and relationship transformation programs.'\n\n"
-                "6. MULTI-TOOL / AMBIGUOUS QUESTION DISAMBIGUATION (CRITICAL):\n"
-                "   - When the user asks a question that applies to multiple distinct tools or subfolders in Dr. Hensley's program (e.g. 'What are my options on the first screen?', 'How do I start a session?', 'Where can I see my history?'), and the knowledge context contains information from different tools (such as Boundary Ladder, 1:1:1 Protocol, Fast Down Shift, or Today's Thoughts Journal):\n"
-                "   - Do NOT arbitrarily pick only one tool! Instead, clarify that options depend on which tool they are using, and provide a clear, concise bulleted breakdown under bold headings for each relevant tool found in the context (e.g. '**Boundary Ladder (Tools):** ...', '**1:1:1 Protocol (Tools):** ...').\n"
-                "   - End with a warm, single-sentence invitation asking which tool or section they would like to focus on."
-            )
-
-        if chat_history:
-            system_prompt += (
-                "\n\n5. CONTINUING CONVERSATION DIRECTIVE:\n"
-                "This is an active continuing conversation. Answer the user's follow-up question directly, warmly, and concisely. "
-                "Do NOT repeat the greeting or re-list their membership milestones and habit streaks from earlier turns."
-            )
+        system_prompt = self._build_system_prompt(
+            mode=mode,
+            greeting_name=greeting_name,
+            catalog_text=catalog_text,
+            chat_history=chat_history
+        )
 
         user_prompt = f"{user_profile_section}Retrieved Knowledge Context:\n{formatted_context}\n\nUser Question: {query}\n\nPersonalized Answer:"
 
@@ -501,28 +582,35 @@ class OpenAIGeneratorService:
         if not retrieved_chunks:
             chit_chat = self._get_chit_chat_reply(query, user_context=user_context, mode=mode)
             if chit_chat:
-                yield {"token": chit_chat, "done": True, "citations": []}
+                yield {"token": chit_chat, "done": False}
+                yield {"token": "", "done": True, "full_answer": chit_chat, "citations": []}
                 return
-            yield {"token": "No relevant document chunks were found in the knowledge base to answer your question.", "done": True}
+            no_docs_msg = "No relevant document chunks were found in the knowledge base to answer your question."
+            yield {"token": no_docs_msg, "done": False}
+            yield {"token": "", "done": True, "full_answer": no_docs_msg, "citations": []}
             return
 
         # Pre-LLM Relevance Gate (bypassed if follow-up or chat history exists)
         max_vector_score = max((float(c.get("vector_score", c.get("score", 0.0))) for c in retrieved_chunks), default=0.0)
         max_rerank_score = max((float(c.get("rerank_score", c.get("score", 0.0))) for c in retrieved_chunks), default=0.0)
 
+        greeting_name = self._extract_greeting_name(user_context)
+        user_salutation = f"Hi {greeting_name},\n\n" if greeting_name != "there" else ""
+
         if not is_follow_up and not chat_history and max_vector_score < 0.25 and max_rerank_score < 0.02:
             chit_chat = self._get_chit_chat_reply(query, user_context=user_context, mode=mode)
             if chit_chat:
-                yield {"token": chit_chat, "done": True, "citations": []}
+                yield {"token": chit_chat, "done": False}
+                yield {"token": "", "done": True, "full_answer": chit_chat, "citations": []}
                 return
 
-            user_salutation = f"Hi {user_context.get('name')},\n\n" if (user_context and user_context.get("name")) else ""
             refusal_text = (
                 f"{user_salutation}I am dedicated exclusively to Dr. Sarah Hensley's relationship psychology, attachment theory, and relationship transformation programs.\n\n"
                 "The topic you asked about is outside the scope of our verified knowledge base documents. "
                 "Please feel free to ask any question regarding attachment styles, relationship healing, communication frameworks, or Dr. Hensley's programs!"
             )
-            yield {"token": refusal_text, "done": True, "citations": []}
+            yield {"token": refusal_text, "done": False}
+            yield {"token": "", "done": True, "full_answer": refusal_text, "citations": []}
             return
 
         # Format context blocks
@@ -551,91 +639,28 @@ class OpenAIGeneratorService:
 
         formatted_context = "\n\n---\n\n".join(context_blocks)
 
-        user_profile_section = ""
-        user_name = None
-        has_history = False
-        greeting_name = "there"
-        if user_context:
-            user_name = user_context.get("name") or user_context.get("display_name")
-            has_history = user_context.get("has_history", False)
-            raw_pab = user_context.get("raw_pab_profile")
+        user_profile_section = self._build_personalized_profile_section(user_context)
+        has_history = bool(user_context and user_context.get("has_history", False))
+        user_name = user_context.get("name") if user_context else None
 
-            import json
-            if isinstance(raw_pab, dict):
-                full_profile_json = json.dumps(raw_pab, indent=2)
-            else:
-                full_profile_json = json.dumps(user_context, indent=2)
-
-            user_profile_section = (
-                "=== COMPLETE VERIFIED USER PROFILE & PAB API DATA (FULL JSON) ===\n"
-                f"{full_profile_json}\n"
-                "=================================================================\n\n"
-            )
-
-            raw_greeting = user_context.get("first_name") or user_context.get("name") or user_context.get("display_name")
-            if raw_greeting and " " in str(raw_greeting).strip():
-                greeting_name = str(raw_greeting).strip().split()[0]
-            elif raw_greeting:
-                greeting_name = str(raw_greeting).strip()
-
+        catalog_text = ""
         if mode == "sales":
             if recommended_products is None:
                 from src.sales_catalog import match_relevant_unowned_products
                 recommended_products = match_relevant_unowned_products(query=query, user_profile=user_context, limit=2)
             catalog_summary = []
-            for p in recommended_products:
+            for p in (recommended_products or []):
                 catalog_summary.append(
                     f"- {p['name']} ({p['price']}): {p['description']} | Checkout: {p['checkout_url']}"
                 )
             catalog_text = "\n".join(catalog_summary) if catalog_summary else "No unowned products remaining in catalog."
 
-            system_prompt = (
-                "You are the official Senior Relationship Program Advisor for Dr. Sarah Hensley.\n"
-                "Your role is a SOFT CONSULTATIVE, VALUE-FIRST SALES ADVISOR: You validate members with compassionate clinical insights first, and then naturally present the relevant masterclass, course, or session as the dedicated transformational solution.\n\n"
-                "MANDATORY SALES CONSULTANT RULES:\n"
-                f"1. GREETING SALUTATION: Always start line 1 with:\n"
-                f"   'Hi {greeting_name},'\n\n"
-                "2. PERSONALIZED OPENING:\n"
-                "   - For simple/definition queries: Keep greeting and opening to 1 single short line.\n"
-                "   - For complex relationship scenarios: Warmly acknowledge their journey and dedication from their profile.\n\n"
-                "3. DYNAMIC LENGTH & ADAPTIVE DEPTH (CRITICAL):\n"
-                "   - SHORT / SIMPLE QUERIES: Total response strictly under 70-90 words.\n"
-                "   - COMPLEX / MULTI-PART RELATIONSHIP SCENARIOS: Thorough breakdown (160 to 250 words).\n\n"
-                "4. VALUE-FIRST CLINICAL GUIDANCE:\n"
-                "   - Give an insightful explanation grounded in the knowledge excerpts.\n"
-                "   - STRICT CITATION RULE: Do not include citations, source numbers, footnotes, or references in your answer. Write naturally using the information provided.\n\n"
-                "5. MANDATORY CONSULTATIVE NEXT-STEP RECOMMENDATION:\n"
-                "   - End with markdown section starting exactly with: '### Recommended Next Step for Your Journey'\n"
-                f"{catalog_text}\n"
-                "   - STRICT: Never recommend a product the user already owns! Never use pushy tactics."
-            )
-        else:
-            system_prompt = (
-                "You are the clinical educational AI Assistant for Dr. Sarah Hensley.\n"
-                "You have access to: (1) Complete Raw PAB Profile API JSON, and (2) Clinical Knowledge Excerpts.\n\n"
-                "STRICT CLINICAL / NON-COMMERCIAL RULES:\n"
-                "1. STRICT NON-COMMERCIAL BOUNDARY: Never proactively sell paid programs. If asked explicitly about courses, acknowledge them and refer to Program Advisor or drsarahhensley.com.\n"
-                f"2. GREETING SALUTATION: Always start line 1 with: 'Hi {greeting_name},'\n"
-                "3. INTENT-AWARE OPENING:\n"
-                "   - For direct factual/definitional questions ('What is...', 'How do I...', 'Where is...'): Jump directly into the answer. Do NOT recite habit streaks, points, or membership dates.\n"
-                "   - For complex emotional or relationship situations: Warmly acknowledge their relevant progress or streaks.\n"
-                "   - Avoid redundancies: Use 'provides a script' rather than 'provides a scripted script'.\n"
-                "4. DYNAMIC LENGTH: Short queries under 80-100 words. Complex scenarios 150-250 words.\n"
-                "5. NATURAL KNOWLEDGE SYNTHESIS (STRICT NO CITATIONS):\n"
-                "   - Answer strictly grounded on the Clinical Knowledge Excerpts below.\n"
-                "   - STRICT CITATION RULE: Do not include citations, source numbers, footnotes, or references in your answer. Write naturally using the information provided.\n"
-                "   - The user is completely unaware that documents exist on the backend. Speak authoritatively and seamlessly in Dr. Sarah's natural clinical voice.\n\n"
-                "6. MULTI-TOOL / AMBIGUOUS QUESTION DISAMBIGUATION (CRITICAL):\n"
-                "   - When the user asks a question that applies to multiple distinct tools or subfolders in Dr. Hensley's program (e.g. 'What are my options on the first screen?', 'How do I start a session?', 'Where can I see my history?'), and the knowledge context contains information from different tools (such as Boundary Ladder, 1:1:1 Protocol, Fast Down Shift, or Today's Thoughts Journal):\n"
-                "   - Do NOT arbitrarily pick only one tool! Instead, clarify that options depend on which tool they are using, and provide a clear, concise bulleted breakdown under bold headings for each relevant tool found in the context (e.g. '**Boundary Ladder (Tools):** ...', '**1:1:1 Protocol (Tools):** ...').\n"
-                "   - End with a warm, single-sentence invitation asking which tool or section they would like to focus on."
-            )
-
-        if chat_history:
-            system_prompt += (
-                "\n\nCONTINUING CONVERSATION DIRECTIVE:\n"
-                "This is an active continuing conversation. Answer directly without repeating greetings or membership milestones."
-            )
+        system_prompt = self._build_system_prompt(
+            mode=mode,
+            greeting_name=greeting_name,
+            catalog_text=catalog_text,
+            chat_history=chat_history
+        )
 
         user_prompt = f"{user_profile_section}Retrieved Knowledge Context:\n{formatted_context}\n\nUser Question: {query}\n\nPersonalized Answer:"
 

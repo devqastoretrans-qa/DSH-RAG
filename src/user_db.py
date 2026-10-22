@@ -307,26 +307,8 @@ class UserDatabaseManager:
                     orders = r_orders.json()
 
             if not customer and not orders and not wp_user_obj:
-                # If not found in WooCommerce/WP, check local SQLite fallback (e.g. simulated personas)
-                sqlite_profile = self._get_profile_from_sqlite(identifier)
-                if sqlite_profile:
-                    return sqlite_profile
-                
-                # Graceful fallback for arbitrary new users/guests (never 404)
-                clean_name = identifier.split('@')[0].replace('.', ' ').replace('_', ' ').title() if '@' in identifier else str(identifier).capitalize()
-                return {
-                    "user_id": str(identifier),
-                    "name": clean_name,
-                    "email": identifier if "@" in identifier else f"{identifier}@example.com",
-                    "courses_purchased": [],
-                    "books_purchased": [],
-                    "all_purchases": [],
-                    "purchases_detail": [],
-                    "past_records": [],
-                    "records_detail": [],
-                    "has_history": False,
-                    "backend": "WordPress / WooCommerce (Guest / General Profile)"
-                }
+                # User not found in WooCommerce REST API, let caller check MySQL or fallback
+                return None
 
             # Categorize purchases into courses, books, sessions
             courses = []
@@ -538,16 +520,19 @@ class UserDatabaseManager:
 
         profile = None
 
-        if self.backend == "WordPress PAB Profile API" or self.wp_url:
+        # Priority 1: Check Local MySQL Database FIRST (Authoritative synced records in <1ms)
+        if getattr(self, "has_mysql", False) or self.backend == "MySQL":
+            profile = self._get_profile_from_mysql(clean_uid)
+
+        # Priority 2: Check WordPress PAB Profile API if not found
+        if not profile and (self.backend == "WordPress PAB Profile API" or self.wp_url):
             profile = self._get_profile_from_pab_api(clean_uid)
 
+        # Priority 3: Check live WordPress WooCommerce if not found
         if not profile and (self.backend.startswith("WordPress WooCommerce") or self.wp_url):
             profile = self._get_profile_from_woocommerce(clean_uid)
 
-        # Check MySQL before SQLite
-        if not profile and (getattr(self, "has_mysql", False) or self.backend == "MySQL"):
-            profile = self._get_profile_from_mysql(clean_uid)
-
+        # Priority 4: Check local SQLite fallback if not found
         if not profile:
             profile = self._get_profile_from_sqlite(clean_uid)
 
@@ -628,10 +613,16 @@ class UserDatabaseManager:
         all_items = [p["item_title"] for p in clean_purchases if p.get("item_title")]
         past_notes = [f"{r.get('interaction_type', 'Note')}: {r.get('summary_notes', '')}" for r in clean_records]
 
+        full_name = clean_user.get("name") or ""
+        first_name = full_name.split()[0] if full_name else (clean_user.get("id") or "Customer")
+
         return {
             "user_id": clean_user.get("id"),
             "name": clean_user.get("name"),
+            "first_name": first_name,
+            "display_name": clean_user.get("name"),
             "email": clean_user.get("email"),
+            "attachment_style": clean_user.get("attachment_style") or "Relationship Student",
             "courses_purchased": courses,
             "books_purchased": books,
             "all_purchases": all_items,
