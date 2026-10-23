@@ -28,6 +28,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from pathlib import Path
+
 try:
     import pymysql
     import pymysql.cursors
@@ -35,10 +37,19 @@ try:
 except ImportError:
     PYMYSQL_AVAILABLE = False
 
+LOGS_DIR = Path(__file__).resolve().parent.parent / "logs"
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
+SYNC_LOG_FILE = LOGS_DIR / "sync.log"
+
+file_handler = logging.FileHandler(str(SYNC_LOG_FILE), encoding="utf-8")
+file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+
+stream_handler = logging.StreamHandler(sys.stdout)
+stream_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)]
+    handlers=[stream_handler, file_handler]
 )
 logger = logging.getLogger("wp_mysql_sync")
 
