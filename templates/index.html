@@ -494,6 +494,73 @@
             overflow: hidden;
         }
 
+        /* Chat Channel Subheader (Separate Bots Indicator) */
+        .chat-channel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.55rem 1.75rem;
+            background: rgba(15, 23, 42, 0.7);
+            border-bottom: 1px solid var(--border-subtle);
+            backdrop-filter: blur(10px);
+            z-index: 10;
+        }
+
+        .channel-info {
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+        }
+
+        .channel-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: var(--brand-emerald);
+            box-shadow: 0 0 10px var(--brand-emerald-glow);
+            transition: all 0.3s ease;
+        }
+
+        .channel-dot.sales {
+            background: var(--brand-gold-bright);
+            box-shadow: 0 0 10px var(--brand-gold-glow);
+        }
+
+        .channel-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #FFFFFF;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            letter-spacing: 0.2px;
+        }
+
+        .channel-tag {
+            font-size: 0.67rem;
+            font-family: var(--font-mono);
+            color: var(--text-secondary);
+            padding: 0.15rem 0.5rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border-subtle);
+        }
+
+        .session-pill {
+            font-size: 0.67rem;
+            font-family: var(--font-mono);
+            color: var(--text-muted);
+            background: rgba(0, 0, 0, 0.2);
+            padding: 0.15rem 0.5rem;
+            border-radius: var(--radius-sm);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .session-pill code {
+            color: var(--brand-gold-bright);
+            font-size: 0.67rem;
+        }
+
         .chat-scroll-area {
             flex: 1;
             overflow-y: auto;
@@ -516,6 +583,13 @@
             box-shadow: var(--shadow-elevated);
         }
 
+        .welcome-hero.sales-theme {
+            background: radial-gradient(circle at 50% 0%, rgba(197, 168, 128, 0.12), transparent 70%),
+                        linear-gradient(180deg, var(--bg-surface) 0%, rgba(19, 30, 50, 0.5) 100%);
+            border-color: rgba(197, 168, 128, 0.3);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4), 0 0 25px rgba(197, 168, 128, 0.08);
+        }
+
         .hero-emblem {
             width: 54px;
             height: 54px;
@@ -530,6 +604,11 @@
             font-weight: 700;
             color: #fff;
             box-shadow: 0 0 25px var(--brand-emerald-glow);
+        }
+
+        .hero-emblem.sales-theme {
+            background: linear-gradient(135deg, #D4AF37, #927220);
+            box-shadow: 0 0 25px rgba(212, 175, 55, 0.35);
         }
 
         .welcome-hero h2 {
@@ -572,12 +651,21 @@
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
         }
 
+        .starter-chip.sales-theme:hover {
+            border-color: var(--brand-gold-bright);
+            box-shadow: 0 4px 15px rgba(212, 175, 55, 0.2);
+        }
+
         .chip-category {
             font-size: 0.66rem;
             font-family: var(--font-mono);
             color: var(--brand-emerald);
             font-weight: 600;
             text-transform: uppercase;
+        }
+
+        .chip-category.sales-theme {
+            color: var(--brand-gold-bright);
         }
 
         .chip-question {
@@ -1216,14 +1304,25 @@
                  CENTER PANEL: LIVE CONVERSATION CANVAS
                  =============================================================== -->
             <section class="panel-chat">
+                <!-- Channel Subheader: Clear visual separation between the 2 bots -->
+                <div class="chat-channel-header" id="chatChannelHeader">
+                    <div class="channel-info">
+                        <span class="channel-dot" id="channelDot"></span>
+                        <span class="channel-title" id="channelTitle">🩺 Clinical Educator Chat</span>
+                        <span class="channel-tag" id="channelTag">Evidence-Based Psychology • 0 Pitches</span>
+                    </div>
+                    <div class="channel-meta" id="channelSessionBadge">
+                        <span class="session-pill" id="sessionPill">Session: <code>initializing...</code></span>
+                    </div>
+                </div>
+
                 <div class="chat-scroll-area" id="chatMessageContainer">
-                    <!-- Welcome Hero -->
+                    <!-- Welcome Hero (Dynamically rendered per bot mode) -->
                     <div class="welcome-hero" id="welcomeHero">
-                        <div class="hero-emblem">SH</div>
-                        <h2>Dr. Sarah Hensley AI Studio</h2>
+                        <div class="hero-emblem">🩺</div>
+                        <h2>Dr. Sarah Hensley Clinical Educator</h2>
                         <p>
-                            Experience clinically grounded attachment theory, nervous system self-regulation frameworks, 
-                            and tailored masterclass recommendations powered by hybrid vector search and local MySQL customer memory.
+                            Evidence-based clinical guidance on attachment styles, subconscious core wounds, and nervous system regulation with <b>zero sales pitches</b>.
                         </p>
 
                         <div class="starter-chips-grid">
@@ -1239,9 +1338,9 @@
                                 <span class="chip-category">🩺 Attachment Theory</span>
                                 <span class="chip-question">What are the core differences between anxious and avoidant attachment?</span>
                             </div>
-                            <div class="starter-chip" onclick="runPresetQuery('Which masterclass or program should I enroll in to heal anxious spiraling?', 'sales')">
-                                <span class="chip-category">💼 Program Advisor</span>
-                                <span class="chip-question">Which masterclass or program should I enroll in to heal anxious spiraling?</span>
+                            <div class="starter-chip" onclick="runPresetQuery('How can I calm acute nervous system hyperarousal during relationship anxiety?', 'generic')">
+                                <span class="chip-category">🧘 Somatic Practice</span>
+                                <span class="chip-question">How can I calm acute nervous system hyperarousal during relationship anxiety?</span>
                             </div>
                         </div>
                     </div>
@@ -1343,10 +1442,38 @@
          JAVASCRIPT LOGIC FOR THE LIVE STUDIO
          ======================================================================= -->
     <script>
-        // State variables
+        // State variables: 2 completely distinct chat sessions & histories
+        const botChannels = {
+            'generic': {
+                name: 'Clinical Educator',
+                title: '🩺 Clinical Educator Chat',
+                tag: 'Evidence-Based Psychology • 0 Pitches',
+                theme: 'clinical',
+                badgeText: 'Mode: Clinical Educator (0 Pitches)',
+                badgeColor: 'var(--brand-emerald)',
+                inputPlaceholder: "Ask Dr. Sarah's Clinical AI about attachment styles, somatic regulation, or conflict tools...",
+                sessionId: 'sess_clinical_' + Math.random().toString(36).substring(2, 10),
+                chatHtml: null,
+                sources: [],
+                hasMessages: false
+            },
+            'sales': {
+                name: 'Program Advisor',
+                title: '💼 Program Advisor Chat',
+                tag: 'Personalized Course & Masterclass Guidance',
+                theme: 'sales',
+                badgeText: 'Mode: Program Advisor ($97 Masterclasses)',
+                badgeColor: 'var(--brand-gold-bright)',
+                inputPlaceholder: "Describe your relationship struggle or ask which course, masterclass, or session fits you...",
+                sessionId: 'sess_sales_' + Math.random().toString(36).substring(2, 10),
+                chatHtml: null,
+                sources: [],
+                hasMessages: false
+            }
+        };
+
         let currentMode = 'generic'; // 'generic' | 'sales'
         let currentUserId = '1836';
-        let currentSessionId = 'sess_' + Math.random().toString(36).substring(2, 10);
         let isGenerating = false;
         let usersCatalog = [];
 
@@ -1354,13 +1481,13 @@
         const chatContainer = document.getElementById('chatMessageContainer');
         const chatInput = document.getElementById('chatInputText');
         const btnSend = document.getElementById('btnSendMessage');
-        const welcomeHero = document.getElementById('welcomeHero');
 
         // Initialize on DOM load
         document.addEventListener('DOMContentLoaded', async () => {
             await fetchUsersList();
             await fetchSystemStats();
             onCustomerSelect('1836');
+            updateChannelHeader();
         });
 
         // 1. Fetch Users List from /api/users
@@ -1472,16 +1599,131 @@
                 guardrailNotice.innerHTML = `💼 <b>New Visitor:</b> Sales bot will pitch foundational offerings like the <i>Healing Anxious Attachment Masterclass ($97)</i>.`;
             }
 
-            // Cleanly reset session and chat window for the newly selected customer
-            if (typeof resetActiveSession === 'function') {
-                resetActiveSession();
+            // Cleanly reset both bot chat sessions for the newly selected customer
+            resetAllChannels();
+        }
+
+        // Reset Both Channels (used when customer changes)
+        function resetAllChannels() {
+            botChannels['generic'].sessionId = 'sess_clinical_' + Math.random().toString(36).substring(2, 10);
+            botChannels['generic'].chatHtml = null;
+            botChannels['generic'].sources = [];
+            botChannels['generic'].hasMessages = false;
+
+            botChannels['sales'].sessionId = 'sess_sales_' + Math.random().toString(36).substring(2, 10);
+            botChannels['sales'].chatHtml = null;
+            botChannels['sales'].sources = [];
+            botChannels['sales'].hasMessages = false;
+
+            renderWelcomeHeroForMode(currentMode, false);
+            updateChannelHeader();
+            renderSourcesInspector([]);
+            refreshMemoryTurns();
+        }
+
+        // Update Chat Channel Header Subbar
+        function updateChannelHeader() {
+            const channel = botChannels[currentMode];
+            const dot = document.getElementById('channelDot');
+            const title = document.getElementById('channelTitle');
+            const tag = document.getElementById('channelTag');
+            const sessionPill = document.getElementById('sessionPill');
+
+            if (dot) {
+                dot.className = `channel-dot ${currentMode === 'sales' ? 'sales' : 'clinical'}`;
+            }
+            if (title) {
+                title.innerHTML = `${channel.title}`;
+            }
+            if (tag) {
+                tag.textContent = channel.tag;
+            }
+            if (sessionPill) {
+                sessionPill.innerHTML = `Session: <code>${channel.sessionId}</code>`;
             }
         }
 
-        // 4. Mode Switcher Handler
+        // Render Welcome Hero For Mode
+        function renderWelcomeHeroForMode(mode, isNewSession = false) {
+            chatContainer.innerHTML = '';
+            const heroWrap = document.createElement('div');
+            if (mode === 'sales') {
+                heroWrap.className = 'welcome-hero sales-theme';
+                heroWrap.id = 'welcomeHero';
+                heroWrap.innerHTML = `
+                    <div class="hero-emblem sales-theme">💼</div>
+                    <h2>Dr. Sarah Hensley Program Advisor</h2>
+                    <p>
+                        ${isNewSession 
+                            ? `New advisor session initialized (<code>${botChannels['sales'].sessionId}</code>). Multi-turn conversation memory cleared.` 
+                            : `Personalized course guidance tailored to your attachment style and relationship stage. Find the right masterclass ($97), bundle, or coaching roadmap.`}
+                    </p>
+                    <div class="starter-chips-grid">
+                        <div class="starter-chip sales-theme" onclick="runPresetQuery('Which masterclass should I start with if I struggle with anxious spiraling?', 'sales')">
+                            <span class="chip-category sales-theme">🎓 Course Recommendation</span>
+                            <span class="chip-question">Which masterclass should I start with if I struggle with anxious spiraling?</span>
+                        </div>
+                        <div class="starter-chip sales-theme" onclick="runPresetQuery('What are Dr. Sarah’s signature $97 masterclasses and who are they for?', 'sales')">
+                            <span class="chip-category sales-theme">💼 Masterclass Catalog</span>
+                            <span class="chip-question">What are Dr. Sarah’s signature $97 masterclasses and who are they for?</span>
+                        </div>
+                        <div class="starter-chip sales-theme" onclick="runPresetQuery('What is included in the Secure Bundle and what is the investment?', 'sales')">
+                            <span class="chip-category sales-theme">📦 Bundle & Roadmaps</span>
+                            <span class="chip-question">What is included in the Secure Bundle and what is the investment?</span>
+                        </div>
+                        <div class="starter-chip sales-theme" onclick="runPresetQuery('I keep attracting emotionally unavailable partners. What course helps break this cycle?', 'sales')">
+                            <span class="chip-category sales-theme">🧭 Breaking Cycles</span>
+                            <span class="chip-question">I keep attracting emotionally unavailable partners. What course helps break this cycle?</span>
+                        </div>
+                    </div>
+                `;
+            } else {
+                heroWrap.className = 'welcome-hero';
+                heroWrap.id = 'welcomeHero';
+                heroWrap.innerHTML = `
+                    <div class="hero-emblem">🩺</div>
+                    <h2>Dr. Sarah Hensley Clinical Educator</h2>
+                    <p>
+                        ${isNewSession 
+                            ? `New clinical session initialized (<code>${botChannels['generic'].sessionId}</code>). Multi-turn conversation memory cleared.` 
+                            : `Evidence-based clinical guidance on attachment styles, subconscious core wounds, and nervous system regulation with <b>zero sales pitches</b>.`}
+                    </p>
+                    <div class="starter-chips-grid">
+                        <div class="starter-chip" onclick="runPresetQuery('What is the 1:1:1 journal reflection method for emotional regulation?', 'generic')">
+                            <span class="chip-category">📓 Clinical Tool</span>
+                            <span class="chip-question">What is the 1:1:1 journal reflection method for emotional regulation?</span>
+                        </div>
+                        <div class="starter-chip" onclick="runPresetQuery('How does the SOLACE communication tool resolve high-conflict fights?', 'generic')">
+                            <span class="chip-category">🤝 Communication</span>
+                            <span class="chip-question">How does the SOLACE communication tool resolve high-conflict fights?</span>
+                        </div>
+                        <div class="starter-chip" onclick="runPresetQuery('What are the core differences between anxious and avoidant attachment?', 'generic')">
+                            <span class="chip-category">🩺 Attachment Theory</span>
+                            <span class="chip-question">What are the core differences between anxious and avoidant attachment?</span>
+                        </div>
+                        <div class="starter-chip" onclick="runPresetQuery('How can I calm acute nervous system hyperarousal during relationship anxiety?', 'generic')">
+                            <span class="chip-category">🧘 Somatic Practice</span>
+                            <span class="chip-question">How can I calm acute nervous system hyperarousal during relationship anxiety?</span>
+                        </div>
+                    </div>
+                `;
+            }
+            chatContainer.appendChild(heroWrap);
+        }
+
+        // 4. Mode Switcher Handler (Preserves 2 completely independent chat histories)
         function switchStudioMode(mode) {
             if (isGenerating) return;
+            if (mode === currentMode) return;
+
+            // 1. Save outgoing mode's HTML
+            botChannels[currentMode].chatHtml = chatContainer.innerHTML;
+
+            // 2. Set new mode
             currentMode = mode;
+            const channel = botChannels[currentMode];
+
+            // 3. Update buttons in header
             const btnClinical = document.getElementById('btnModeClinical');
             const btnSales = document.getElementById('btnModeSales');
             const label = document.getElementById('activeModeLabel');
@@ -1489,14 +1731,29 @@
             if (mode === 'sales') {
                 btnSales.classList.add('active', 'sales');
                 btnClinical.classList.remove('active', 'clinical');
-                label.textContent = 'Mode: Program Advisor ($97 Masterclasses)';
-                label.style.color = 'var(--brand-gold-bright)';
             } else {
                 btnClinical.classList.add('active', 'clinical');
                 btnSales.classList.remove('active', 'sales');
-                label.textContent = 'Mode: Clinical Educator (0 Pitches)';
-                label.style.color = 'var(--brand-emerald)';
             }
+
+            label.textContent = channel.badgeText;
+            label.style.color = channel.badgeColor;
+            chatInput.placeholder = channel.inputPlaceholder;
+
+            // 4. Update Chat Channel Subheader
+            updateChannelHeader();
+
+            // 5. Restore or Render Chat Canvas for the target bot
+            if (channel.chatHtml !== null && channel.chatHtml !== '') {
+                chatContainer.innerHTML = channel.chatHtml;
+            } else {
+                renderWelcomeHeroForMode(currentMode, false);
+            }
+            scrollToBottom();
+
+            // 6. Update Inspector (Sources and Memory Turns for this specific bot)
+            renderSourcesInspector(channel.sources || []);
+            refreshMemoryTurns();
         }
 
         // 5. Submit Message (Live SSE Streaming)
@@ -1504,9 +1761,10 @@
             const text = chatInput.value.trim();
             if (!text || isGenerating) return;
 
-            // Remove welcome hero if first message
-            if (welcomeHero && welcomeHero.parentNode) {
-                welcomeHero.remove();
+            // Remove welcome hero if present in this active chat
+            const hero = chatContainer.querySelector('.welcome-hero');
+            if (hero) {
+                hero.remove();
             }
 
             // 1. Render User Bubble
@@ -1524,13 +1782,14 @@
             const startTime = performance.now();
             let accumulatedTokens = '';
             let isFirstToken = true;
+            const activeChannel = botChannels[currentMode];
 
             try {
                 const response = await fetch('/chat/stream', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        session_id: currentSessionId,
+                        session_id: activeChannel.sessionId,
                         user_id: currentUserId,
                         message: text,
                         mode: currentMode
@@ -1570,7 +1829,10 @@
                                     renderFinalBotMessage(botBubble, finalAns, payload);
                                     
                                     // Update Inspector Tabs
-                                    if (payload.sources) renderSourcesInspector(payload.sources);
+                                    if (payload.sources) {
+                                        activeChannel.sources = payload.sources;
+                                        renderSourcesInspector(payload.sources);
+                                    }
                                     await refreshMemoryTurns();
                                 }
                             } catch (e) {
@@ -1594,17 +1856,22 @@
                 const cursor = botBubble.querySelector('.typing-cursor');
                 if (cursor) cursor.remove();
                 scrollToBottom();
+
+                // Persist current active channel state
+                activeChannel.hasMessages = true;
+                activeChannel.chatHtml = chatContainer.innerHTML;
             }
         }
 
         // Fallback fetch if SSE fails
         async function fallbackFetch(text, botBubble, startTime) {
+            const activeChannel = botChannels[currentMode];
             try {
                 const res = await fetch('/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        session_id: currentSessionId,
+                        session_id: activeChannel.sessionId,
                         user_id: currentUserId,
                         message: text,
                         mode: currentMode
@@ -1613,8 +1880,13 @@
                 const data = await res.json();
                 const latency = ((performance.now() - startTime) / 1000).toFixed(2);
                 renderFinalBotMessage(botBubble, data.answer || 'No response generated.', { ...data, latency });
-                if (data.sources) renderSourcesInspector(data.sources);
+                if (data.sources) {
+                    activeChannel.sources = data.sources;
+                    renderSourcesInspector(data.sources);
+                }
                 await refreshMemoryTurns();
+                activeChannel.hasMessages = true;
+                activeChannel.chatHtml = chatContainer.innerHTML;
             } catch (err) {
                 botBubble.innerHTML = `<span style="color:var(--brand-coral);">Connection error. Please try again.</span>`;
             }
@@ -1635,13 +1907,14 @@
         function renderBotPlaceholder(id) {
             const row = document.createElement('div');
             row.className = 'message-row bot-row';
+            const isSales = (currentMode === 'sales');
             row.innerHTML = `
-                <div class="bubble bot-bubble" id="${id}">
-                    <span style="color:var(--text-muted); font-style:italic;">Synthesizing clinical response...</span>
+                <div class="bubble bot-bubble ${isSales ? 'sales-bubble' : ''}" id="${id}">
+                    <span style="color:var(--text-muted); font-style:italic;">${isSales ? 'Searching catalog & formulating advisor recommendation...' : 'Synthesizing clinical response...'}</span>
                     <span class="typing-cursor"></span>
                 </div>
                 <div class="bubble-meta-row" id="meta_${id}">
-                    <span class="meta-pill">Mode: ${currentMode}</span>
+                    <span class="meta-pill" style="${isSales ? 'color:var(--brand-gold-bright);' : 'color:var(--brand-emerald);'}">Mode: ${isSales ? 'Program Advisor' : 'Clinical Educator'}</span>
                 </div>
             `;
             chatContainer.appendChild(row);
@@ -1710,15 +1983,16 @@
 
         // 7. Refresh Memory Turns in Right Inspector Drawer
         async function refreshMemoryTurns() {
+            const activeSessionId = botChannels[currentMode].sessionId;
             try {
-                const res = await fetch(`/api/chat/history?session_id=${encodeURIComponent(currentSessionId)}&user_id=${encodeURIComponent(currentUserId)}`);
+                const res = await fetch(`/api/chat/history?session_id=${encodeURIComponent(activeSessionId)}&user_id=${encodeURIComponent(currentUserId)}`);
                 if (res.ok) {
                     const data = await res.json();
                     const container = document.getElementById('memoryTurnsContainer');
                     const turns = data.turns || [];
 
                     if (turns.length === 0) {
-                        container.innerHTML = `<div style="font-size:0.75rem; color:var(--text-muted); font-style:italic;">No turns recorded yet for session: <code>${currentSessionId}</code></div>`;
+                        container.innerHTML = `<div style="font-size:0.75rem; color:var(--text-muted); font-style:italic;">No turns recorded yet for active ${botChannels[currentMode].name} session: <code>${activeSessionId}</code></div>`;
                         return;
                     }
 
@@ -1734,41 +2008,42 @@
             }
         }
 
-        // 8. Preset Query Trigger
+        // 8. Preset Query Trigger (Switches mode first if different, ensuring proper bot chat)
         function runPresetQuery(promptText, mode) {
-            if (mode) switchStudioMode(mode);
+            if (mode && mode !== currentMode) {
+                switchStudioMode(mode);
+            }
             chatInput.value = promptText;
             autoResizeTextarea(chatInput);
             submitMessage();
         }
 
-        // 9. Reset Session
+        // 9. Reset Session (Resets only the ACTIVE bot's chat)
         async function resetActiveSession() {
             if (isGenerating) return;
+            const activeChannel = botChannels[currentMode];
+            const oldSessionId = activeChannel.sessionId;
+
             try {
                 await fetch('/chat/reset', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        session_id: currentSessionId,
+                        session_id: oldSessionId,
                         user_id: currentUserId,
                         mode: currentMode
                     })
                 });
             } catch (e) {}
 
-            currentSessionId = 'sess_' + Math.random().toString(36).substring(2, 10);
-            chatContainer.innerHTML = '';
+            activeChannel.sessionId = `sess_${currentMode}_` + Math.random().toString(36).substring(2, 10);
+            activeChannel.chatHtml = null;
+            activeChannel.sources = [];
+            activeChannel.hasMessages = false;
             
-            // Re-render hero
-            const heroWrap = document.createElement('div');
-            heroWrap.className = 'welcome-hero';
-            heroWrap.innerHTML = `
-                <div class="hero-emblem">SH</div>
-                <h2>Dr. Sarah Hensley AI Studio</h2>
-                <p>New session initialized (<code>${currentSessionId}</code>). Multi-turn conversation memory cleared in MySQL.</p>
-            `;
-            chatContainer.appendChild(heroWrap);
+            renderWelcomeHeroForMode(currentMode, true);
+            updateChannelHeader();
+            renderSourcesInspector([]);
             await refreshMemoryTurns();
         }
 
