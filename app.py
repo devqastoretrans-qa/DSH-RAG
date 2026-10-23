@@ -1227,6 +1227,11 @@ async def get_system_stats():
     summary="WooCommerce Real-Time Order & Customer Webhook"
 )
 @app.post(
+    "/sync",
+    tags=["WooCommerce Integration"],
+    summary="WooCommerce Real-Time Webhook (/sync alias)"
+)
+@app.post(
     "/api/v1/woocommerce/webhook",
     tags=["WooCommerce Integration"],
     summary="WooCommerce Real-Time Order & Customer Webhook (Legacy Route)"
