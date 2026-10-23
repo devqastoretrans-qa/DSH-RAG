@@ -672,6 +672,33 @@ class UserDatabaseManager:
                 courses.append(item_name)
             records.append(f"Order #{order_id}: Purchased '{item_name}' on {created} (Status: {status})")
 
+        # Update MySQL storage if available
+        if getattr(self, "has_mysql", False):
+            try:
+                with self._get_mysql_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "INSERT INTO users (id, name, email) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE name=VALUES(name)",
+                            (user_id, name, email or None)
+                        )
+                        if email and email != user_id:
+                            cur.execute(
+                                "INSERT INTO users (id, name, email) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE name=VALUES(name)",
+                                (email, name, email)
+                            )
+                        for c in (courses + sessions):
+                            cur.execute("SELECT id FROM purchases WHERE user_id = %s AND item_title = %s LIMIT 1", (user_id, c))
+                            if not cur.fetchone():
+                                cur.execute("INSERT INTO purchases (user_id, item_type, item_title) VALUES (%s, 'course', %s)", (user_id, c))
+                        for b in books:
+                            cur.execute("SELECT id FROM purchases WHERE user_id = %s AND item_title = %s LIMIT 1", (user_id, b))
+                            if not cur.fetchone():
+                                cur.execute("INSERT INTO purchases (user_id, item_type, item_title) VALUES (%s, 'book', %s)", (user_id, b))
+                        for r in records:
+                            cur.execute("INSERT INTO past_records (user_id, interaction_type, summary_notes) VALUES (%s, 'Order', %s)", (user_id, r))
+            except Exception as e_mysql:
+                print(f"[UserDB Webhook] MySQL order write error: {e_mysql}")
+
         # Update local SQLite storage
         with self._lock:
             with self._get_sqlite_conn() as conn:
@@ -699,7 +726,10 @@ class UserDatabaseManager:
         profile = {
             "user_id": user_id,
             "name": name,
+            "first_name": first_name or name.split()[0],
+            "display_name": name,
             "email": email,
+            "attachment_style": "Relationship Student",
             "courses_purchased": list(dict.fromkeys(courses + sessions)),
             "books_purchased": list(dict.fromkeys(books)),
             "all_purchases": list(dict.fromkeys(courses + sessions + books)),
@@ -720,6 +750,83 @@ class UserDatabaseManager:
                 self._cache[customer_id] = cache_entry
 
         print(f"[UserDB Webhook] Synced customer {name} ({email or user_id}) - {len(courses + sessions + books)} item(s) cached.")
+        return profile
+
+    def ingest_woocommerce_customer_webhook(self, customer_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Receives real-time push events from WooCommerce for 'customer.created' or 'customer.updated'.
+        Instantly saves the new user's name and email into MySQL and SQLite, and primes the in-memory cache.
+        """
+        if not customer_data or not isinstance(customer_data, dict):
+            raise ValueError("Invalid customer data payload")
+
+        cid = str(customer_data.get("id") or "")
+        first_name = (customer_data.get("first_name") or "").strip()
+        last_name = (customer_data.get("last_name") or "").strip()
+        username = (customer_data.get("username") or "").strip()
+        email = (customer_data.get("email") or "").strip().lower()
+
+        full_name = f"{first_name} {last_name}".strip()
+        if not full_name:
+            full_name = username or (email.split("@")[0].title() if email else f"Customer #{cid}")
+
+        user_id = cid if cid and cid != "0" else (email or "guest")
+
+        # 1. Update MySQL
+        if getattr(self, "has_mysql", False):
+            try:
+                with self._get_mysql_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "INSERT INTO users (id, name, email) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE name=VALUES(name), email=VALUES(email)",
+                            (user_id, full_name, email or None)
+                        )
+                        if email and email != user_id:
+                            cur.execute(
+                                "INSERT INTO users (id, name, email) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE name=VALUES(name)",
+                                (email, full_name, email)
+                            )
+            except Exception as e_mysql:
+                print(f"[UserDB Webhook] MySQL customer write error: {e_mysql}")
+
+        # 2. Update local SQLite
+        with self._lock:
+            with self._get_sqlite_conn() as conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO users (id, name, email) VALUES (?, ?, ?)",
+                    (user_id, full_name, email or f"{user_id}@example.com")
+                )
+                if email and email != user_id:
+                    conn.execute(
+                        "INSERT OR REPLACE INTO users (id, name, email) VALUES (?, ?, ?)",
+                        (email, full_name, email)
+                    )
+
+        profile = {
+            "user_id": user_id,
+            "name": full_name,
+            "first_name": first_name or full_name.split()[0],
+            "display_name": full_name,
+            "email": email,
+            "attachment_style": "Relationship Student",
+            "courses_purchased": [],
+            "books_purchased": [],
+            "all_purchases": [],
+            "purchases_detail": [],
+            "past_records": [],
+            "records_detail": [],
+            "has_history": False,
+            "backend": "WooCommerce Webhook (Instant Customer Sync)"
+        }
+
+        # Prime in-memory cache
+        with self._lock:
+            cache_entry = {"profile": profile, "timestamp": time.time()}
+            self._cache[user_id] = cache_entry
+            if email:
+                self._cache[email] = cache_entry
+
+        print(f"[UserDB Webhook] Synced new customer {full_name} ({email or user_id}) into MySQL.")
         return profile
 
     def list_users(self) -> List[Dict[str, Any]]:

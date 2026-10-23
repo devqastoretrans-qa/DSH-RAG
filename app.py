@@ -1,6 +1,11 @@
 import os
 import re
+import json
+import hmac
+import hashlib
+import base64
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from contextlib import asynccontextmanager
@@ -1217,32 +1222,99 @@ async def get_system_stats():
 
 
 @app.post(
+    "/api/webhooks/woocommerce",
+    tags=["WooCommerce Integration"],
+    summary="WooCommerce Real-Time Order & Customer Webhook"
+)
+@app.post(
     "/api/v1/woocommerce/webhook",
     tags=["WooCommerce Integration"],
-    summary="WooCommerce Order & Customer Event Webhook"
+    summary="WooCommerce Real-Time Order & Customer Webhook (Legacy Route)"
 )
 async def woocommerce_webhook(request: Request):
     """
-    Receives real-time push events from WooCommerce (Order Completed, Order Created, Customer Updated).
-    Immediately parses purchased books/courses and updates local database + cache for 0ms chat lookup.
+    Receives real-time push events from WooCommerce (Customer Created, Customer Updated, Order Created, Order Updated).
+    Cryptographically verifies the HMAC-SHA256 signature, syncs users and orders directly to MySQL,
+    and appends event telemetry to logs/sync.log.
     """
+    raw_body = await request.body()
+    secret = os.getenv("WC_WEBHOOK_SECRET", "dsh_wc_webhook_secret_2026_k9X2").strip()
+
+    # 1. Cryptographic HMAC-SHA256 Signature Verification
+    signature = request.headers.get("x-wc-webhook-signature", "").strip()
+    if secret and signature:
+        expected_sig = base64.b64encode(hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).digest()).decode("utf-8")
+        if not hmac.compare_digest(signature, expected_sig):
+            logger.warning(f"[WooCommerce Webhook] Unauthorized: Invalid HMAC signature. Received='{signature}'")
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+    # 2. Parse Payload & Headers
+    topic = request.headers.get("x-wc-webhook-topic", "").strip().lower()
+    resource = request.headers.get("x-wc-webhook-resource", "").strip().lower()
+    webhook_id = request.headers.get("x-wc-webhook-id", "")
+
     try:
-        payload = await request.json()
+        payload = json.loads(raw_body.decode("utf-8")) if raw_body else {}
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
-    user_db = get_user_db()
-    try:
-        updated_profile = user_db.ingest_woocommerce_order_webhook(payload)
+    # 3. Handle WordPress Test Ping
+    if not payload or payload.get("webhook_id") or topic in ("ping", "webhook.ping"):
+        logger.info(f"[WooCommerce Webhook] Acknowledged WordPress test ping (ID: {webhook_id or payload.get('webhook_id')})")
         return JSONResponse(status_code=200, content={
             "status": "success",
-            "message": f"Synchronized user '{updated_profile.get('name')}'",
-            "user_id": updated_profile.get("user_id"),
-            "email": updated_profile.get("email"),
-            "purchases_count": len(updated_profile.get("all_purchases", []))
+            "message": "Webhook ping verified successfully",
+            "webhook_id": webhook_id or payload.get("webhook_id")
         })
+
+    user_db = get_user_db()
+    sync_log_path = Path(__file__).resolve().parent / "logs" / "sync.log"
+    timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S,%f")[:-3]
+
+    try:
+        # 4. Route Customer Created / Updated Events
+        if "customer" in topic or resource == "customer" or ("username" in payload and "line_items" not in payload):
+            profile = user_db.ingest_woocommerce_customer_webhook(payload)
+            log_line = f"{timestamp_str} [INFO] [WEBHOOK] New Customer Joined: {profile.get('name')} ({profile.get('email')})\n"
+            try:
+                with open(sync_log_path, "a", encoding="utf-8") as lf:
+                    lf.write(log_line)
+            except Exception:
+                pass
+            logger.info(f"[WooCommerce Webhook] Synced new customer: {profile.get('name')} ({profile.get('email')})")
+            return JSONResponse(status_code=200, content={
+                "status": "success",
+                "event": "customer.created",
+                "user_id": profile.get("user_id"),
+                "name": profile.get("name"),
+                "email": profile.get("email")
+            })
+
+        # 5. Route Order Created / Updated Events
+        profile = user_db.ingest_woocommerce_order_webhook(payload)
+        order_id = payload.get("id")
+        order_status = payload.get("status", "completed")
+        purchases_count = len(profile.get("all_purchases", []))
+        log_line = f"{timestamp_str} [INFO] [WEBHOOK] Order #{order_id} ({order_status}): {profile.get('name')} ({profile.get('email')}) - {purchases_count} items active\n"
+        try:
+            with open(sync_log_path, "a", encoding="utf-8") as lf:
+                lf.write(log_line)
+        except Exception:
+            pass
+
+        logger.info(f"[WooCommerce Webhook] Synced order #{order_id} ({order_status}) for {profile.get('name')}")
+        return JSONResponse(status_code=200, content={
+            "status": "success",
+            "event": "order.updated",
+            "order_id": order_id,
+            "order_status": order_status,
+            "user_id": profile.get("user_id"),
+            "email": profile.get("email"),
+            "purchases_count": purchases_count
+        })
+
     except Exception as e:
-        logger.error(f"[WooCommerce Webhook] Error: {str(e)}", exc_info=True)
+        logger.error(f"[WooCommerce Webhook] Error processing payload: {str(e)}", exc_info=True)
         return JSONResponse(status_code=200, content={
             "status": "skipped",
             "reason": str(e)
