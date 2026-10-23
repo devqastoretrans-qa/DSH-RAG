@@ -411,7 +411,9 @@ class OpenAIGeneratorService:
         max_vector_score = max((float(c.get("vector_score", c.get("score", 0.0))) for c in retrieved_chunks), default=0.0)
         max_rerank_score = max((float(c.get("rerank_score", c.get("score", 0.0))) for c in retrieved_chunks), default=0.0)
 
-        if not is_follow_up and not chat_history and max_vector_score < 0.25 and max_rerank_score < 0.02:
+        has_sales_match = (mode == "sales" and bool(re.search(r"\b(course|program|class|masterclass|pricing|price|cost|buy|enroll|session|consult|workbook|book|recommend|help|anxious|avoidant|attachment|relationship|ex|breakup|dating|partner|spiral|text)\b", query, re.I)))
+
+        if not is_follow_up and not chat_history and not has_sales_match and max_vector_score < 0.25 and max_rerank_score < 0.02:
             chit_chat = self._get_chit_chat_reply(query, user_context=user_context, mode=mode)
             if chit_chat:
                 return {
@@ -597,7 +599,9 @@ class OpenAIGeneratorService:
         greeting_name = self._extract_greeting_name(user_context)
         user_salutation = f"Hi {greeting_name},\n\n" if greeting_name != "there" else ""
 
-        if not is_follow_up and not chat_history and max_vector_score < 0.25 and max_rerank_score < 0.02:
+        has_sales_match = (mode == "sales" and bool(re.search(r"\b(course|program|class|masterclass|pricing|price|cost|buy|enroll|session|consult|workbook|book|recommend|help|anxious|avoidant|attachment|relationship|ex|breakup|dating|partner|spiral|text)\b", query, re.I)))
+
+        if not is_follow_up and not chat_history and not has_sales_match and max_vector_score < 0.25 and max_rerank_score < 0.02:
             chit_chat = self._get_chit_chat_reply(query, user_context=user_context, mode=mode)
             if chit_chat:
                 yield {"token": chit_chat, "done": False}
