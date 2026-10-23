@@ -48,6 +48,12 @@ def strip_citation_markers(text: str) -> str:
     return text.strip()
 
 
+OFF_TOPIC_REGEX = re.compile(
+    r'\b(python|javascript|typescript|c\+\+|java|golang|rust|html|css|sql|coding|write\s+(?:me\s+)?a\s+(?:python|bash|code|script)|scrape|scraping|bitcoin|crypto|cryptocurrency|ethereum|stock\s+price|stock\s+market|forex|invest\s+in\s+bitcoin|trading|weather\s+forecast)\b',
+    re.IGNORECASE
+)
+
+
 class OpenAIGeneratorService:
     """
     RAG Generation service that queries OpenAI ChatGPT models
@@ -291,8 +297,12 @@ class OpenAIGeneratorService:
                 "   - In this section, warmly recommend the unowned offering from the catalog list below that matches their specific pain point:\n"
                 f"{catalog_text}\n"
                 "   - STRICT GUARDRAIL: NEVER recommend or pitch a product or course the user already owns in their profile!\n"
-                "   - Clearly explain WHY this specific offering directly solves their problem, state its verified price, list what is included, and provide the official checkout link.\n"
-                "   - Never invent discounts, fake urgency, or use pushy high-pressure sales tactics."
+                "   - Never invent discounts, fake urgency, or use pushy high-pressure sales tactics.\n\n"
+                "6. STRICT OFF-TOPIC REFUSAL GUARDRAIL:\n"
+                "   - You are dedicated exclusively to Dr. Sarah Hensley's relationship psychology, attachment theory, and transformation programs.\n"
+                "   - If the user asks about unrelated topics (such as computer coding, software, cryptocurrency, stock trading, general math, or cooking recipes), you MUST refuse directly by stating:\n"
+                f"   'Hi {greeting_name},\n\nI am dedicated exclusively to Dr. Sarah Hensley\\'s relationship psychology, attachment theory, and relationship transformation programs. I cannot assist with computer coding, financial trading, or technical development. Please feel free to ask any question regarding attachment styles, relationship healing, or Dr. Hensley\\'s masterclasses!'\n"
+                "   - Do NOT write computer code or financial advice, and do NOT attach sales course recommendations to off-topic requests."
             )
         else:
             prompt = (
@@ -360,6 +370,21 @@ class OpenAIGeneratorService:
 
         greeting_name = self._extract_greeting_name(user_context)
         user_salutation = f"Hi {greeting_name},\n\n" if greeting_name != "there" else ""
+
+        if OFF_TOPIC_REGEX.search(query):
+            refusal_text = (
+                f"{user_salutation}I am dedicated exclusively to Dr. Sarah Hensley's relationship psychology, attachment theory, and relationship transformation programs.\n\n"
+                "The topic you asked about (technical development, financial trading, or non-relationship inquiries) is outside the scope of our services. "
+                "Please feel free to ask any question regarding attachment styles, relationship healing, communication frameworks, or Dr. Hensley's programs!"
+            )
+            return {
+                "answer": refusal_text,
+                "model": "system-scope-guardrail",
+                "citations": [],
+                "personalized": bool(user_context and user_context.get("has_history", False)),
+                "customer_name": user_context.get("name") if user_context else None,
+                "out_of_domain": True
+            }
 
         if not retrieved_chunks:
             chit_chat = self._get_chit_chat_reply(query, user_context=user_context, mode=mode)
@@ -541,7 +566,7 @@ class OpenAIGeneratorService:
             generated_text = re.sub(r'\bscripted\s+script\b', 'script', generated_text, flags=re.I)
             generated_text = re.sub(r'(\n\s*[-*•]\s*)$', '', generated_text.rstrip())
 
-        if mode == "sales" and recommended_products and generated_text and "Recommended Next Step for Your Journey" not in generated_text:
+        if mode == "sales" and recommended_products and generated_text and not OFF_TOPIC_REGEX.search(query) and "outside the scope" not in generated_text and "Recommended Next Step for Your Journey" not in generated_text:
             fallback_card = "\n\n### Recommended Next Step for Your Journey\n"
             for p in recommended_products:
                 fallback_card += f"To deepen your healing on this dynamic, Dr. Sarah Hensley's **{p['name']}** ({p['price']}) provides step-by-step guidance. [Explore details and enroll here]({p['checkout_url']}).\n"
@@ -598,6 +623,16 @@ class OpenAIGeneratorService:
 
         greeting_name = self._extract_greeting_name(user_context)
         user_salutation = f"Hi {greeting_name},\n\n" if greeting_name != "there" else ""
+
+        if OFF_TOPIC_REGEX.search(query):
+            refusal_text = (
+                f"{user_salutation}I am dedicated exclusively to Dr. Sarah Hensley's relationship psychology, attachment theory, and relationship transformation programs.\n\n"
+                "The topic you asked about (technical development, financial trading, or non-relationship inquiries) is outside the scope of our services. "
+                "Please feel free to ask any question regarding attachment styles, relationship healing, communication frameworks, or Dr. Hensley's programs!"
+            )
+            yield {"token": refusal_text, "done": False}
+            yield {"token": "", "done": True, "full_answer": refusal_text, "citations": []}
+            return
 
         has_sales_match = (mode == "sales" and bool(re.search(r"\b(course|program|class|masterclass|pricing|price|cost|buy|enroll|session|consult|workbook|book|recommend|help|anxious|avoidant|attachment|relationship|ex|breakup|dating|partner|spiral|text)\b", query, re.I)))
 
@@ -717,7 +752,7 @@ class OpenAIGeneratorService:
                     yield {"token": content, "done": False}
 
             combined_text = "".join(full_text)
-            if mode == "sales" and recommended_products and "Recommended Next Step for Your Journey" not in combined_text:
+            if mode == "sales" and recommended_products and not OFF_TOPIC_REGEX.search(query) and "outside the scope" not in combined_text and "Recommended Next Step for Your Journey" not in combined_text:
                 fallback_card = "\n\n### Recommended Next Step for Your Journey\n"
                 for p in recommended_products:
                     fallback_card += f"To deepen your healing on this dynamic, Dr. Sarah Hensley's **{p['name']}** ({p['price']}) provides step-by-step guidance. [Explore details and enroll here]({p['checkout_url']}).\n"
