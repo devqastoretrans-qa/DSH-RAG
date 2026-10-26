@@ -1194,6 +1194,11 @@ async def get_chat_history_endpoint(session_id: str, user_id: Optional[str] = "g
     tags=["System Health"],
     summary="Get real-time system stats and database counts"
 )
+@app.get(
+    "/api/stats",
+    tags=["System Health"],
+    summary="Get real-time system stats (/api/stats alias)"
+)
 async def get_system_stats():
     """
     Returns live MySQL table counts, cache metrics, and system status for the UI inspector.
@@ -1296,6 +1301,11 @@ async def get_database_table(table_name: str, limit: int = 200, offset: int = 0)
     "/sync",
     tags=["WooCommerce Integration"],
     summary="WooCommerce Real-Time Webhook (/sync alias)"
+)
+@app.post(
+    "/reconcile",
+    tags=["WooCommerce Integration"],
+    summary="WooCommerce Reconciliation Webhook (/reconcile alias)"
 )
 @app.post(
     "/api/v1/woocommerce/webhook",
