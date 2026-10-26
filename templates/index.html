@@ -246,6 +246,18 @@
             background: #243552;
         }
 
+        .btn-action-icon.db-btn {
+            border-color: rgba(197, 168, 128, 0.4);
+            color: var(--brand-gold-bright);
+            background: rgba(197, 168, 128, 0.1);
+        }
+
+        .btn-action-icon.db-btn:hover {
+            background: rgba(197, 168, 128, 0.22);
+            border-color: var(--brand-gold-bright);
+            box-shadow: 0 0 12px var(--brand-gold-glow);
+        }
+
         /* =========================================================================
            THREE-COLUMN MAIN WORKSPACE
            ========================================================================= */
@@ -1118,6 +1130,257 @@
             text-transform: uppercase;
         }
 
+        /* =========================================================================
+           DATABASE VIEWER MODAL
+           ========================================================================= */
+        .db-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(11, 17, 32, 0.85);
+            backdrop-filter: blur(14px);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+            animation: fadeIn 0.2s ease-out;
+        }
+
+        .db-modal-overlay.active {
+            display: flex;
+        }
+
+        .db-modal-container {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-accent);
+            border-radius: var(--radius-lg);
+            width: 100%;
+            max-width: 1150px;
+            height: 86vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7);
+            overflow: hidden;
+        }
+
+        .db-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1.1rem 1.6rem;
+            background: var(--bg-surface-elevated);
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .db-modal-title {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-family: var(--font-heading);
+            font-size: 1.25rem;
+            color: #FFFFFF;
+        }
+
+        .db-modal-tag {
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: var(--radius-full);
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--brand-emerald);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .db-modal-close {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.2rem 0.6rem;
+            border-radius: var(--radius-sm);
+            transition: all 0.2s;
+            line-height: 1;
+        }
+
+        .db-modal-close:hover {
+            color: #FFFFFF;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .db-modal-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.85rem 1.6rem;
+            background: rgba(19, 30, 50, 0.65);
+            border-bottom: 1px solid var(--border-subtle);
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .db-table-tabs {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .db-tab-btn {
+            background: var(--bg-base);
+            border: 1px solid var(--border-subtle);
+            color: var(--text-secondary);
+            font-family: var(--font-body);
+            font-size: 0.8rem;
+            font-weight: 500;
+            padding: 0.45rem 0.95rem;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .db-tab-btn:hover {
+            border-color: var(--brand-gold);
+            color: #FFFFFF;
+        }
+
+        .db-tab-btn.active {
+            background: linear-gradient(135deg, rgba(197, 168, 128, 0.25), rgba(197, 168, 128, 0.1));
+            border-color: var(--brand-gold-bright);
+            color: var(--brand-gold-bright);
+            font-weight: 600;
+        }
+
+        .db-actions-row {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+        .db-search-input {
+            background: var(--bg-base);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            padding: 0.45rem 0.85rem;
+            font-size: 0.8rem;
+            color: #FFFFFF;
+            font-family: var(--font-body);
+            outline: none;
+            width: 220px;
+            transition: all 0.2s;
+        }
+
+        .db-search-input:focus {
+            border-color: var(--brand-gold);
+            box-shadow: 0 0 10px var(--brand-gold-glow);
+        }
+
+        .db-action-btn {
+            background: var(--bg-surface-elevated);
+            border: 1px solid var(--border-subtle);
+            color: var(--text-secondary);
+            font-size: 0.78rem;
+            padding: 0.45rem 0.8rem;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .db-action-btn:hover {
+            color: #FFFFFF;
+            border-color: var(--border-hover);
+        }
+
+        .db-table-scroll {
+            flex: 1;
+            overflow: auto;
+            padding: 0;
+            background: var(--bg-base);
+        }
+
+        .db-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.82rem;
+            text-align: left;
+        }
+
+        .db-table th {
+            position: sticky;
+            top: 0;
+            background: var(--bg-surface-elevated);
+            color: var(--brand-gold-bright);
+            font-family: var(--font-mono);
+            font-weight: 600;
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 0.75rem 1rem;
+            border-bottom: 2px solid var(--border-accent);
+            white-space: nowrap;
+            z-index: 10;
+        }
+
+        .db-table td {
+            padding: 0.65rem 1rem;
+            border-bottom: 1px solid var(--border-subtle);
+            color: var(--text-main);
+            vertical-align: top;
+            max-width: 420px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .db-table tr:hover td {
+            background: rgba(255, 255, 255, 0.035);
+        }
+
+        .db-pill {
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
+            padding: 0.15rem 0.45rem;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            display: inline-block;
+        }
+
+        .db-pill.generic {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--brand-emerald);
+        }
+
+        .db-pill.sales {
+            background: rgba(212, 175, 55, 0.15);
+            color: var(--brand-gold-bright);
+        }
+
+        .db-pill.user {
+            background: rgba(56, 189, 248, 0.15);
+            color: var(--brand-blue);
+        }
+
+        .db-pill.assistant {
+            background: rgba(168, 85, 247, 0.15);
+            color: #C084FC;
+        }
+
+        .db-modal-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 1.6rem;
+            background: var(--bg-surface-elevated);
+            border-top: 1px solid var(--border-subtle);
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
         /* Responsive Layout Overrides */
         @media (max-width: 1024px) {
             .workspace {
@@ -1182,6 +1445,9 @@
 
             <!-- Header Actions -->
             <div class="header-actions">
+                <button class="btn-action-icon db-btn" onclick="openDatabaseViewer()" title="View Live MySQL Database Tables in Visual Format">
+                    🗄️ Database Tables
+                </button>
                 <button class="btn-action-icon" onclick="resetActiveSession()" title="Start New Chat & Clear Session Turns">
                     🔄 New Chat
                 </button>
@@ -1436,6 +1702,65 @@
                 </div>
             </aside>
         </main>
+    </div>
+
+    <!-- =======================================================================
+         MYSQL DATABASE TABLE VIEWER MODAL
+         ======================================================================= -->
+    <div class="db-modal-overlay" id="dbModalOverlay" onclick="handleDbModalBackdropClick(event)">
+        <div class="db-modal-container" onclick="event.stopPropagation()">
+            <!-- Modal Header -->
+            <div class="db-modal-header">
+                <div class="db-modal-title">
+                    <span>🗄️ MySQL Database Explorer</span>
+                    <span class="db-modal-tag" id="dbModalStatusTag">MySQL 8.4 Connected</span>
+                    <span style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">DB: <code>rag_users</code></span>
+                </div>
+                <button class="db-modal-close" onclick="closeDatabaseViewer()" title="Close (ESC)">✕</button>
+            </div>
+
+            <!-- Toolbar & Tabs -->
+            <div class="db-modal-toolbar">
+                <div class="db-table-tabs">
+                    <button class="db-tab-btn active" id="tabUsers" onclick="switchDbTable('users')">
+                        👤 users <span id="cntUsersBadge" style="font-size:0.7rem; opacity:0.8;">(41)</span>
+                    </button>
+                    <button class="db-tab-btn" id="tabPurchases" onclick="switchDbTable('purchases')">
+                        🎓 purchases <span id="cntPurchasesBadge" style="font-size:0.7rem; opacity:0.8;">(77)</span>
+                    </button>
+                    <button class="db-tab-btn" id="tabPastRecords" onclick="switchDbTable('past_records')">
+                        📋 past_records <span id="cntRecordsBadge" style="font-size:0.7rem; opacity:0.8;">(76)</span>
+                    </button>
+                    <button class="db-tab-btn" id="tabConversationTurns" onclick="switchDbTable('conversation_turns')">
+                        💬 conversation_turns <span id="cntTurnsBadge" style="font-size:0.7rem; opacity:0.8;">(222)</span>
+                    </button>
+                </div>
+
+                <div class="db-actions-row">
+                    <input type="text" class="db-search-input" id="dbSearchInput" placeholder="Filter rows..." oninput="filterCurrentDbTable(this.value)" />
+                    <button class="db-action-btn" onclick="exportCurrentTableCsv()" title="Download as CSV spreadsheet">
+                        📥 Export CSV
+                    </button>
+                    <button class="db-action-btn" onclick="reloadCurrentDbTable()" title="Refresh table from MySQL">
+                        🔄 Refresh
+                    </button>
+                </div>
+            </div>
+
+            <!-- Table View Area -->
+            <div class="db-table-scroll" id="dbTableScrollArea">
+                <table class="db-table" id="dbMainTable">
+                    <thead id="dbTableHead"></thead>
+                    <tbody id="dbTableBody"></tbody>
+                </table>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="db-modal-footer">
+                <span id="dbTableStatsText">Loading table records...</span>
+                <span>Press <b>ESC</b> or click outside to close</span>
+            </div>
+        </div>
     </div>
 
     <!-- =======================================================================
@@ -2070,6 +2395,144 @@
         function toggleInspector() {
             const container = document.getElementById('workspaceContainer');
             container.classList.toggle('inspector-collapsed');
+        }
+
+        // =====================================================================
+        // DATABASE EXPLORER MODAL LOGIC
+        // =====================================================================
+        let currentDbTable = 'users';
+        let dbTableData = {
+            columns: [],
+            rows: [],
+            total: 0
+        };
+
+        function openDatabaseViewer() {
+            document.getElementById('dbModalOverlay').classList.add('active');
+            switchDbTable(currentDbTable || 'users');
+        }
+
+        function closeDatabaseViewer() {
+            document.getElementById('dbModalOverlay').classList.remove('active');
+        }
+
+        function handleDbModalBackdropClick(e) {
+            if (e.target.id === 'dbModalOverlay') {
+                closeDatabaseViewer();
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeDatabaseViewer();
+            }
+        });
+
+        async function switchDbTable(tableName) {
+            currentDbTable = tableName;
+            document.querySelectorAll('.db-tab-btn').forEach(b => b.classList.remove('active'));
+            const activeTab = document.getElementById(
+                tableName === 'users' ? 'tabUsers' :
+                tableName === 'purchases' ? 'tabPurchases' :
+                tableName === 'past_records' ? 'tabPastRecords' : 'tabConversationTurns'
+            );
+            if (activeTab) activeTab.classList.add('active');
+
+            const searchInput = document.getElementById('dbSearchInput');
+            if (searchInput) searchInput.value = '';
+
+            await reloadCurrentDbTable();
+        }
+
+        async function reloadCurrentDbTable() {
+            const statsText = document.getElementById('dbTableStatsText');
+            statsText.textContent = `Querying MySQL table \`${currentDbTable}\`...`;
+            try {
+                const res = await fetch(`/api/database/table/${currentDbTable}?limit=250`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                dbTableData = data;
+                renderDbTable(data.columns, data.rows);
+                statsText.innerHTML = `Showing <b>${data.rows.length}</b> rows out of <b>${data.total}</b> total records in <code>${data.table}</code>.`;
+                
+                // Update badge
+                const badgeId = currentDbTable === 'users' ? 'cntUsersBadge' :
+                                currentDbTable === 'purchases' ? 'cntPurchasesBadge' :
+                                currentDbTable === 'past_records' ? 'cntRecordsBadge' : 'cntTurnsBadge';
+                const badge = document.getElementById(badgeId);
+                if (badge) badge.textContent = `(${data.total})`;
+            } catch (err) {
+                statsText.innerHTML = `<span style="color:var(--brand-coral);">Error loading table: ${err.message}</span>`;
+            }
+        }
+
+        function renderDbTable(columns, rows) {
+            const thead = document.getElementById('dbTableHead');
+            const tbody = document.getElementById('dbTableBody');
+
+            thead.innerHTML = `<tr>${columns.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr>`;
+
+            if (!rows || rows.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="${columns.length}" style="text-align:center; padding:2.5rem; color:var(--text-muted); font-style:italic;">No records found in this table.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = rows.map(r => {
+                return `<tr>${columns.map(c => {
+                    let val = r[c];
+                    if (val === null || val === undefined) return '<td style="color:var(--text-muted); font-style:italic;">NULL</td>';
+                    let strVal = String(val);
+
+                    // Styled badges for specific fields
+                    if (c === 'mode') {
+                        return `<td><span class="db-pill ${strVal === 'sales' ? 'sales' : 'generic'}">${escapeHtml(strVal)}</span></td>`;
+                    }
+                    if (c === 'role') {
+                        return `<td><span class="db-pill ${strVal === 'user' ? 'user' : 'assistant'}">${escapeHtml(strVal)}</span></td>`;
+                    }
+                    if (c === 'item_type') {
+                        return `<td><span class="db-pill sales">${escapeHtml(strVal)}</span></td>`;
+                    }
+                    return `<td title="${escapeHtml(strVal)}">${escapeHtml(strVal)}</td>`;
+                }).join('')}</tr>`;
+            }).join('');
+        }
+
+        function filterCurrentDbTable(filterText) {
+            const query = (filterText || '').trim().toLowerCase();
+            if (!query) {
+                renderDbTable(dbTableData.columns, dbTableData.rows);
+                document.getElementById('dbTableStatsText').innerHTML = `Showing <b>${dbTableData.rows.length}</b> rows out of <b>${dbTableData.total}</b> total records in <code>${dbTableData.table}</code>.`;
+                return;
+            }
+
+            const filtered = dbTableData.rows.filter(r => {
+                return Object.values(r).some(v => v !== null && v !== undefined && String(v).toLowerCase().includes(query));
+            });
+
+            renderDbTable(dbTableData.columns, filtered);
+            document.getElementById('dbTableStatsText').innerHTML = `Filtered <b>${filtered.length}</b> matching rows (out of ${dbTableData.rows.length} fetched).`;
+        }
+
+        function exportCurrentTableCsv() {
+            if (!dbTableData.rows || dbTableData.rows.length === 0) {
+                alert('No records available to export.');
+                return;
+            }
+            const cols = dbTableData.columns;
+            let csv = cols.map(c => `"${c.replace(/"/g, '""')}"`).join(',') + '\n';
+            dbTableData.rows.forEach(r => {
+                csv += cols.map(c => {
+                    const v = r[c] !== null && r[c] !== undefined ? String(r[c]) : '';
+                    return `"${v.replace(/"/g, '""')}"`;
+                }).join(',') + '\n';
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `${currentDbTable}_${new Date().toISOString().slice(0, 10)}.csv`;
+            link.click();
         }
 
         // Utilities

@@ -1221,6 +1221,72 @@ async def get_system_stats():
     })
 
 
+@app.get(
+    "/api/database/table/{table_name}",
+    tags=["Database Explorer"],
+    summary="Get records from a MySQL table in tabular form"
+)
+async def get_database_table(table_name: str, limit: int = 200, offset: int = 0):
+    """
+    Returns column metadata and rows from the requested MySQL table for interactive tabular viewing.
+    """
+    allowed_tables = {"users", "purchases", "past_records", "conversation_turns"}
+    clean_table = table_name.strip().lower()
+    if clean_table not in allowed_tables:
+        raise HTTPException(status_code=400, detail=f"Invalid table name. Allowed tables: {list(allowed_tables)}")
+
+    user_db = get_user_db()
+    if not getattr(user_db, "has_mysql", False):
+        raise HTTPException(status_code=503, detail="MySQL connection is not active")
+
+    try:
+        with user_db._get_mysql_conn() as conn:
+            with conn.cursor() as cur:
+                # Count total
+                cur.execute(f"SELECT COUNT(*) AS total FROM `{clean_table}`")
+                res_cnt = cur.fetchone()
+                total = res_cnt.get("total", 0) if isinstance(res_cnt, dict) else res_cnt[0]
+
+                # Fetch column info
+                cur.execute(f"DESCRIBE `{clean_table}`")
+                columns = [row["Field"] for row in cur.fetchall()]
+
+                # Ordering
+                if clean_table == "conversation_turns":
+                    order_clause = "ORDER BY id DESC"
+                elif clean_table in ("purchases", "past_records"):
+                    order_clause = "ORDER BY id DESC"
+                else:
+                    order_clause = "ORDER BY created_at DESC, id ASC"
+
+                cur.execute(f"SELECT * FROM `{clean_table}` {order_clause} LIMIT %s OFFSET %s", (min(limit, 500), max(offset, 0)))
+                rows = cur.fetchall()
+
+                # Serialize dates & datetimes
+                formatted_rows = []
+                for r in rows:
+                    row_dict = {}
+                    for col in columns:
+                        val = r.get(col)
+                        if hasattr(val, "strftime"):
+                            val = val.strftime("%Y-%m-%d %H:%M:%S")
+                        elif isinstance(val, (bytes, bytearray)):
+                            val = val.decode("utf-8", errors="replace")
+                        row_dict[col] = val
+                    formatted_rows.append(row_dict)
+
+                return JSONResponse(status_code=200, content={
+                    "status": "success",
+                    "table": clean_table,
+                    "total": total,
+                    "columns": columns,
+                    "rows": formatted_rows
+                })
+    except Exception as e:
+        logger.error(f"[Database Explorer] Failed to query `{clean_table}`: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed querying table `{clean_table}`: {str(e)}")
+
+
 @app.post(
     "/api/webhooks/woocommerce",
     tags=["WooCommerce Integration"],
