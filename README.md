@@ -9,18 +9,21 @@ The system features **dual-lane clinical vs. sales bot isolation**, **automated 
 ## 📑 Table of Contents
 1. [Key Features](#-key-features)
 2. [Dual-Lane Bot Architecture (Clinical vs. Sales)](#-dual-lane-bot-architecture)
-3. [System Architecture Diagram](#-system-architecture-diagram)
-4. [Google Drive Automated Ingestion](#-google-drive-automated-ingestion)
-5. [Multi-Stage Retrieval & Optimization Stack](#-multi-stage-retrieval--optimization-stack)
-6. [WordPress, MySQL & Customer Profile Personalization](#-wordpress-mysql--customer-profile-personalization)
-7. [WordPress to MySQL Synchronization Pipeline](#-wordpress-to-mysql-synchronization-pipeline)
-8. [Automated Database Backups & Disaster Recovery](#-automated-database-backups--disaster-recovery)
-9. [REST API Documentation & Endpoints](#-rest-api-documentation--endpoints)
-10. [Local Installation & Setup](#-local-installation--setup)
-11. [AWS EC2 Production Deployment](#-aws-ec2-production-deployment)
-12. [Hardware Capacity & Concurrency Profile](#-hardware-capacity--concurrency-profile)
-13. [Utility Scripts & Maintenance](#-utility-scripts--maintenance)
-14. [Testing Suite & Operational Runbooks](#-testing-suite--operational-runbooks)
+3. [Tier 0 Emergency Crisis & Safety Guardrails](#-tier-0-emergency-crisis--safety-guardrails)
+4. [System Architecture Diagram](#-system-architecture-diagram)
+5. [Google Drive Automated Ingestion](#-google-drive-automated-ingestion)
+6. [Multi-Stage Retrieval & Optimization Stack](#-multi-stage-retrieval--optimization-stack)
+7. [WordPress, MySQL & Customer Profile Personalization](#-wordpress-mysql--customer-profile-personalization)
+8. [WordPress to MySQL Synchronization Pipeline](#-wordpress-to-mysql-synchronization-pipeline)
+9. [Automated Database Backups & Disaster Recovery](#-automated-database-backups--disaster-recovery)
+10. [Security Hardening & Production Audit (Score: 9.5/10)](#-security-hardening--production-audit-score-9510)
+11. [Estimated Cost Profile per Message](#-estimated-cost-profile-per-message)
+12. [REST API Documentation & Endpoints](#-rest-api-documentation--endpoints)
+13. [Local Installation & Setup](#-local-installation--setup)
+14. [AWS EC2 Production Deployment](#-aws-ec2-production-deployment)
+15. [Hardware Capacity & Concurrency Profile](#-hardware-capacity--concurrency-profile)
+16. [Utility Scripts & Maintenance](#-utility-scripts--maintenance)
+17. [Testing Suite & Operational Runbooks](#-testing-suite--operational-runbooks)
 
 ---
 
@@ -29,6 +32,18 @@ The system features **dual-lane clinical vs. sales bot isolation**, **automated 
 - **Clinical vs. Sales Dual-Lane Isolation:**
   - **Clinical Bot (`mode="generic"`):** Pure psychoeducation and healing techniques. Forbids commercial promotions, course pitching, or pricing ($).
   - **Sales Bot (`mode="sales"`):** Consultative selling. Explains relationship patterns clinically, then presents the tailored course/masterclass with exact pricing ($97) and enrollment steps.
+- **Tier 0 Acute Crisis Guardrail (< 1ms):**
+  - Instant deterministic regex intercept for suicide ideation, self-harm, and domestic violence.
+  - Completely bypasses the LLM and vector DB to immediately return free 24/7 emergency hotlines (988 Lifeline, 741741 Crisis Text Line, 1-800-799-SAFE, and findahelpline.com).
+- **Hardened Security Baseline (Audit Rating: 9.5 / 10):**
+  - Loopback-only service isolation (Uvicorn `127.0.0.1:8000`, Qdrant `127.0.0.1:6333`, MySQL `127.0.0.1:3306`).
+  - Nginx HTTPS termination with strict security headers (HSTS, X-Content-Type-Options, X-Frame-Options, X-XSS-Protection).
+  - Mode `600` secret permissions and automated log rotation (`/etc/logrotate.d/dsh-rag`).
+- **High-Performance, Low-Cost Dual LLM Provider:**
+  - **Primary:** High-speed **Groq** (`openai/gpt-oss-120b` or `llama-3.3-70b-versatile`) with sub-second generation.
+  - **Fallback:** Automated failover to **OpenAI** (`gpt-4o-mini`).
+  - **Embeddings:** 100% self-hosted on local CPU via `sentence-transformers/all-MiniLM-L6-v2` (**$0.00** API cost).
+  - **Estimated Generation Cost:** **~$0.0004 to $0.0011 per message** ($0.00 for guardrail hits).
 - **60-Second Google Drive Auto-Sync:**
   - Background worker continuously polls Google Drive.
   - Automatically discovers `RAG_Clinical-Knowledge` and `RAG_Sales` folders.
@@ -66,6 +81,37 @@ To maintain medical and consultative integrity, the system strictly separates cl
 | **Commercial Pitching** | 🚫 **STRICTLY FORBIDDEN:** Zero course pitches, zero prices (`$`), zero checkout links. | ✅ **REQUIRED:** Explains curriculum, exact price ($97), payment tiers & links. |
 | **Owned Products** | N/A | Filters out any program already purchased by the user. |
 | **Response Tone** | Empathetic, psychologically grounded, therapeutic, non-transactional. | Diagnostic, encouraging, consultative, clear call-to-action. |
+
+---
+
+## 🛡️ Tier 0 Emergency Crisis & Safety Guardrails
+
+Because the assistant serves vulnerable individuals exploring relationship and attachment challenges, the system enforces a strict, pre-LLM safety boundary executed in **< 1ms** ([`src/rag_service.py`](file:///c:/DSH%20RAG/RAG-DSH/src/rag_service.py)):
+
+```text
+User Input ──► [CRISIS_REGEX Match?] ──► YES ──► Immediate Emergency Crisis Message (<1ms, 0 tokens)
+                      │
+                      ▼ NO
+              [VAGUE_DISTRESS_REGEX?] ──► YES ──► Empathetic Diagnostic Router (3-Choice Triage)
+                      │
+                      ▼ NO
+              Normal Semantic RAG Pipeline (Qdrant Vector Retrieval + LLM Synthesis)
+```
+
+### 1. Acute Crisis Guardrail (`CRISIS_REGEX`)
+- **Monitored Distress Categories:**
+  - **Suicide & Ideation:** `suicide`, `kill myself`, `end my life`, `want to die`, `don't want to live`, `no reason to live`, `better off dead`, `tired of living`.
+  - **Self-Harm:** `self-harm`, `cutting myself`, `hurting myself`.
+  - **Domestic Violence & Acute Danger:** `he hits me`, `she hits me`, `beating me`, `physically abusive`, `domestic violence`, `threatened to kill me`, `in immediate danger`.
+- **System Action:** Completely intercepts the request before reaching Qdrant, MySQL, or Gemini/OpenAI/Groq APIs, returning verified 24/7 emergency hotlines:
+  - 📞 **National Suicide & Crisis Lifeline:** Call or text **988** (US & Canada, 24/7 free & confidential).
+  - 💬 **Crisis Text Line:** Text **HOME** to **741741**.
+  - 🛡️ **National Domestic Violence Hotline:** Call **1-800-799-SAFE (7233)** or text **START** to **88788**.
+  - 🌐 **International Resources:** [findahelpline.com](https://findahelpline.com) or local emergency responders (911, 999, 112).
+
+### 2. Vague Distress Triage (`VAGUE_DISTRESS_REGEX`)
+- Intercepts low-entropy expressions of overwhelm under 5 words (`"help me"`, `"i feel so hurt"`, `"crying"`, `"so overwhelmed"`).
+- Returns immediate emotional grounding and triages into 3 constructive clinical areas: *(1) Anxious triggers*, *(2) Avoidant withdrawal*, or *(3) Conflict & boundary setting*.
 
 ---
 
@@ -282,9 +328,52 @@ For complete, copy-paste restoration commands in under 2 minutes, see:
 
 ---
 
+## 🔒 Security Hardening & Production Audit (Score: 9.5/10)
+
+Following an offensive red-teaming assessment of `https://agent.doctorsarahhensley.com`, all identified architectural and infrastructure vulnerabilities were fully remediated and verified live on EC2:
+
+| Vulnerability ID | Description | Severity | Remediation Applied | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **`SEC-01`** | Public Qdrant Vector Exposure | **High** | Removed public `/qdrant/` Nginx location block. Qdrant is locked strictly to loopback `127.0.0.1:6333`. Requests to `/qdrant/` return `404 Not Found`. | ✅ **VERIFIED** |
+| **`SEC-02`** | Secrets File Permissions | **Medium** | Changed `.env` and `service_account.json` to mode `600` (`-rw-------`). Readable only by the `ubuntu` daemon owner. | ✅ **VERIFIED** |
+| **`SEC-03`** | Missing HTTP Security Headers | **Medium** | Injected 4 mandatory security headers in Nginx: `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 1; mode=block`. | ✅ **VERIFIED** |
+| **`DEVOPS-01`** | Public Uvicorn Port Binding | **Medium** | Reconfigured Systemd unit `/etc/systemd/system/dsh-rag.service` to bind Uvicorn strictly to `127.0.0.1:8000`. External access is exclusively via Nginx TLS. | ✅ **VERIFIED** |
+| **`DEVOPS-02`** | Legacy Disk Log Accumulation | **Low** | Compressed legacy `application.log.1` (26 MB $\to$ 738 KB, 97% reduction) and provisioned automated weekly rotation in `/etc/logrotate.d/dsh-rag`. | ✅ **VERIFIED** |
+
+- **Official Production Audit Report:**  
+  📄 Markdown: [`DSH_RAG_Production_Audit_Report.md`](file:///c:/DSH%20RAG/RAG-DSH/DSH_RAG_Production_Audit_Report.md)  
+  📑 Executive PDF: [`DSH_RAG_Production_Audit_Report.pdf`](file:///c:/DSH%20RAG/RAG-DSH/DSH_RAG_Production_Audit_Report.pdf)  
+  *Post-Remediation Security & Architecture Score:* **9.5 / 10**
+
+---
+
+## 💰 Estimated Cost Profile per Message
+
+The DSH-RAG system operates on an ultra-low operational cost profile:
+
+| Component | Technology | Cost per Query / Message |
+| :--- | :--- | :--- |
+| **Dense Vector Embeddings** | Local `sentence-transformers/all-MiniLM-L6-v2` | **$0.00** (Free, runs on EC2 CPU) |
+| **Vector DB (Qdrant)** | Self-hosted Docker container (`127.0.0.1:6333`) | **$0.00** (No SaaS vector database charges) |
+| **Relational Database** | Self-hosted MySQL 8.4 (`127.0.0.1:3306`) | **$0.00** (No AWS RDS charges) |
+| **Pre-LLM Guardrail Hits** | Deterministic Regex (< 1ms, 0 tokens) | **$0.0000** |
+| **LLM Synthesis (Primary)** | **Groq** (`openai/gpt-oss-120b` or `llama-3.3-70b`) | **~$0.0009 – $0.0011** (~1/10th of a cent) |
+| **LLM Synthesis (Fallback)**| **OpenAI** (`gpt-4o-mini`) | **~$0.0003 – $0.0004** (~4/100ths of a cent) |
+
+### Monthly Volume Scaling Estimates
+
+| Monthly Volume | On Groq Primary (`llama-70b` / `gpt-oss-120b`) | On OpenAI Fallback (`gpt-4o-mini`) |
+| :--- | :--- | :--- |
+| **1,000 messages** | **~$1.10 / month** | **~$0.40 / month** |
+| **5,000 messages** | **~$5.50 / month** | **~$2.00 / month** |
+| **20,000 messages** | **~$22.00 / month** | **~$8.00 / month** |
+| **50,000 messages** | **~$55.00 / month** | **~$20.00 / month** |
+
+---
+
 ## 📡 REST API Documentation & Endpoints
 
-Base URL: `http://18.118.138.91:8000` (AWS EC2) or `http://127.0.0.1:8000` (Local)  
+Base URL: `https://agent.doctorsarahhensley.com` (Production HTTPS) or `http://127.0.0.1:8000` (Local)  
 API Authentication: Header `X-API-Key: dsh_rag_secret_key_2026` or `Authorization: Bearer dsh_rag_secret_key_2026`
 
 ### Endpoint Summary
@@ -445,25 +534,28 @@ Open Dashboard at: [http://127.0.0.1:8000](http://127.0.0.1:8000)
 
 ## ☁️ AWS EC2 Production Deployment
 
-The production system is deployed on an **AWS EC2 Ubuntu 24.04 LTS** instance:
+The production system is deployed on an **AWS EC2 Ubuntu 24.04 LTS** instance (`18.118.138.91`):
 
-- **Production Domain (HTTPS / SSL):** [https://agent.doctorsarahhensley.com/dsh-rag](https://agent.doctorsarahhensley.com/dsh-rag)
-- **Public IP:** `18.118.138.91:8000`
+- **Production Domain (HTTPS / SSL):** [https://agent.doctorsarahhensley.com](https://agent.doctorsarahhensley.com)
+- **Ingress Perimeter:** Ports `80` (HTTP redirect) and `443` (HTTPS with Let's Encrypt TLS).
+- **Backend Isolation:** Uvicorn is bound strictly to `127.0.0.1:8000` via `/etc/systemd/system/dsh-rag.service`. Port 8000 is closed to external interfaces.
 - **SSH Key:** `C:\Tools\python-qdrant-server.pem`
 - **SSH Access:**
   ```bash
   ssh -i C:\Tools\python-qdrant-server.pem ubuntu@18.118.138.91
   ```
 - **System Services:**
-  - `dsh-rag.service`: FastAPI application running under Uvicorn on port 8000.
-  - `mysql.service`: MySQL 8.4 Server with low-memory configuration (`/etc/mysql/conf.d/low-memory.cnf`).
-  - Qdrant Vector Database: Native binary listening on `127.0.0.1:6333`.
+  - `dsh-rag.service`: FastAPI application running under Uvicorn bound to `127.0.0.1:8000`.
+  - `nginx.service`: Reverse proxy terminating TLS and enforcing HSTS, X-Frame-Options, X-Content-Type-Options.
+  - `mysql.service`: MySQL 8.4 Server with low-memory configuration (`innodb_buffer_pool_size = 64M`, ~196 MB RSS).
+  - `qdrant_service`: Dockerized Qdrant container listening on loopback `127.0.0.1:6333`.
 - **Service Management:**
   ```bash
   sudo systemctl status dsh-rag      # Check FastAPI RAG service
   sudo systemctl restart dsh-rag     # Restart application
   sudo journalctl -u dsh-rag -f      # Follow live application logs
   sudo systemctl status mysql        # Check MySQL database service
+  sudo systemctl status nginx        # Check Nginx reverse proxy
   ```
 - **Automated Host Cron Jobs:**
   ```bash
@@ -471,6 +563,7 @@ The production system is deployed on an **AWS EC2 Ubuntu 24.04 LTS** instance:
   # 0 2 * * * sync_wordpress_to_mysql.py (Nightly customer/purchase ETL)
   # 0 3 * * * backup_databases.py        (Nightly compressed multi-DB backup)
   ```
+- **Log Rotation:** `/etc/logrotate.d/dsh-rag` automatically rotates and gzips application logs weekly with 4 cycles.
 
 ---
 
@@ -572,8 +665,12 @@ python test_live_aws.py
 ```
 
 ### Evaluation Benchmark & Test Questions
-- **Golden Test Benchmark:** [`test_questions.csv`](file:///c:/DSH%20RAG/RAG-DSH/test_questions.csv) contains 40 clinically validated test questions spanning attachment styles, defensive triggers, masterclass matching, and unowned course guardrails.
-- **Evaluation Report:** Complete accuracy and latency benchmarks are published in [`DSH_RAG_Test_Report_2026-10-21.pdf`](file:///c:/DSH%20RAG/RAG-DSH/DSH_RAG_Test_Report_2026-10-21.pdf) and [`DSH_RAG_Test_Report_2026-10-21.md`](file:///c:/DSH%20RAG/RAG-DSH/DSH_RAG_Test_Report_2026-10-21.md).
+- **Defensive Safety QA Benchmark (Live Audit):** [`safety_evaluation_benchmark.csv`](file:///c:/DSH%20RAG/RAG-DSH/safety_evaluation_benchmark.csv) contains 40 strict defensive test prompts validating commercial purity, unowned course filtering, persona preservation, prompt secrecy, psychiatric boundaries, and out-of-scope handling (**92.5% Pass Rate**).
+- **Golden Clinical Test Benchmark:** [`test_questions.csv`](file:///c:/DSH%20RAG/RAG-DSH/test_questions.csv) contains 40 clinically validated test questions spanning attachment styles, defensive triggers, masterclass matching, and unowned course guardrails.
+- **Evaluation Reports:**
+  - 🛡️ **[Production Security & Architecture Audit (Score: 9.5/10)](file:///c:/DSH%20RAG/RAG-DSH/DSH_RAG_Production_Audit_Report.md)** ([Download PDF](file:///c:/DSH%20RAG/RAG-DSH/DSH_RAG_Production_Audit_Report.pdf))
+  - 📊 **[Clinical RAG Accuracy & Latency Benchmark](file:///c:/DSH%20RAG/RAG-DSH/DSH_RAG_Test_Report_2026-10-21.md)** ([Download PDF](file:///c:/DSH%20RAG/RAG-DSH/DSH_RAG_Test_Report_2026-10-21.pdf))
+  - 🗄️ **[Visual Database Schema Reference](file:///c:/DSH%20RAG/RAG-DSH/DATABASE_SCHEMA.md)** ([Download PDF](file:///c:/DSH%20RAG/RAG-DSH/DATABASE_SCHEMA.pdf))
 
 ### Operational Runbooks & SLA
 - 📘 **[Database Restore & Disaster Recovery](file:///c:/DSH%20RAG/RAG-DSH/docs/runbooks/01_database_restore.md):** Rapid recovery procedures for MySQL and SQLite.
