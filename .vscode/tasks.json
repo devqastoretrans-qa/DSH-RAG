@@ -2,16 +2,24 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Start MySQL SSH Tunnel",
+      "label": "Start MySQL SSH Tunnel (Local port 3306)",
       "type": "shell",
-      "command": "ssh -N -L 3306:127.0.0.1:3306 -i C:\\Tools\\python-qdrant-server.pem -o StrictHostKeyChecking=no ubuntu@18.118.138.91",
+      "command": "ssh -N -L 3306:127.0.0.1:3306 -i C:\\Tools\\python-qdrant-server.pem -o StrictHostKeyChecking=no -o ServerAliveInterval=20 ubuntu@18.118.138.91",
       "isBackground": true,
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "silent"
+      "problemMatcher": {
+        "pattern": {
+          "regexp": "^$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^.*$",
+          "endsPattern": "^.*$"
+        }
       },
-      "runOptions": {
-        "runOn": "folderOpen"
+      "group": "none",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
       }
     }
   ]
