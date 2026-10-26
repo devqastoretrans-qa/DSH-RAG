@@ -56,7 +56,7 @@ generate_prr_*.py
 *_results.json
 *_summary.json
 *_evidence.json
-scratch_inventory.json
+scratch_*
 
 # Operating System Metadata
 .DS_Store
