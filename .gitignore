@@ -53,6 +53,10 @@ Production_Readiness_*.pdf
 production_readiness_report.html
 build_prr_*.py
 generate_prr_*.py
+*_results.json
+*_summary.json
+*_evidence.json
+scratch_inventory.json
 
 # Operating System Metadata
 .DS_Store
