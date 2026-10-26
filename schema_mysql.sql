@@ -36,6 +36,20 @@ CREATE TABLE IF NOT EXISTS past_records (
     INDEX idx_user_records (user_id)
 );
 
+-- 4. Conversation Turns Table (Live Chat Telemetry & History)
+CREATE TABLE IF NOT EXISTS conversation_turns (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    session_key VARCHAR(150) NOT NULL,
+    user_id VARCHAR(100) NOT NULL,
+    conversation_id VARCHAR(100) NOT NULL,
+    role VARCHAR(20) NOT NULL,
+    content MEDIUMTEXT NOT NULL,
+    topic VARCHAR(255),
+    mode VARCHAR(50),
+    created_at DOUBLE NOT NULL,
+    INDEX idx_conv_session (session_key, created_at)
+);
+
 -- =====================================================================
 -- Seed Data for Testing & Demonstration
 -- =====================================================================

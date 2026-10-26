@@ -1,0 +1,16 @@
+{
+  "sqltools.connections": [
+    {
+      "name": "AWS EC2 MySQL (rag_users)",
+      "driver": "MySQL",
+      "server": "127.0.0.1",
+      "port": 3306,
+      "database": "rag_users",
+      "username": "rag_user",
+      "password": "DshRag_MySQL_2026_x8K2q",
+      "askForPassword": false
+    }
+  ],
+  "sqltools.useNodeRuntime": true,
+  "sqltools.tableTreeItemsExpanded": true
+}

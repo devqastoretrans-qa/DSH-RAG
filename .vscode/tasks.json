@@ -1,0 +1,18 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start MySQL SSH Tunnel",
+      "type": "shell",
+      "command": "ssh -N -L 3306:127.0.0.1:3306 -i C:\\Tools\\python-qdrant-server.pem -o StrictHostKeyChecking=no ubuntu@18.118.138.91",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent"
+      },
+      "runOptions": {
+        "runOn": "folderOpen"
+      }
+    }
+  ]
+}
