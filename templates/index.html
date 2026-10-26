@@ -1381,6 +1381,277 @@
             color: var(--text-secondary);
         }
 
+        /* Database Schema & ERD Visual View */
+        .db-schema-view {
+            display: none;
+            flex-direction: column;
+            gap: 1.5rem;
+            padding: 1.5rem;
+            overflow-y: auto;
+            flex: 1;
+            background: radial-gradient(circle at 50% 0%, rgba(212, 175, 55, 0.04), transparent 60%), #0A0D14;
+        }
+
+        .db-schema-view.active {
+            display: flex;
+        }
+
+        .schema-overview-banner {
+            background: rgba(255, 255, 255, 0.025);
+            border: 1px solid rgba(212, 175, 55, 0.2);
+            border-radius: var(--radius-md);
+            padding: 1rem 1.25rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+
+        .schema-banner-text h4 {
+            margin: 0 0 0.25rem 0;
+            font-size: 0.95rem;
+            color: var(--brand-gold-bright);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .schema-banner-text p {
+            margin: 0;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+
+        .schema-legend {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            font-size: 0.72rem;
+        }
+
+        .schema-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            color: var(--text-secondary);
+        }
+
+        .schema-cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1.25rem;
+        }
+
+        .schema-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+            transition: border-color var(--transition-fast), transform var(--transition-fast);
+        }
+
+        .schema-card:hover {
+            border-color: rgba(212, 175, 55, 0.4);
+            transform: translateY(-2px);
+        }
+
+        .schema-card-header {
+            padding: 0.85rem 1rem;
+            background: rgba(255, 255, 255, 0.03);
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .schema-table-title {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            font-family: var(--font-mono);
+            font-weight: 700;
+            font-size: 0.95rem;
+            color: var(--text-primary);
+        }
+
+        .schema-tag {
+            font-size: 0.68rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            font-family: var(--font-sans);
+        }
+
+        .schema-tag.parent {
+            background: rgba(56, 189, 248, 0.15);
+            color: var(--brand-blue);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+        }
+
+        .schema-tag.child {
+            background: rgba(212, 175, 55, 0.15);
+            color: var(--brand-gold-bright);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+        }
+
+        .schema-tag.telemetry {
+            background: rgba(168, 85, 247, 0.15);
+            color: #C084FC;
+            border: 1px solid rgba(168, 85, 247, 0.3);
+        }
+
+        .schema-card-body {
+            padding: 0.5rem 0;
+            flex: 1;
+        }
+
+        .schema-col-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.45rem 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            transition: background 0.15s ease;
+        }
+
+        .schema-col-row:last-child {
+            border-bottom: none;
+        }
+
+        .schema-col-row:hover {
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .schema-col-left {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .schema-col-name {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .schema-col-type {
+            color: var(--text-muted);
+            font-size: 0.72rem;
+        }
+
+        .schema-col-badges {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .badge-pk {
+            background: rgba(212, 175, 55, 0.2);
+            color: var(--brand-gold-bright);
+            border: 1px solid rgba(212, 175, 55, 0.4);
+            font-size: 0.62rem;
+            padding: 0.1rem 0.35rem;
+            border-radius: 3px;
+            font-weight: 700;
+        }
+
+        .badge-fk {
+            background: rgba(56, 189, 248, 0.2);
+            color: var(--brand-blue);
+            border: 1px solid rgba(56, 189, 248, 0.4);
+            font-size: 0.62rem;
+            padding: 0.1rem 0.35rem;
+            border-radius: 3px;
+            font-weight: 700;
+        }
+
+        .badge-idx {
+            background: rgba(168, 85, 247, 0.2);
+            color: #C084FC;
+            border: 1px solid rgba(168, 85, 247, 0.4);
+            font-size: 0.62rem;
+            padding: 0.1rem 0.35rem;
+            border-radius: 3px;
+            font-weight: 700;
+        }
+
+        .schema-card-footer {
+            padding: 0.65rem 1rem;
+            background: rgba(0, 0, 0, 0.25);
+            border-top: 1px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+        }
+
+        .schema-nav-link {
+            background: none;
+            border: none;
+            color: var(--brand-gold);
+            cursor: pointer;
+            font-size: 0.72rem;
+            font-weight: 600;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            transition: color var(--transition-fast);
+        }
+
+        .schema-nav-link:hover {
+            color: var(--brand-gold-bright);
+            text-decoration: underline;
+        }
+
+        .schema-rel-box {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 1.25rem;
+        }
+
+        .schema-rel-box h5 {
+            margin: 0 0 0.75rem 0;
+            font-size: 0.85rem;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .schema-rel-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+        }
+
+        .schema-rel-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.5rem 0.75rem;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: var(--radius-sm);
+            border-left: 3px solid var(--brand-blue);
+        }
+
+        .schema-rel-item.cascade {
+            border-left-color: var(--brand-gold-bright);
+        }
+
+        .schema-rel-item.telemetry {
+            border-left-color: #A855F7;
+        }
+
         /* Responsive Layout Overrides */
         @media (max-width: 1024px) {
             .workspace {
@@ -1734,9 +2005,12 @@
                     <button class="db-tab-btn" id="tabConversationTurns" onclick="switchDbTable('conversation_turns')">
                         💬 conversation_turns <span id="cntTurnsBadge" style="font-size:0.7rem; opacity:0.8;">(222)</span>
                     </button>
+                    <button class="db-tab-btn" id="tabSchema" onclick="showDbSchemaDiagram()">
+                        🗺️ Schema (ERD)
+                    </button>
                 </div>
 
-                <div class="db-actions-row">
+                <div class="db-actions-row" id="dbActionsToolbar">
                     <input type="text" class="db-search-input" id="dbSearchInput" placeholder="Filter rows..." oninput="filterCurrentDbTable(this.value)" />
                     <button class="db-action-btn" onclick="exportCurrentTableCsv()" title="Download as CSV spreadsheet">
                         📥 Export CSV
@@ -1753,6 +2027,256 @@
                     <thead id="dbTableHead"></thead>
                     <tbody id="dbTableBody"></tbody>
                 </table>
+            </div>
+
+            <!-- Visual Schema (ERD) View Area -->
+            <div class="db-schema-view" id="dbSchemaView">
+                <!-- Overview Banner -->
+                <div class="schema-overview-banner">
+                    <div class="schema-banner-text">
+                        <h4>🗺️ MySQL Relational Architecture • <code>rag_users</code></h4>
+                        <p>Core user entities from WordPress & WooCommerce link to order histories, intake notes, and real-time chat telemetry via Foreign Keys (ON DELETE CASCADE).</p>
+                    </div>
+                    <div class="schema-legend">
+                        <span class="schema-legend-item"><span class="badge-pk">PK</span> Primary Key</span>
+                        <span class="schema-legend-item"><span class="badge-fk">FK</span> Foreign Key</span>
+                        <span class="schema-legend-item"><span class="badge-idx">IDX</span> Index / Unique</span>
+                    </div>
+                </div>
+
+                <!-- 4 Table Cards -->
+                <div class="schema-cards-grid">
+                    <!-- Table 1: users -->
+                    <div class="schema-card">
+                        <div class="schema-card-header">
+                            <span class="schema-table-title">👤 users</span>
+                            <span class="schema-tag parent">Parent Table</span>
+                        </div>
+                        <div class="schema-card-body">
+                            <div class="schema-col-row">
+                                <div class="schema-col-left">
+                                    <span class="schema-col-name">id</span>
+                                    <span class="schema-col-type">VARCHAR(50)</span>
+                                </div>
+                                <div class="schema-col-badges">
+                                    <span class="badge-pk">PK</span>
+                                </div>
+                            </div>
+                            <div class="schema-col-row">
+                                <div class="schema-col-left">
+                                    <span class="schema-col-name">name</span>
+                                    <span class="schema-col-type">VARCHAR(100)</span>
+                                </div>
+                            </div>
+                            <div class="schema-col-row">
+                                <div class="schema-col-left">
+                                    <span class="schema-col-name">email</span>
+                                    <span class="schema-col-type">VARCHAR(100)</span>
+                                </div>
+                                <div class="schema-col-badges">
+                                    <span class="badge-idx">UNIQUE</span>
+                                </div>
+                            </div>
+                            <div class="schema-col-row">
+                                <div class="schema-col-left">
+                                    <span class="schema-col-name">created_at</span>
+                                    <span class="schema-col-type">TIMESTAMP</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="schema-card-footer">
+                            <span>WP User ID or Guest Email</span>
+                            <button class="schema-nav-link" onclick="switchDbTable('users')">Explore Data ➔</button>
+                        </div>
+                    </div>
+
+                    <!-- Table 2: purchases -->
+                    <div class="schema-card">
+                        <div class="schema-card-header">
+                            <span class="schema-table-title">🎓 purchases</span>
+                            <span class="schema-tag child">Child Entity (1:N)</span>
+                        </div>
+                        <div class="schema-card-body">
+                            <div class="schema-col-row">
+                                <div class="schema-col-left">
+                                    <span class="schema-col-name">id</span>
+                                    <span class="schema-col-type">INT AUTO_INCREMENT</span>
+                                </div>
+                                <div class="schema-col-badges">
+                                    <span class="badge-pk">PK</span>
+                                </div>
+                            </div>
+                            <div class="schema-col-row">
+                                <div class="schema-col-left">
+                                    <span class="schema-col-name">user_id</span>
+                                    <span class="schema-col-type">VARCHAR(50)</span>
+                                </div>
+                                <div class="schema-col-badges">
+                                    <span class="badge-fk" title="FK -> users.id (ON DELETE CASCADE)">FK ➔ users.id</span>
+                                </div>
+                            </div>
+                            <div class="schema-col-row">
+                                <div class="schema-col-left">
+                                    <span class="schema-col-name">item_type</span>
+                                    <span class="schema-col-type">VARCHAR(50)</span>
+                                </div>
+                            </div>
+                            <div class="schema-col-row">
+                                <div class="schema-col-left">
+                                    <span class="schema-col-name">item_title</span>
+                                    <span class="schema-col-type">VARCHAR(255)</span>
+                                </div>
+                            </div>
+                            <div class="schema-col-row">
+                                <div class="schema-col-left">
+                                    <span class="schema-col-name">purchased_at</span>
+                                    <span class="schema-col-type">TIMESTAMP</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="schema-card-footer">
+                            <span>WooCommerce Orders & Courses</span>
+                            <button class="schema-nav-link" onclick="switchDbTable('purchases')">Explore Data ➔</button>
+                        </div>
+                    </div>
+
+                    <!-- Table 3: past_records -->
+                    <div class="schema-card">
+                        <div class="schema-card-header">
+                            <span class="schema-table-title">📋 past_records</span>
+                            <span class="schema-tag child">Child Entity (1:N)</span>
+                        </div>
+                        <div class="schema-card-body">
+                            <div class="schema-col-row">
+                                <div class="schema-col-left">
+                                    <span class="schema-col-name">id</span>
+                                    <span class="schema-col-type">INT AUTO_INCREMENT</span>
+                                </div>
+                                <div class="schema-col-badges">
+                                    <span class="badge-pk">PK</span>
+                                </div>
+                            </div>
+                            <div class="schema-col-row">
+                                <div class="schema-col-left">
+                                    <span class="schema-col-name">user_id</span>
+                                    <span class="schema-col-type">VARCHAR(50)</span>
+                                </div>
+                                <div class="schema-col-badges">
+                                    <span class="badge-fk" title="FK -> users.id (ON DELETE CASCADE)">FK ➔ users.id</span>
+                                </div>
+                            </div>
+                            <div class="schema-col-row">
+                                <div class="schema-col-left">
+                                    <span class="schema-col-name">interaction_type</span>
+                                    <span class="schema-col-type">VARCHAR(100)</span>
+                                </div>
+                            </div>
+                            <div class="schema-col-row">
+                                <div class="schema-col-left">
+                                    <span class="schema-col-name">summary_notes</span>
+                                    <span class="schema-col-type">TEXT</span>
+                                </div>
+                            </div>
+                            <div class="schema-col-row">
+                                <div class="schema-col-left">
+                                    <span class="schema-col-name">recorded_at</span>
+                                    <span class="schema-col-type">TIMESTAMP</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="schema-card-footer">
+                            <span>Clinical Intake & Coaching Notes</span>
+                            <button class="schema-nav-link" onclick="switchDbTable('past_records')">Explore Data ➔</button>
+                        </div>
+                    </div>
+
+                    <!-- Table 4: conversation_turns -->
+                    <div class="schema-card">
+                        <div class="schema-card-header">
+                            <span class="schema-table-title">💬 conversation_turns</span>
+                            <span class="schema-tag telemetry">Chat Logs</span>
+                        </div>
+                        <div class="schema-card-body">
+                            <div class="schema-col-row">
+                                <div class="schema-col-left">
+                                    <span class="schema-col-name">id</span>
+                                    <span class="schema-col-type">INT AUTO_INCREMENT</span>
+                                </div>
+                                <div class="schema-col-badges">
+                                    <span class="badge-pk">PK</span>
+                                </div>
+                            </div>
+                            <div class="schema-col-row">
+                                <div class="schema-col-left">
+                                    <span class="schema-col-name">session_key</span>
+                                    <span class="schema-col-type">VARCHAR(150)</span>
+                                </div>
+                                <div class="schema-col-badges">
+                                    <span class="badge-idx">IDX</span>
+                                </div>
+                            </div>
+                            <div class="schema-col-row">
+                                <div class="schema-col-left">
+                                    <span class="schema-col-name">user_id</span>
+                                    <span class="schema-col-type">VARCHAR(100)</span>
+                                </div>
+                            </div>
+                            <div class="schema-col-row">
+                                <div class="schema-col-left">
+                                    <span class="schema-col-name">conversation_id</span>
+                                    <span class="schema-col-type">VARCHAR(100)</span>
+                                </div>
+                            </div>
+                            <div class="schema-col-row">
+                                <div class="schema-col-left">
+                                    <span class="schema-col-name">role / mode</span>
+                                    <span class="schema-col-type">VARCHAR(20 / 50)</span>
+                                </div>
+                            </div>
+                            <div class="schema-col-row">
+                                <div class="schema-col-left">
+                                    <span class="schema-col-name">content</span>
+                                    <span class="schema-col-type">MEDIUMTEXT</span>
+                                </div>
+                            </div>
+                            <div class="schema-col-row">
+                                <div class="schema-col-left">
+                                    <span class="schema-col-name">created_at</span>
+                                    <span class="schema-col-type">DOUBLE (Unix TS)</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="schema-card-footer">
+                            <span>Live Telemetry & Dialogue Turns</span>
+                            <button class="schema-nav-link" onclick="switchDbTable('conversation_turns')">Explore Data ➔</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Relational Graph Box -->
+                <div class="schema-rel-box">
+                    <h5>🔗 Entity-Relationship Mapping & Foreign Key Rules</h5>
+                    <div class="schema-rel-list">
+                        <div class="schema-rel-item cascade">
+                            <span>🔑 <code>users.id</code></span>
+                            <span style="color:var(--brand-gold-bright);">─── (1 : Many) ───▶</span>
+                            <span><code>purchases.user_id</code></span>
+                            <span style="color:var(--text-muted); font-size:0.7rem; margin-left:auto;">[FOREIGN KEY • ON DELETE CASCADE]</span>
+                        </div>
+                        <div class="schema-rel-item cascade">
+                            <span>🔑 <code>users.id</code></span>
+                            <span style="color:var(--brand-gold-bright);">─── (1 : Many) ───▶</span>
+                            <span><code>past_records.user_id</code></span>
+                            <span style="color:var(--text-muted); font-size:0.7rem; margin-left:auto;">[FOREIGN KEY • ON DELETE CASCADE]</span>
+                        </div>
+                        <div class="schema-rel-item telemetry">
+                            <span>👤 <code>users.id</code></span>
+                            <span style="color:#C084FC;">- - - (1 : Many) - - -▶</span>
+                            <span><code>conversation_turns.user_id</code></span>
+                            <span style="color:var(--text-muted); font-size:0.7rem; margin-left:auto;">[LOGICAL SESSION TELEMETRY]</span>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Modal Footer -->
@@ -2428,6 +2952,29 @@
             }
         });
 
+        function showDbSchemaDiagram() {
+            document.querySelectorAll('.db-tab-btn').forEach(b => b.classList.remove('active'));
+            const tabSchema = document.getElementById('tabSchema');
+            if (tabSchema) tabSchema.classList.add('active');
+
+            // Hide table view, show schema view
+            const scrollArea = document.getElementById('dbTableScrollArea');
+            if (scrollArea) scrollArea.style.display = 'none';
+            const schemaView = document.getElementById('dbSchemaView');
+            if (schemaView) schemaView.classList.add('active');
+            
+            // Adjust toolbar & footer
+            const searchInput = document.getElementById('dbSearchInput');
+            if (searchInput) searchInput.style.display = 'none';
+            const actionBtns = document.querySelectorAll('#dbActionsToolbar .db-action-btn');
+            actionBtns.forEach(b => b.style.display = 'none');
+
+            const statsText = document.getElementById('dbTableStatsText');
+            if (statsText) {
+                statsText.innerHTML = `Interactive MySQL Schema (ERD) • <b>4 Tables</b> • Foreign Key Relations & Secondary Indexes`;
+            }
+        }
+
         async function switchDbTable(tableName) {
             currentDbTable = tableName;
             document.querySelectorAll('.db-tab-btn').forEach(b => b.classList.remove('active'));
@@ -2438,8 +2985,20 @@
             );
             if (activeTab) activeTab.classList.add('active');
 
+            // Show table view, hide schema view
+            const scrollArea = document.getElementById('dbTableScrollArea');
+            if (scrollArea) scrollArea.style.display = 'block';
+            const schemaView = document.getElementById('dbSchemaView');
+            if (schemaView) schemaView.classList.remove('active');
+
+            // Restore toolbar actions
             const searchInput = document.getElementById('dbSearchInput');
-            if (searchInput) searchInput.value = '';
+            if (searchInput) {
+                searchInput.style.display = '';
+                searchInput.value = '';
+            }
+            const actionBtns = document.querySelectorAll('#dbActionsToolbar .db-action-btn');
+            actionBtns.forEach(b => b.style.display = '');
 
             await reloadCurrentDbTable();
         }
