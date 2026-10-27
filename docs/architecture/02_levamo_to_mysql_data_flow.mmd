@@ -1,0 +1,80 @@
+sequenceDiagram
+    autonumber
+    %% =====================================================================
+    %% 02_levamo_to_mysql_data_flow.mmd
+    %% Detailed Data Paths: Levamo (WordPress/WooCommerce/PAB) <-> MySQL <-> RAG
+    %% =====================================================================
+
+    actor Customer as Relationship Student / Buyer
+    participant WP as WordPress / WooCommerce / PAB ("Levamo")<br/>(dshstaging.doctorsarahhensley.com)
+    participant Nginx as Nginx (Reverse Proxy)<br/>(Ports 80/443)
+    participant WebhookHandler as FastAPI app.py<br/>(/api/webhooks/woocommerce)
+    participant ETL as Nightly Cron ETL<br/>(scripts/sync_wordpress_to_mysql.py)
+    participant UserDB as src/user_db.py<br/>(UserDatabaseManager)
+    participant MySQL as MySQL 8.4 Server<br/>(rag_users on 127.0.0.1:3306)
+    participant RAMCache as In-Memory Profile Cache<br/>(self._cache [TTL: 300s])
+    participant RAG as src/rag_service.py & generator.py<br/>(RAG Pipeline)
+
+    %% -----------------------------------------------------------------
+    %% PATH 1: REAL-TIME WEBHOOK INGESTION (PUSH)
+    %% -----------------------------------------------------------------
+    rect rgb(240, 248, 255)
+        note over Customer, MySQL: PATH 1: Real-Time Event Push (Customer Signup / Order Purchase)
+        Customer->>WP: Completes course purchase / account registration
+        WP->>Nginx: HTTPS POST /api/webhooks/woocommerce<br/>Headers: x-wc-webhook-signature, x-wc-webhook-topic<br/>Payload: Order ID, Customer ID, Line Items, Email, Status
+        Nginx->>WebhookHandler: Proxy to 127.0.0.1:8000
+        WebhookHandler->>WebhookHandler: Verify HMAC-SHA256 signature using WC_WEBHOOK_SECRET
+        alt Invalid Signature
+            WebhookHandler-->>Nginx: 401 Unauthorized ("Invalid webhook signature")
+            Nginx-->>WP: 401 Unauthorized
+        else Signature Verified
+            WebhookHandler->>UserDB: ingest_woocommerce_order_webhook(payload) / ingest_woocommerce_customer_webhook()
+            UserDB->>MySQL: DB User: rag_user<br/>INSERT INTO users (id, name, email)<br/>VALUES (%s, %s, %s)<br/>ON DUPLICATE KEY UPDATE name=VALUES(name), email=VALUES(email)
+            UserDB->>MySQL: INSERT INTO purchases (user_id, item_type, item_title)<br/>VALUES (%s, 'course'/'book', %s)
+            UserDB->>MySQL: INSERT INTO past_records (user_id, interaction_type, summary_notes)<br/>VALUES (%s, 'Order', %s)
+            UserDB->>RAMCache: Prime cache: self._cache[user_id] = {profile, timestamp: now}
+            WebhookHandler-->>Nginx: 200 OK {"success": true, "user_id": uid}
+            Nginx-->>WP: 200 OK
+        end
+    end
+
+    %% -----------------------------------------------------------------
+    %% PATH 2: NIGHTLY RECONCILIATION ETL (PULL CRON)
+    %% -----------------------------------------------------------------
+    rect rgb(245, 255, 245)
+        note over ETL, MySQL: PATH 2: Nightly Reconciliation ETL (2:00 AM Cron on EC2 Host)
+        ETL->>WP: HTTPS GET /wp-json/wc/v3/customers?per_page=100&page=N<br/>Auth: HTTP Basic (WORDPRESS_USER, WORDPRESS_APP_PASSWORD)
+        WP-->>ETL: JSON Array of Customer Profiles (id, email, first_name, last_name)
+        ETL->>WP: HTTPS GET /wp-json/wc/v3/orders?status=completed,processing&per_page=100<br/>Auth: HTTP Basic (WORDPRESS_USER, WORDPRESS_APP_PASSWORD)
+        WP-->>ETL: JSON Array of Orders (id, customer_id, line_items, date_created)
+        ETL->>MySQL: DB User: rag_user<br/>Batch INSERT INTO users ... ON DUPLICATE KEY UPDATE
+        ETL->>MySQL: Batch INSERT INTO purchases (user_id, item_type, item_title) ...
+        ETL->>MySQL: Batch INSERT INTO past_records (user_id, interaction_type, summary_notes) ...
+    end
+
+    %% -----------------------------------------------------------------
+    %% PATH 3: ON-DEMAND CHAT USER PROFILE RESOLUTION (READ)
+    %% -----------------------------------------------------------------
+    rect rgb(255, 250, 240)
+        note over RAG, WP: PATH 3: On-Demand Chat Personalization Read Chain
+        RAG->>UserDB: get_user_profile(user_id)
+        UserDB->>RAMCache: Check memory cache for user_id (TTL < 300s)
+        alt Cache HIT
+            RAMCache-->>UserDB: Return cached profile (<0.01ms)
+        else Cache MISS
+            UserDB->>MySQL: DB User: rag_user<br/>SELECT id, name, email FROM users WHERE id = %s OR email = %s LIMIT 1<br/>SELECT item_type, item_title, purchased_at FROM purchases WHERE user_id = %s<br/>SELECT interaction_type, summary_notes, recorded_at FROM past_records WHERE user_id = %s
+            alt Record found in MySQL
+                MySQL-->>UserDB: Returns rows (Name, Email, Courses, Quiz Notes)
+            else Record NOT in MySQL (Fresh lookup)
+                UserDB->>WP: HTTPS GET /wp-json/pab/v1/inspect/profile?user_id={id}&fresh=true<br/>Header: X-API-Key: PAB_API_KEY
+                alt PAB Returns 200 OK
+                    WP-->>UserDB: Raw PAB Profile (Attachment Style, Gamification, Orders)
+                else PAB Unset / 401
+                    UserDB->>WP: HTTPS GET /wp-json/wc/v3/customers/{id}<br/>Auth: Basic (WP_USER, WP_APP_PASSWORD)
+                    WP-->>UserDB: WooCommerce Customer JSON
+                end
+            end
+            UserDB->>RAMCache: Store normalized profile in self._cache[user_id]
+        end
+        UserDB-->>RAG: Profile Dict: {name, attachment_style, courses_purchased, books_purchased, past_records}
+    end

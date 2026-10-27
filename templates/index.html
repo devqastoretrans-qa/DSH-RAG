@@ -11,6 +11,7 @@
         href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
         rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
     <style>
         :root {
             --font-heading: 'Playfair Display', Georgia, serif;
@@ -1739,7 +1740,7 @@
                  LEFT PANEL: CUSTOMER & PERSONA CONTROL CENTER
                  =============================================================== -->
             <aside class="panel-customer">
-                <div>
+                <div {% if is_production %}style="display: none;"{% endif %}>
                     <div class="panel-heading">
                         <span>Select Customer Profile</span>
                         <span id="customerCountBadge" style="color:var(--brand-gold);">40 Users</span>
@@ -2671,7 +2672,7 @@
                                         isFirstToken = false;
                                     }
                                     accumulatedTokens += payload.token;
-                                    botBubble.innerHTML = marked.parse(accumulatedTokens) + '<span class="typing-cursor"></span>';
+                                    botBubble.innerHTML = safeRenderMarkdown(accumulatedTokens) + '<span class="typing-cursor"></span>';
                                     scrollToBottom();
                                 } else if (payload.done || payload.answer) {
                                     const finalAns = payload.answer || payload.full_answer || accumulatedTokens;
@@ -2770,8 +2771,23 @@
             return document.getElementById(id);
         }
 
+        function safeRenderMarkdown(text) {
+            const raw = marked.parse(text || '');
+            if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) {
+                return DOMPurify.sanitize(raw, {
+                    ALLOWED_TAGS: [
+                        'p', 'br', 'strong', 'em', 'u', 's', 'b', 'i', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                        'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'hr', 'table', 'thead', 'tbody',
+                        'tr', 'th', 'td', 'span', 'a'
+                    ],
+                    ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'style', 'title']
+                });
+            }
+            return raw;
+        }
+
         function renderFinalBotMessage(botBubble, markdownText, payload) {
-            let html = marked.parse(markdownText);
+            let html = safeRenderMarkdown(markdownText);
 
             // If in sales mode and recommended products exist, render product card
             if (payload && payload.recommended_products && payload.recommended_products.length > 0) {
@@ -3006,8 +3022,35 @@
         async function reloadCurrentDbTable() {
             const statsText = document.getElementById('dbTableStatsText');
             statsText.textContent = `Querying MySQL table \`${currentDbTable}\`...`;
+
+            let apiKey = sessionStorage.getItem('dsh_admin_api_key');
+            if (!apiKey) {
+                apiKey = prompt("🔒 Admin API Key required to inspect database tables:");
+                if (apiKey && apiKey.trim()) {
+                    sessionStorage.setItem('dsh_admin_api_key', apiKey.trim());
+                } else {
+                    statsText.innerHTML = `<span style="color:var(--brand-coral);">Access denied: Admin API Key is required to view database tables.</span>`;
+                    renderDbTable([], []);
+                    return;
+                }
+            }
+
             try {
-                const res = await fetch(`/api/database/table/${currentDbTable}?limit=250`);
+                let res = await fetch(`/api/database/table/${currentDbTable}?limit=250`, {
+                    headers: { 'X-API-Key': sessionStorage.getItem('dsh_admin_api_key') || '' }
+                });
+
+                if (res.status === 401) {
+                    sessionStorage.removeItem('dsh_admin_api_key');
+                    const retryKey = prompt("❌ Invalid or expired Admin API Key. Please re-enter your key:");
+                    if (retryKey && retryKey.trim()) {
+                        sessionStorage.setItem('dsh_admin_api_key', retryKey.trim());
+                        res = await fetch(`/api/database/table/${currentDbTable}?limit=250`, {
+                            headers: { 'X-API-Key': retryKey.trim() }
+                        });
+                    }
+                }
+
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const data = await res.json();
                 dbTableData = data;

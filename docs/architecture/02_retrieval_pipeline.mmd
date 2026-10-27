@@ -1,0 +1,74 @@
+flowchart TB
+%% =====================================================================
+%% 02_retrieval_pipeline.mmd
+%% Detailed Internals of src/search.py (Hybrid Retrieval & Re-ranking)
+%% =====================================================================
+
+    subgraph SUB_QUERY ["1. Query Processing & Expansion"]
+        Q_In["User Query Input<br/>(clean_query: str)"]:::client
+        Q_Expand["src/search.py :: expand_query_semantics()<br/>Dating Slang & Pop-Psych &rarr; Clinical Attachment Terms"]:::api
+        Q_Embed["src/embeddings.py :: embed_query()<br/>sentence-transformers/all-MiniLM-L6-v2 (384-dim)"]:::api
+    end
+
+    subgraph SUB_ROUTING ["2. Multi-Collection Target Routing"]
+        R_Mode{"Mode Check<br/>mode == 'sales'?"}:::api
+        R_SalesCol["Sales Target Collection<br/>'documents' (Sales Catalog & Pricing)"]:::api
+        R_IntentRouter["src/search.py :: route_clinical_intent()<br/>Regex router for tools, journals, reflections"]:::api
+        R_ClinicalCols["Clinical Target Collections<br/>('tools', 'reflections', 'journals', 'other')"]:::api
+    end
+
+    subgraph SUB_DENSE ["3. Qdrant Dense Vector Retrieval"]
+        Q_Search["src/qdrant_service.py :: search_similar()<br/>Fetch top_k * 3 (or 25 per collection)"]:::api
+        Qdrant_DB[("Qdrant Vector Database<br/>(Docker: Port 6333)")]:::data
+        F_Ready["Filter READY Status<br/>ingestion_tracker.is_document_ready()"]:::api
+        F_Isolate["Lane Defense-in-Depth Filter<br/>Exclude sales/pricing files if mode == 'generic'"]:::api
+    end
+
+    subgraph SUB_HYBRID ["4. BM25 Sparse Scoring & Rank Fusion"]
+        BM25_Calc["src/search.py :: compute_bm25_score()<br/>Sparse keyword scoring on text + parent context"]:::api
+        RRF_Fusion["Reciprocal Rank Fusion (RRF)<br/>RRF_K = 60<br/>• Sales: 50% Dense + 50% BM25<br/>• Generic: 60% Dense + 40% BM25"]:::api
+        Pool_Prune["Wide Pool Selection<br/>Sort by RRF score; keep top 16-20 candidates"]:::api
+    end
+
+    subgraph SUB_RERANK ["5. Cross-Encoder Re-Ranking & Thresholding"]
+        Rerank_Check{"Vector Score &ge; 0.90?<br/>(RERANK_CONFIDENCE_THRESHOLD)"}:::api
+        Skip_Rerank["Skip Cross-Encoder<br/>(Save 150ms CPU latency)"]:::api
+        Exec_Rerank["src/reranker.py :: rerank()<br/>cross-encoder/ms-marco-MiniLM-L-6-v2"]:::api
+        Dyn_Thresh["Dynamic Top-K Thresholding<br/>Prune weak outliers below 15% of top score"]:::api
+        Disambig["Multi-Tool Disambiguation<br/>Detect 2+ tools if query was unspecific"]:::api
+    end
+
+    Out_Chunks["Top-K Grounded Context Chunks<br/>+ Disambiguation Options (to Generator)"]:::client
+
+    %% Flow Connections
+    Q_In --> Q_Expand
+    Q_Expand --> Q_Embed
+    Q_In --> R_Mode
+    
+    R_Mode -->|Yes: Sales Mode| R_SalesCol
+    R_Mode -->|No: Generic Mode| R_IntentRouter
+    R_IntentRouter --> R_ClinicalCols
+
+    R_SalesCol --> Q_Search
+    R_ClinicalCols --> Q_Search
+    Q_Embed --> Q_Search
+    Q_Search <--> Qdrant_DB
+    
+    Q_Search --> F_Ready
+    F_Ready --> F_Isolate
+    F_Isolate --> BM25_Calc
+    BM25_Calc --> RRF_Fusion
+    RRF_Fusion --> Pool_Prune
+
+    Pool_Prune --> Rerank_Check
+    Rerank_Check -->|Yes: Ultra High Match| Skip_Rerank
+    Rerank_Check -->|No: Standard Match| Exec_Rerank
+    Skip_Rerank --> Dyn_Thresh
+    Exec_Rerank --> Dyn_Thresh
+    Dyn_Thresh --> Disambig
+    Disambig --> Out_Chunks
+
+    %% Classes
+    classDef client fill:#E0E7FF,stroke:#4338CA,stroke-width:1.5px,color:#1E1B4B
+    classDef api fill:#DCFCE7,stroke:#15803D,stroke-width:1.5px,color:#14532D
+    classDef data fill:#FEF3C7,stroke:#B45309,stroke-width:1.5px,color:#78350F

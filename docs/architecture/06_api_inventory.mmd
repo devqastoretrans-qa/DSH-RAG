@@ -1,0 +1,120 @@
+flowchart TD
+%% =====================================================================
+%% 06_api_inventory.mmd
+%% Complete API Architecture & Topology Inventory for DSH-RAG
+%% =====================================================================
+
+    subgraph CLIENTS ["API Consumers & Ingress Callers"]
+        ClientBrowser["Web Browser Client\n(End-User / Student)"]
+        ClientAdmin["Admin UI / Operator Script\n(Bearer / X-API-Key)"]
+        ClientWP["WordPress WooCommerce\n('Levamo' Store Webhooks)"]
+        ClientGoogle["Google Cloud PubSub\n(Drive Push Notifications)"]
+    end
+
+    subgraph EXPOSED_APIS ["FastAPI Application Surface (Port 8000)"]
+        subgraph G_ChatPublic ["Public Chat APIs (Auth: None)"]
+            EP_Chat["POST /chat\n(Synchronous Chat JSON)"]
+            EP_ChatStream["POST /chat/stream\n(Real-time SSE Token Stream)"]
+            EP_ChatReset["POST, DELETE /chat/reset\n(Session History Purge)"]
+            EP_ChatHistory["GET /api/chat/history\n(Session Turns Inspector)"]
+            EP_Ask["POST /ask & /ask/stream\n(Single-Turn Q&A API)"]
+            EP_Search["POST /search\n(Raw Hybrid Retrieval)"]
+        end
+
+        subgraph G_AdminSecured ["Admin Secured APIs (Auth: RAG_API_KEY)"]
+            EP_UsersList["GET /api/users\n(Customer Personas Catalog)"]
+            EP_UserDetail["GET /api/users/{user_id}\n(Single Customer Profile & Purchases)"]
+            EP_Upload["POST /upload\n(Multipart Document Ingestion)"]
+            EP_DriveSync["POST /drive/sync\n(Force Scan Google Drive)"]
+            EP_CacheClear["GET, POST /api/v1/cache/clear\n(Flush Semantic & Profile Caches)"]
+        end
+
+        subgraph G_Webhooks ["Webhook Ingress (Cryptographic Signature Auth)"]
+            EP_WCWebhook["POST /api/webhooks/woocommerce\n(Aliases: /sync, /reconcile)\nAuth: HMAC-SHA256 (WC_WEBHOOK_SECRET)"]
+            EP_DriveWebhook["POST /drive/webhook\n(Alias: /api/v1/drive/webhook)\nAuth: X-Goog-Channel-Token"]
+        end
+
+        subgraph G_Monitoring ["Studio Diagnostics & Static APIs (Auth: None)"]
+            EP_Root["GET / & /dsh-rag\n(Web UI HTML Interface)"]
+            EP_Health["GET /health\n(Liveness Probe: 200 OK)"]
+            EP_QdrantStatus["GET /api/qdrant/status\n(Vector Server Connection & Counts)"]
+            EP_DriveStatus["GET /drive/status\n(Google Polling Monitor State)"]
+            EP_DocsList["GET /documents\n(Ingested Documents Catalog)"]
+            EP_SysLogs["GET /api/system/logs\n(Recent 50-100 Log Lines)"]
+            EP_SysStats["GET /api/system/stats\n(MySQL & Session Live Counters)"]
+            EP_Schema["GET /api/schema\n(Relational ERD Structure)"]
+            EP_SchemaTable["GET /api/schema/table/{table}\n(Paginated MySQL Records Browser)"]
+        end
+    end
+
+    subgraph OUTBOUND_SERVICES ["External APIs & Internal Datastores Called"]
+        subgraph G_Datastores ["Internal Datastores (127.0.0.1 Loopback)"]
+            DB_MySQL[("MySQL 8.4 Server\nHost: 127.0.0.1:3306\nAuth: rag_user / DB_PASS\nDB: rag_users")]
+            DB_Qdrant[("Qdrant Vector DB\nHost: 127.0.0.1:6333 (Docker)\nAuth: QDRANT_API_KEY\nCollections: 5")]
+            DB_SQLite[("Local SQLite Files\nusers_data.db & ingestion_tracker.db\nAuth: OS File Perms")]
+        end
+
+        subgraph G_RemoteAPIs ["External SaaS & Upstream Cloud APIs"]
+            API_WPPAB["WordPress PAB Profile API\nHost: WORDPRESS_URL\nEndpoint: /wp-json/pab/v1/inspect/profile\nAuth: Header X-API-Key (PAB_API_KEY)"]
+            API_WPWC["WordPress WooCommerce REST API\nHost: WORDPRESS_URL\nEndpoint: /wp-json/wc/v3/customers & /orders\nAuth: Basic (WP_USER, WP_APP_PASSWORD)"]
+            API_OpenAI["OpenAI Chat Completions\nHost: api.openai.com\nEndpoint: /v1/chat/completions (gpt-4o-mini)\nAuth: Bearer OPENAI_API_KEY"]
+            API_Groq["Groq Cloud API (Fallback)\nHost: api.groq.com\nEndpoint: /openai/v1/chat/completions\nAuth: Bearer GROQ_API_KEY"]
+            API_GDrive["Google Drive API v3\nHost: www.googleapis.com\nEndpoint: /drive/v3/files\nAuth: OAuth 2.0 JWT (service_account.json)"]
+        end
+    end
+
+    %% Inbound Connections
+    ClientBrowser --> EP_Chat
+    ClientBrowser --> EP_ChatStream
+    ClientBrowser --> EP_ChatReset
+    ClientBrowser --> EP_ChatHistory
+    ClientBrowser --> EP_Root
+    ClientBrowser --> EP_SysStats
+    ClientBrowser --> EP_Schema
+    ClientBrowser --> EP_SchemaTable
+
+    ClientAdmin --> EP_UsersList
+    ClientAdmin --> EP_UserDetail
+    ClientAdmin --> EP_Upload
+    ClientAdmin --> EP_DriveSync
+    ClientAdmin --> EP_CacheClear
+
+    ClientWP --> EP_WCWebhook
+    ClientGoogle --> EP_DriveWebhook
+
+    %% Outbound Connections: Chat Execution
+    EP_ChatStream --> DB_MySQL
+    EP_ChatStream --> DB_Qdrant
+    EP_ChatStream --> API_OpenAI
+    EP_ChatStream -.-> API_Groq
+
+    %% Outbound Connections: Profile & Webhook Execution
+    EP_UsersList --> DB_MySQL
+    EP_UserDetail --> DB_MySQL
+    EP_UserDetail -.-> API_WPPAB
+    EP_UserDetail -.-> API_WPWC
+    EP_WCWebhook --> DB_MySQL
+    EP_WCWebhook -.-> DB_SQLite
+
+    %% Outbound Connections: Ingestion
+    EP_Upload --> DB_Qdrant
+    EP_Upload --> DB_SQLite
+    EP_DriveSync --> API_GDrive
+    EP_DriveWebhook --> API_GDrive
+
+    %% Styling
+    classDef clientClass fill:#fff3e0,stroke:#e65100,stroke-width:2px;
+    classDef publicApi fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+    classDef secureApi fill:#ffebee,stroke:#c62828,stroke-width:2px;
+    classDef webhookApi fill:#ede7f6,stroke:#512da8,stroke-width:2px;
+    classDef diagApi fill:#f5f5f5,stroke:#616161,stroke-width:1px;
+    classDef internalStore fill:#e1f5fe,stroke:#0277bd,stroke-width:2px;
+    classDef externalCloud fill:#fce4ec,stroke:#c2185b,stroke-width:2px;
+
+    class ClientBrowser,ClientAdmin,ClientWP,ClientGoogle clientClass;
+    class EP_Chat,EP_ChatStream,EP_ChatReset,EP_ChatHistory,EP_Ask,EP_Search publicApi;
+    class EP_UsersList,EP_UserDetail,EP_Upload,EP_DriveSync,EP_CacheClear secureApi;
+    class EP_WCWebhook,EP_DriveWebhook webhookApi;
+    class EP_Root,EP_Health,EP_QdrantStatus,EP_DriveStatus,EP_DocsList,EP_SysLogs,EP_SysStats,EP_Schema,EP_SchemaTable diagApi;
+    class DB_MySQL,DB_Qdrant,DB_SQLite internalStore;
+    class API_WPPAB,API_WPWC,API_OpenAI,API_Groq,API_GDrive externalCloud;

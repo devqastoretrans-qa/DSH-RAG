@@ -1,0 +1,70 @@
+flowchart TB
+%% =====================================================================
+%% 06_deployment_and_security.mmd
+%% Infrastructure View, Trust Boundaries, Secrets & Security Surface
+%% =====================================================================
+
+    subgraph TB_PUBLIC ["TRUST BOUNDARY 0: Public Internet (Untrusted Ingress)"]
+        Client_Public["Public Users & WordPress Visitors"]:::client
+        Attacker["Potential Malicious Actors"]:::security_risk
+    end
+
+    subgraph TB_NGINX ["TRUST BOUNDARY 1: Nginx Gateway (AWS EC2 Host)"]
+        Nginx_Proxy["Nginx Reverse Proxy<br/>Ports 80 / 443 (SSL TLS 1.3)<br/>Config: X-Accel-Buffering: no (SSE)"]:::api
+    end
+
+    subgraph TB_FASTAPI ["TRUST BOUNDARY 2: FastAPI Core App (127.0.0.1:8000)"]
+        subgraph Endpoints_Public ["Public Endpoints (UNAUTHENTICATED)"]
+            EP_Chat["/chat & /chat/stream<br/>⚠️ TRUSTS client user_profile & chat_history!"]:::security_risk
+            EP_Reset["/chat/reset & /api/chat/history"]:::security_risk
+            EP_Stats["/api/system/stats & /api/qdrant/status"]:::security_risk
+            EP_Explorer["/api/database/table/{name}<br/>⚠️ Table browser exposed if unblocked!"]:::security_risk
+        end
+
+        subgraph Endpoints_Auth ["Authenticated Endpoints"]
+            EP_Ask["/api/v1/ask & /api/v1/sales/ask<br/>Auth: Bearer RAG_API_KEY"]:::api
+            EP_Upload["/upload & /drive/sync<br/>Auth: Bearer RAG_API_KEY"]:::api
+            EP_Webhook["/api/webhooks/woocommerce<br/>Auth: HMAC-SHA256 (WC_WEBHOOK_SECRET)"]:::api
+        end
+
+        App_Memory["Uvicorn Process RAM<br/>• UserDB._cache (300s TTL)<br/>• SemanticQueryCache<br/>• Env Vars: OPENAI_API_KEY, GROQ_API_KEY, MYSQL_PASSWORD"]:::api
+    end
+
+    subgraph TB_INTERNAL ["TRUST BOUNDARY 3: Internal Services (Localhost Only: 127.0.0.1)"]
+        DB_MySQL[("MySQL 8.4 Server (Port 3306)<br/>DB: rag_users<br/>Auth: rag_user / MYSQL_PASSWORD")]:::data
+        DB_Qdrant[("Qdrant Vector DB (Docker Port 6333)<br/>No Auth (Internal Network Only)")]:::data
+        DB_SQLite[("Local SQLite Stores<br/>users_data.db & ingestion_tracker.db")]:::data
+    end
+
+    subgraph TB_EXTERNAL ["TRUST BOUNDARY 4: Outbound External Cloud Services"]
+        Ext_LLM["LLM Providers (HTTPS)<br/>OpenAI API / Groq Cloud API"]:::external
+        Ext_WP["WordPress / PAB API (HTTPS)<br/>dshstaging... (PAB_API_KEY / Basic Auth)"]:::external
+        Ext_GDrive["Google Cloud Drive API<br/>Service Account / OAuth Token"]:::external
+    end
+
+    %% Ingress Flows
+    Client_Public -->|"HTTPS Public Calls"| Nginx_Proxy
+    Attacker -->|"Probes & Exploits"| Nginx_Proxy
+
+    Nginx_Proxy -->|"Reverse Proxy"| Endpoints_Public
+    Nginx_Proxy -->|"Reverse Proxy"| Endpoints_Auth
+
+    Endpoints_Public --> App_Memory
+    Endpoints_Auth --> App_Memory
+
+    %% Internal Data Flows
+    App_Memory <-->|"TCP 3306 (Local PyMySQL)"| DB_MySQL
+    App_Memory <-->|"HTTP 6333 (Local REST)"| DB_Qdrant
+    App_Memory <-->|"Disk File I/O"| DB_SQLite
+
+    %% Outbound Flows
+    App_Memory -->|"Prompt Payload (HTTPS)"| Ext_LLM
+    App_Memory -->|"Profile Lookup (HTTPS)"| Ext_WP
+    App_Memory -->|"File Ingestion (HTTPS)"| Ext_GDrive
+
+    %% Classes
+    classDef client fill:#E0E7FF,stroke:#4338CA,stroke-width:1.5px,color:#1E1B4B
+    classDef api fill:#DCFCE7,stroke:#15803D,stroke-width:1.5px,color:#14532D
+    classDef data fill:#FEF3C7,stroke:#B45309,stroke-width:1.5px,color:#78350F
+    classDef external fill:#F3E8FF,stroke:#7E22CE,stroke-width:1.5px,color:#581C87
+    classDef security_risk fill:#FEE2E2,stroke:#B91C1C,stroke-width:2px,color:#7F1D1D

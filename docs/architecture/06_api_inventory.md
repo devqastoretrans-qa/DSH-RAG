@@ -1,0 +1,48 @@
+# 🔌 Comprehensive API & External Services Inventory: Doctor Sarah Hensley AI RAG
+
+This document indexes **every API endpoint exposed by the DSH-RAG FastAPI application**, as well as **every external API, remote service, and internal database** the application communicates with.
+
+---
+
+## Part A: Endpoints Exposed by DSH-RAG (`app.py`)
+
+| Endpoint Path | HTTP Method(s) | Auth Required? | Purpose & Function | Intended Caller | Source Reference |
+| :--- | :---: | :---: | :--- | :--- | :--- |
+| **`/`**, **`/dsh-rag`**, **`/dsh-rag/`** | `GET`, `HEAD` | **No** | Renders main web UI chat & inspector dashboard ([`templates/index.html`](file:///c:/DSH%20RAG/RAG-DSH/templates/index.html)) | Web Browser | [`app.py:207`](file:///c:/DSH%20RAG/RAG-DSH/app.py#L207) |
+| **`/health`** | `GET` | **No** | Health check probe (verifies Uvicorn process is responsive) | Nginx / Load Balancer / Uptime Robot | [`app.py:339`](file:///c:/DSH%20RAG/RAG-DSH/app.py#L339) |
+| **`/search`** | `POST` | **No** | Raw hybrid retrieval benchmark (MiniLM vector + BM25 + BGE re-ranker) | Developers / Diagnostic Scripts | [`app.py:532`](file:///c:/DSH%20RAG/RAG-DSH/app.py#L532) |
+| **`/ask`** | `POST` | **No** | Single-turn synchronous RAG Q&A synthesis | Third-Party Web Apps / External Backends | [`app.py:560`](file:///c:/DSH%20RAG/RAG-DSH/app.py#L560) |
+| **`/ask/stream`** | `POST` | **No** | Single-turn streaming RAG response (Server-Sent Events) | Third-Party Web Apps / Streaming Clients | [`app.py:650`](file:///c:/DSH%20RAG/RAG-DSH/app.py#L650) |
+| **`/chat`** | `POST` | **No** | Multi-turn conversational chat answer (synchronous JSON response) | Web Browser (Chat Interface) | [`app.py:1044`](file:///c:/DSH%20RAG/RAG-DSH/app.py#L1044) |
+| **`/chat/stream`** | `POST` | **No** | Multi-turn conversational chat with real-time SSE token streaming | Web Browser (Chat Interface) | [`app.py:1107`](file:///c:/DSH%20RAG/RAG-DSH/app.py#L1107) |
+| **`/chat/reset`** | `POST`, `DELETE` | **No** | Clears session conversation history in MySQL and memory | Web Browser (Chat "New Chat" button) | [`app.py:1118`](file:///c:/DSH%20RAG/RAG-DSH/app.py#L1118) |
+| **`/api/chat/history`** | `GET` | **No** | Fetches recent multi-turn conversation turns for an active session | Web Browser (Session Inspector Tab) | [`app.py:1166`](file:///c:/DSH%20RAG/RAG-DSH/app.py#L1166) |
+| **`/api/users`** | `GET` | **YES** (`RAG_API_KEY`) | Returns registered customer personas, owned courses, and past records | Admin Dashboard / Personalization Tester | [`app.py:343`](file:///c:/DSH%20RAG/RAG-DSH/app.py#L343) |
+| **`/api/users/{user_id}`** | `GET` | **YES** (`RAG_API_KEY`) | Returns single customer profile, courses, and clinical intake records | Admin Dashboard | [`app.py:356`](file:///c:/DSH%20RAG/RAG-DSH/app.py#L356) |
+| **`/upload`** | `POST` | **YES** (`RAG_API_KEY`) | Validates, extracts, chunks, embeds, and indexes document into Qdrant | Admin Dashboard / Ingestion Client | [`app.py:477`](file:///c:/DSH%20RAG/RAG-DSH/app.py#L477) |
+| **`/drive/status`** | `GET` | **No** | Current status and metrics of Google Drive background monitor | Admin Dashboard (Drive Status Pill) | [`app.py:395`](file:///c:/DSH%20RAG/RAG-DSH/app.py#L395) |
+| **`/drive/sync`** | `POST` | **YES** (`RAG_API_KEY`) | Triggers an immediate Google Drive scan and auto-ingestion cycle | Admin Dashboard / Deployment Rollout | [`app.py:404`](file:///c:/DSH%20RAG/RAG-DSH/app.py#L404) |
+| **`/api/v1/cache/clear`** | `GET`, `POST` | **YES** (`RAG_API_KEY`) | Flushes both Semantic Query Cache and User Profile In-Memory Cache | Admin Dashboard / Deployment Rollout | [`app.py:415`](file:///c:/DSH%20RAG/RAG-DSH/app.py#L415) |
+| **`/documents`** | `GET` | **No** | Returns list of all indexed documents and their lifecycle states | Admin Dashboard (Documents Tab) | [`app.py:438`](file:///c:/DSH%20RAG/RAG-DSH/app.py#L438) |
+| **`/api/qdrant/status`** | `GET` | **No** | Connection details and total point counts across Qdrant collections | Admin Dashboard (Qdrant Pill) | [`app.py:368`](file:///c:/DSH%20RAG/RAG-DSH/app.py#L368) |
+| **`/api/system/logs`** | `GET` | **No** | Streams last 50-100 lines of application and ingestion log files | Admin Dashboard (Live Logs Tab) | [`app.py:465`](file:///c:/DSH%20RAG/RAG-DSH/app.py#L465) |
+| **`/api/system/stats`** | `GET` | **No** | Live row counts across MySQL `users`, `purchases`, `past_records` | Web Browser (Stats Bar) | [`app.py:1184`](file:///c:/DSH%20RAG/RAG-DSH/app.py#L1184) |
+| **`/api/schema`** | `GET` | **No** | Returns complete relational schema details, columns, and foreign keys | Web Browser (Interactive ERD Tab) | [`app.py:1210`](file:///c:/DSH%20RAG/RAG-DSH/app.py#L1210) |
+| **`/api/schema/table/{table}`** | `GET` | **No** | Paginated table browser displaying rows from MySQL tables | Web Browser (Database Tables Tab) | [`app.py:1253`](file:///c:/DSH%20RAG/RAG-DSH/app.py#L1253) |
+| **`/api/webhooks/woocommerce`**<br/>*(Aliases: `/sync`, `/reconcile`, `/api/v1/woocommerce/webhook`)* | `POST` | **YES** (`HMAC-SHA256`) | Real-time push events (`customer.created`, `order.completed`) from WooCommerce | WordPress WooCommerce Store ("Levamo") | [`app.py:1287`](file:///c:/DSH%20RAG/RAG-DSH/app.py#L1287) |
+| **`/drive/webhook`**<br/>*(Alias: `/api/v1/drive/webhook`)* | `POST` | **YES** (Channel Token) | Google Drive push notifications for automated near-instant file ingestion | Google Cloud PubSub / Drive Service | [`app.py:1396`](file:///c:/DSH%20RAG/RAG-DSH/app.py#L1396) |
+
+---
+
+## Part B: External APIs, Remote Services & Internal Datastores Called by DSH-RAG
+
+| Remote System / Datastore | Host / Base URL Pattern | Protocol | Authentication Method | Data Sent (Outbound) | Data Received (Inbound) | File & Function Reference |
+| :--- | :--- | :---: | :--- | :--- | :--- | :--- |
+| **MySQL 8.4 Server (`rag_users`)** | `127.0.0.1:3306` (Local Loopback) | TCP / MySQL Protocol (`pymysql`) | DB Username: `MYSQL_USER` (`rag_user`), Password: `MYSQL_PASSWORD` | Parametrized SQL queries: `INSERT/SELECT/DELETE` into `users`, `purchases`, `past_records`, `conversation_turns` | Query result sets, row counts, customer profile records | [`src/user_db.py:452`](file:///c:/DSH%20RAG/RAG-DSH/src/user_db.py#L452), [`src/conversation_memory.py:115`](file:///c:/DSH%20RAG/RAG-DSH/src/conversation_memory.py#L115), [`scripts/sync_wordpress_to_mysql.py:87`](file:///c:/DSH%20RAG/RAG-DSH/scripts/sync_wordpress_to_mysql.py#L87) |
+| **Qdrant Vector Database** | `127.0.0.1:6333` (Docker Container) | HTTP / gRPC (`qdrant_client`) | `QDRANT_API_KEY` (Optional; empty on local loopback) | 384-dim Float32 vectors, payload filters (`category`, `document`), point upsert payloads | Scored point matches, metadata payloads (`document`, `content`, `category`) | [`src/search.py:270`](file:///c:/DSH%20RAG/RAG-DSH/src/search.py#L270), [`src/document_manager.py:128`](file:///c:/DSH%20RAG/RAG-DSH/src/document_manager.py#L128), [`src/qdrant_service.py:35`](file:///c:/DSH%20RAG/RAG-DSH/src/qdrant_service.py#L35) |
+| **SQLite Fallback Databases** | Local disk: `users_data.db`, `ingestion_tracker.db` | C library / Python `sqlite3` | Local OS filesystem permissions | SQLite queries (`users`, `purchases`, `past_records`, `tracked_files`) | Seed personas, offline cached profiles, document sync checksums | [`src/user_db.py:378`](file:///c:/DSH%20RAG/RAG-DSH/src/user_db.py#L378), [`src/ingestion_tracker.py:35`](file:///c:/DSH%20RAG/RAG-DSH/src/ingestion_tracker.py#L35) |
+| **WordPress PAB Profile API** | `WORDPRESS_URL/wp-json/pab/v1/inspect/profile` | HTTPS REST | Header: `X-API-Key: PAB_API_KEY` (and `X-API Key`) | Query params: `user_id={id}`, `fresh=true` | JSON containing `profile.meta`, `attachment_style`, `streaks`, `orders`, and lesson progress | [`src/user_db.py:148`](file:///c:/DSH%20RAG/RAG-DSH/src/user_db.py#L148) (`_get_profile_from_pab_api`) |
+| **WordPress WooCommerce REST API** | `WORDPRESS_URL/wp-json/wc/v3/customers` & `/orders` | HTTPS REST | HTTP Basic Auth: `WORDPRESS_USER` & `WORDPRESS_APP_PASSWORD` | Filter params: `per_page=100`, `status=completed,processing`, `search={email}` | Paginated customer lists, line items, order IDs, timestamps, product names | [`src/user_db.py:263`](file:///c:/DSH%20RAG/RAG-DSH/src/user_db.py#L263), [`scripts/sync_wordpress_to_mysql.py:126`](file:///c:/DSH%20RAG/RAG-DSH/scripts/sync_wordpress_to_mysql.py#L126) |
+| **OpenAI API** | `https://api.openai.com/v1/chat/completions` | HTTPS REST | `Authorization: Bearer OPENAI_API_KEY` | Model (`gpt-4o-mini`), messages payload (system prompt with grounding, context chunks, user query), temperature, streaming flag | Streaming chunk tokens (`data: {"choices": [{"delta": {"content": "..."}}]}`) | [`src/generator.py:532`](file:///c:/DSH%20RAG/RAG-DSH/src/generator.py#L532) (`generate_answer_stream`) |
+| **Groq Cloud API (Optional Fallback)** | `https://api.groq.com/openai/v1/chat/completions` | HTTPS REST | `Authorization: Bearer GROQ_API_KEY` | Model (`openai/gpt-oss-120b`), formatted clinical chat prompt messages | Streaming tokens via OpenAI-compatible SDK | [`src/generator.py:522`](file:///c:/DSH%20RAG/RAG-DSH/src/generator.py#L522) |
+| **Google Drive API v3** | `https://www.googleapis.com/drive/v3/files` | HTTPS REST | OAuth 2.0 Bearer JWT (Google Service Account `service_account.json`) | Query params: `folder_id`, `pageSize`, `fields='files(id, name, mimeType, md5Checksum)'` | File metadata list and raw file binary streams (PDF, DOCX) | [`src/drive_service.py:65`](file:///c:/DSH%20RAG/RAG-DSH/src/drive_service.py#L65) (`list_files_in_folder`, `download_file_bytes`) |

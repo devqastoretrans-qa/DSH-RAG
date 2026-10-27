@@ -3,6 +3,7 @@ import re
 import json
 import hmac
 import hashlib
+import secrets
 import base64
 import logging
 from datetime import datetime
@@ -38,6 +39,12 @@ from src.embeddings import get_embedding_service
 from src.reranker import get_reranker_service
 from src.semantic_cache import get_semantic_cache
 from src.conversation_memory import get_conversation_memory
+from src.session_auth import (
+    create_session_token,
+    verify_session_token,
+    verify_chat_access,
+    chat_rate_limiter
+)
 
 logger = logging.getLogger("rag_app")
 
@@ -88,6 +95,8 @@ async def lifespan(app: FastAPI):
     if monitor.is_running():
         monitor.stop()
 
+IS_PROD = os.getenv("ENV", "production") == "production"
+
 app = FastAPI(
     title="Doctor Sarah Hensley AI - Personalized RAG API",
     description=(
@@ -97,8 +106,9 @@ app = FastAPI(
     ),
     version="2.1.0",
     lifespan=lifespan,
-    docs_url="/docs",
-    redoc_url="/redoc"
+    docs_url=None if IS_PROD else "/docs",
+    redoc_url=None,
+    openapi_url=None if IS_PROD else "/openapi.json"
 )
 
 # -----------------------------------------------------------------------------
@@ -146,28 +156,24 @@ def verify_api_key(
     or Header ('X-API-Key: <KEY>') against the RAG_API_KEY environment variable.
     """
     expected_key = os.getenv("RAG_API_KEY", "").strip()
-    is_production = os.getenv("ENVIRONMENT", "").strip().lower() in ("production", "prod")
-
     if not expected_key:
-        if is_production:
-            logger.error("[Security] RAG_API_KEY is not configured in production environment. Blocking access.")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Unauthorized: API Key authentication is strictly required in production."
-            )
-        # If RAG_API_KEY is not configured in env, allow access in dev mode
-        return True
+        logger.error("[Security] RAG_API_KEY is not configured on the server.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Server misconfigured"
+        )
 
     token = None
-    if auth and auth.scheme.lower() == "bearer":
-        token = auth.credentials
+    if auth and auth.scheme.lower() == "bearer" and auth.credentials:
+        token = auth.credentials.strip()
     elif api_key:
-        token = api_key
+        token = api_key.strip()
 
-    if not token or token != expected_key:
+    if not token or not secrets.compare_digest(token.encode("utf-8"), expected_key.encode("utf-8")):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unauthorized"
+            detail="Unauthorized",
+            headers={"WWW-Authenticate": "Bearer"}
         )
     return token
 
@@ -197,7 +203,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(
         status_code=exc.status_code,
-        content={"success": False, "error": exc.detail}
+        content={"success": False, "error": exc.detail},
+        headers=exc.headers
     )
 
 
@@ -211,7 +218,11 @@ async def serve_ui(request: Request):
     """
     Renders the web UI interface for document ingestion and semantic search.
     """
-    return templates.TemplateResponse(request=request, name="index.html")
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={"is_production": IS_PROD}
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -239,6 +250,24 @@ class AskRequest(BaseModel):
     folders: Optional[List[str]] = Field(default=None, description="Optional list of clinical subfolders to search ('journals', 'other', 'tools', 'reflections')")
 
 
+class SessionTokenRequest(BaseModel):
+    user_id: Optional[str] = Field(default="guest", description="WordPress user ID or username", json_schema_extra={"example": "1042"})
+    session_id: Optional[str] = Field(default=None, description="Frontend chat session ID", json_schema_extra={"example": "sess_98765"})
+    mode: Optional[str] = Field(default="generic", description="Response lane: 'generic' or 'sales'")
+    ttl_seconds: Optional[int] = Field(default=7200, ge=60, le=86400, description="Token validity in seconds (default 2 hours = 7200s)")
+
+
+class SessionTokenResponse(BaseModel):
+    success: bool = Field(default=True)
+    token: str = Field(..., description="Signed short-lived HMAC-SHA256 session token")
+    user_id: str
+    session_id: str
+    mode: str
+    issued_at: int
+    expires_at: int
+    ttl_seconds: int
+
+
 class ChatRequest(BaseModel):
     session_id: str = Field(..., description="Unique frontend session ID for conversation tracking", json_schema_extra={"example": "sess_abc123"})
     message: str = Field(..., min_length=1, description="User question or follow-up prompt", json_schema_extra={"example": "How do I communicate with my partner?"})
@@ -246,12 +275,14 @@ class ChatRequest(BaseModel):
     user_profile: Optional[Dict[str, Any]] = Field(default=None, description="Direct customer profile passed from frontend")
     chat_history: Optional[List[Dict[str, str]]] = Field(default=None, description="Optional conversation turns passed directly from frontend")
     mode: Optional[str] = Field(default="generic", description="Bot lane: 'generic' (clinical) or 'sales'")
+    session_token: Optional[str] = Field(default=None, description="Temporary HMAC-SHA256 session token issued by WordPress")
 
 
 class ChatResetRequest(BaseModel):
     session_id: str = Field(..., description="Session ID to clear", json_schema_extra={"example": "sess_abc123"})
     user_id: Optional[str] = Field(default=None, description="Optional user ID")
     mode: Optional[str] = Field(default=None, description="Optional bot lane: 'generic' or 'sales'")
+    session_token: Optional[str] = Field(default=None, description="Temporary HMAC-SHA256 session token issued by WordPress")
 
 
 class SourceItem(BaseModel):
@@ -340,7 +371,7 @@ async def health_check():
     }
 
 
-@app.get("/api/users")
+@app.get("/api/users", dependencies=[Depends(verify_api_key)])
 async def list_users():
     """
     Returns list of all registered customer profiles, purchased courses/books,
@@ -353,7 +384,7 @@ async def list_users():
     })
 
 
-@app.get("/api/users/{user_id}")
+@app.get("/api/users/{user_id}", dependencies=[Depends(verify_api_key)])
 async def get_user_profile(user_id: str):
     """
     Returns specific customer profile, purchased courses/books, and past interaction records.
@@ -401,7 +432,7 @@ async def get_drive_status():
     return JSONResponse(content=monitor.get_status())
 
 
-@app.post("/drive/sync")
+@app.post("/drive/sync", dependencies=[Depends(verify_api_key)])
 async def trigger_drive_sync(force: bool = False):
     """
     Manually triggers an immediate scan and auto-ingestion cycle for Google Drive.
@@ -412,25 +443,12 @@ async def trigger_drive_sync(force: bool = False):
     return JSONResponse(content=result)
 
 
-@app.api_route("/api/v1/cache/clear", methods=["GET", "POST"])
-async def clear_system_caches(
-    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
-    x_admin_key: Optional[str] = Header(None, alias="X-Admin-API-Key"),
-    api_key: Optional[str] = Query(None)
-):
+@app.api_route("/api/v1/cache/clear", methods=["GET", "POST"], dependencies=[Depends(verify_api_key)])
+async def clear_system_caches():
     """
     Flushes both the in-memory Semantic Query Cache and User Profile Cache.
-    Requires authentication via X-API-Key/X-Admin-API-Key header or api_key query parameter.
+    Requires authentication via verify_api_key (Bearer token or X-API-Key).
     """
-    expected_key = os.getenv("RAG_API_KEY") or os.getenv("ADMIN_API_KEY") or "dsh_rag_secret_key_2026"
-    provided_key = x_api_key or x_admin_key or api_key
-
-    if not provided_key or provided_key.strip() != expected_key.strip():
-        raise HTTPException(
-            status_code=401,
-            detail="Unauthorized: Valid X-API-Key header or api_key query parameter is required to flush system caches."
-        )
-
     from src.semantic_cache import get_semantic_cache
     sem_cache = get_semantic_cache()
     user_db = get_user_db()
@@ -465,7 +483,7 @@ async def get_document_status(document_id: str):
     return JSONResponse(content=doc)
 
 
-@app.get("/logs")
+@app.get("/logs", dependencies=[Depends(verify_api_key)])
 async def get_system_logs(log_type: str = "ingestion", limit: int = 50):
     """
     Returns recent log records formatted in Indian Standard Time (IST).
@@ -482,7 +500,7 @@ async def get_system_logs(log_type: str = "ingestion", limit: int = 50):
 
 
 
-@app.post("/upload")
+@app.post("/upload", dependencies=[Depends(verify_api_key)])
 async def upload_document(file: UploadFile = File(...)):
     """
     Automatically executes the complete document ingestion pipeline:
@@ -510,7 +528,7 @@ async def upload_document(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Document ingestion failed: {str(e)}")
 
 
-@app.post("/ingest-sample")
+@app.post("/ingest-sample", dependencies=[Depends(verify_api_key)])
 async def ingest_sample():
     """
     Ingests the sample PDF located in documents/sample.pdf through the automated pipeline.
@@ -530,7 +548,7 @@ async def ingest_sample():
         raise HTTPException(status_code=500, detail=f"Sample ingestion failed: {str(e)}")
 
 
-@app.post("/search", include_in_schema=False)
+@app.post("/search", dependencies=[Depends(verify_api_key)], include_in_schema=False)
 async def search_endpoint(request: SearchQueryRequest):
     """
     Dashboard UI Endpoint: Performs semantic vector search + cross-encoder re-ranking + ChatGPT answer synthesis.
@@ -1029,6 +1047,33 @@ async def ask_api_v1_stream(
 
 
 # -----------------------------------------------------------------------------
+# Session Authentication Endpoints (T9: WordPress Short-Lived Tokens)
+# -----------------------------------------------------------------------------
+@app.post(
+    "/api/v1/session/token",
+    tags=["Session Auth"],
+    summary="Generate Short-Lived Chat Session Token (WordPress Backend)",
+    response_model=SessionTokenResponse
+)
+async def create_chat_token_endpoint(
+    req: SessionTokenRequest,
+    _auth: Any = Depends(verify_api_key)
+):
+    """
+    Called server-to-server by the WordPress PHP backend using RAG_API_KEY.
+    Generates a secure, temporary HMAC-SHA256 session token (valid 1-2 hours)
+    for visiting WordPress users without exposing the master key in the browser.
+    """
+    token_data = create_session_token(
+        user_id=req.user_id or "guest",
+        session_id=req.session_id,
+        mode=req.mode or "generic",
+        ttl_seconds=req.ttl_seconds or 7200
+    )
+    return JSONResponse(status_code=200, content=token_data)
+
+
+# -----------------------------------------------------------------------------
 # Dedicated Chat UI Endpoints (with Session ID & Multi-Turn Memory)
 # -----------------------------------------------------------------------------
 @app.post(
@@ -1036,17 +1081,49 @@ async def ask_api_v1_stream(
     tags=["Chat API"],
     summary="Interactive Chat Window Endpoint"
 )
-async def chat_endpoint(request: ChatRequest):
+async def chat_endpoint(
+    request: ChatRequest,
+    auth_claims: Dict[str, Any] = Depends(verify_chat_access)
+):
     """
-    Primary endpoint for the chat interface. Handles session_id and keeps last 5 exchanges in SQLite.
+    Primary endpoint for the chat interface. Handles session_id and keeps last 5 exchanges in SQLite/MySQL.
+    Protected by HMAC-SHA256 session token or master API key.
+    T10 Enforced: Ignores client-supplied user_profile and chat_history for public callers.
     """
     clean_msg = request.message.strip()
     if not clean_msg:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
 
-    uid = request.user_id or "admin"
-    req_mode = request.mode or "generic"
-    sid = request.session_id or f"sess_{int(time.time())}"
+    is_admin = bool(auth_claims.get("is_admin"))
+
+    # T10: Identity & Session binding
+    uid = request.user_id
+    token_sub = auth_claims.get("sub")
+    if not is_admin:
+        if token_sub and token_sub != "guest":
+            uid = token_sub
+        elif not uid or uid == "admin":
+            uid = "guest"
+    else:
+        uid = uid or "admin"
+
+    sid = request.session_id or auth_claims.get("sid") or f"sess_{int(time.time())}"
+    if not is_admin and auth_claims.get("sid"):
+        sid = auth_claims["sid"]
+
+    req_mode = request.mode or auth_claims.get("mode") or "generic"
+
+    # T10: Enforce Server-Side Truth for user_profile and chat_history
+    if not is_admin:
+        if request.user_profile:
+            logger.info(f"[T10 Security] Discarding client-submitted user_profile for user '{uid}'. Loading strictly from MySQL.")
+        if request.chat_history:
+            logger.info(f"[T10 Security] Discarding client-submitted chat_history for user '{uid}'. Loading strictly from conversation memory.")
+        safe_user_profile = None  # Triggers server-side MySQL query
+        safe_chat_history = None  # Triggers server-side conversation turns query
+    else:
+        safe_user_profile = request.user_profile
+        safe_chat_history = request.chat_history
 
     try:
         rag_res = await run_in_threadpool(
@@ -1057,8 +1134,8 @@ async def chat_endpoint(request: ChatRequest):
             generate_answer=True,
             mode=req_mode,
             conversation_id=sid,
-            user_profile=request.user_profile,
-            chat_history=request.chat_history
+            user_profile=safe_user_profile,
+            chat_history=safe_chat_history
         )
         return JSONResponse(status_code=200, content={
             "success": True,
@@ -1082,8 +1159,8 @@ async def chat_endpoint(request: ChatRequest):
             generate_answer=True,
             mode=req_mode,
             conversation_id=sid,
-            user_profile=request.user_profile,
-            chat_history=request.chat_history
+            user_profile=safe_user_profile,
+            chat_history=safe_chat_history
         )
         return JSONResponse(status_code=200, content={
             "success": True,
@@ -1108,18 +1185,58 @@ async def chat_endpoint(request: ChatRequest):
     tags=["Chat API"],
     summary="Interactive Chat SSE Streaming Endpoint"
 )
-async def chat_stream_endpoint(request: ChatRequest):
+async def chat_stream_endpoint(
+    request: ChatRequest,
+    auth_claims: Dict[str, Any] = Depends(verify_chat_access)
+):
     """
     Streaming chat endpoint for the UI. Streams tokens live and records turn under session_id.
+    Protected by HMAC-SHA256 session token or master API key.
+    T10 Enforced: Ignores client-supplied user_profile and chat_history for public callers.
     """
+    clean_msg = request.message.strip()
+    if not clean_msg:
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+
+    is_admin = bool(auth_claims.get("is_admin"))
+
+    # T10: Identity & Session binding
+    uid = request.user_id
+    token_sub = auth_claims.get("sub")
+    if not is_admin:
+        if token_sub and token_sub != "guest":
+            uid = token_sub
+        elif not uid or uid == "admin":
+            uid = "guest"
+    else:
+        uid = uid or "admin"
+
+    sid = request.session_id or auth_claims.get("sid") or f"sess_{int(time.time())}"
+    if not is_admin and auth_claims.get("sid"):
+        sid = auth_claims["sid"]
+
+    req_mode = request.mode or auth_claims.get("mode") or "generic"
+
+    # T10: Enforce Server-Side Truth for user_profile and chat_history
+    if not is_admin:
+        if request.user_profile:
+            logger.info(f"[T10 Security] Discarding client-submitted user_profile for user '{uid}'. Loading strictly from MySQL.")
+        if request.chat_history:
+            logger.info(f"[T10 Security] Discarding client-submitted chat_history for user '{uid}'. Loading strictly from conversation memory.")
+        safe_user_profile = None
+        safe_chat_history = None
+    else:
+        safe_user_profile = request.user_profile
+        safe_chat_history = request.chat_history
+
     ask_req = AskRequest(
-        user_id=request.user_id or "admin",
-        question=request.message.strip(),
-        conversation_id=request.session_id,
-        session_id=request.session_id,
-        mode=request.mode or "generic",
-        user_profile=request.user_profile,
-        chat_history=request.chat_history
+        user_id=uid,
+        question=clean_msg,
+        conversation_id=sid,
+        session_id=sid,
+        mode=req_mode,
+        user_profile=safe_user_profile,
+        chat_history=safe_chat_history
     )
     return await ask_api_v1_stream(ask_req)
 
@@ -1134,10 +1251,15 @@ async def chat_stream_endpoint(request: ChatRequest):
     tags=["Chat API"],
     summary="Reset Chat Session History"
 )
-async def chat_reset_endpoint(request: Request):
+async def chat_reset_endpoint(
+    request: Request,
+    auth_claims: Dict[str, Any] = Depends(verify_chat_access)
+):
     """
     Clears memory and SQLite turns for the session.
     Accepts JSON body: {"session_id": "..."} or query parameter ?session_id=...
+    Protected by HMAC-SHA256 session token or master API key.
+    T10 Enforced: Scoped strictly to caller's authenticated session.
     """
     sid = None
     uid = None
@@ -1158,6 +1280,24 @@ async def chat_reset_endpoint(request: Request):
     if not req_mode:
         req_mode = request.query_params.get("mode")
 
+    is_admin = bool(auth_claims.get("is_admin"))
+    if not is_admin:
+        token_sid = auth_claims.get("sid")
+        if token_sid and sid and sid != token_sid:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: Cannot reset a chat session other than your authenticated token."
+            )
+        if token_sid:
+            sid = token_sid
+        if auth_claims.get("sub"):
+            uid = auth_claims["sub"]
+
+    if not sid:
+        sid = auth_claims.get("sid")
+    if not uid:
+        uid = auth_claims.get("sub")
+
     if not sid:
         raise HTTPException(status_code=400, detail="session_id is required to reset chat session.")
 
@@ -1176,15 +1316,34 @@ async def chat_reset_endpoint(request: Request):
     tags=["Chat API"],
     summary="Get conversation history for session"
 )
-async def get_chat_history_endpoint(session_id: str, user_id: Optional[str] = "guest"):
+async def get_chat_history_endpoint(
+    session_id: str,
+    user_id: Optional[str] = "guest",
+    auth_claims: Dict[str, Any] = Depends(verify_chat_access)
+):
     """
     Returns recent multi-turn conversation turns for the active session.
+    Protected by HMAC-SHA256 session token or master API key.
+    T10 Enforced: Non-admin callers can only view their own authenticated session history.
     """
     conv_memory = get_conversation_memory()
-    history = conv_memory.get_chat_history(user_id=user_id, conversation_id=session_id, max_turns=10)
+    is_admin = bool(auth_claims.get("is_admin"))
+
+    if not is_admin:
+        token_sid = auth_claims.get("sid")
+        if token_sid and session_id != token_sid:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: Cannot access chat history for a session other than your authenticated token."
+            )
+        effective_uid = auth_claims.get("sub") or "guest"
+    else:
+        effective_uid = user_id or "guest"
+
+    history = conv_memory.get_chat_history(user_id=effective_uid, conversation_id=session_id, max_turns=10)
     return JSONResponse(status_code=200, content={
         "session_id": session_id,
-        "user_id": user_id,
+        "user_id": effective_uid,
         "turns": history
     })
 
@@ -1228,6 +1387,7 @@ async def get_system_stats():
 
 @app.get(
     "/api/database/table/{table_name}",
+    dependencies=[Depends(verify_api_key)],
     tags=["Database Explorer"],
     summary="Get records from a MySQL table in tabular form"
 )
@@ -1319,15 +1479,21 @@ async def woocommerce_webhook(request: Request):
     and appends event telemetry to logs/sync.log.
     """
     raw_body = await request.body()
-    secret = os.getenv("WC_WEBHOOK_SECRET", "dsh_wc_webhook_secret_2026_k9X2").strip()
+    secret = os.getenv("WC_WEBHOOK_SECRET", "").strip()
 
     # 1. Cryptographic HMAC-SHA256 Signature Verification
     signature = request.headers.get("x-wc-webhook-signature", "").strip()
-    if secret and signature:
+    if secret:
+        if not signature:
+            logger.warning("[WooCommerce Webhook] Unauthorized: Missing x-wc-webhook-signature header.")
+            raise HTTPException(status_code=401, detail="Missing webhook signature header")
+
         expected_sig = base64.b64encode(hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).digest()).decode("utf-8")
         if not hmac.compare_digest(signature, expected_sig):
             logger.warning(f"[WooCommerce Webhook] Unauthorized: Invalid HMAC signature. Received='{signature}'")
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
+    else:
+        logger.warning("[WooCommerce Webhook] WC_WEBHOOK_SECRET is not configured. Webhook signature validation skipped.")
 
     # 2. Parse Payload & Headers
     topic = request.headers.get("x-wc-webhook-topic", "").strip().lower()

@@ -1,0 +1,64 @@
+flowchart TB
+%% =====================================================================
+%% 03_ingestion_pipeline.mmd
+%% Google Drive & Document Ingestion Pipeline to Qdrant
+%% =====================================================================
+
+    subgraph SUB_SOURCES ["1. Ingestion Triggers & File Sources"]
+        S_GDrive["Google Drive Cloud Folder<br/>(Background Poll / Webhook Push)"]:::external
+        S_Upload["Admin Manual Upload<br/>POST /upload (Auth: RAG_API_KEY)"]:::client
+        F_Formats["Supported File Types:<br/>• PDF (.pdf via pypdf)<br/>• Word (.docx, .doc via python-docx)<br/>• Text (.txt, .md)<br/>• Transcripts (.vtt, .srt)"]:::api
+    end
+
+    subgraph SUB_TRACKER ["2. Version Tracking & Deduplication"]
+        T_State["src/ingestion_tracker.py :: IngestionTracker<br/>SQLite: ingestion_tracker.db (WAL Mode)"]:::data
+        T_Check{"File Already Ingested?<br/>Check drive_file_id & version"}:::api
+        T_Dedupe["Deduplication Action:<br/>src/qdrant_service.py :: delete_drive_file_vectors()<br/>Purges old vectors before re-indexing"]:::api
+    end
+
+    subgraph SUB_PARSE ["3. Extraction & Normalization"]
+        P_Extract["src/document_loader.py :: extract_document_content()<br/>Page-by-page text & table extraction"]:::api
+        P_Clean["src/document_loader.py :: clean_and_normalize_text()<br/>Strip null bytes, normalize whitespace, collapse blank lines"]:::api
+    end
+
+    subgraph SUB_CHUNK ["4. Chunking & Contextual Enrichment"]
+        C_Chunk["src/chunker.py :: chunk_document_pages()<br/>Target: 150 words | Overlap: 25 words"]:::api
+        C_Header["Contextual Header Prepending:<br/>'[Document: title | Page N]'"]:::api
+        C_Parent["Small-to-Big Parent Window:<br/>Merges prev + current + next chunk for full context"]:::api
+        C_Tag["Category Classifier:<br/>• 'sales' if filename has sales/pricing/catalog/checkout<br/>• 'clinical' for all other therapy/course guides"]:::api
+    end
+
+    subgraph SUB_STORE ["5. Embedding & Qdrant Upsert"]
+        E_Embed["src/embeddings.py :: embed_documents()<br/>sentence-transformers/all-MiniLM-L6-v2 (384 dims)"]:::api
+        Q_Upsert["src/qdrant_service.py :: upsert_chunks()<br/>Upsert points with payload into Qdrant"]:::api
+        Q_Target[("Qdrant Vector Database<br/>Collections: documents & subfolders")]:::data
+        T_Ready["Mark Status = READY<br/>ingestion_tracker.update_status('READY')"]:::api
+        C_Flush["Flush Semantic Cache<br/>get_semantic_cache().clear()"]:::api
+    end
+
+    %% Connections
+    S_GDrive --> F_Formats
+    S_Upload --> F_Formats
+    F_Formats --> T_State
+    T_State --> T_Check
+    T_Check -->|Modified / Re-ingest| T_Dedupe
+    T_Check -->|New File| P_Extract
+    T_Dedupe --> P_Extract
+
+    P_Extract --> P_Clean
+    P_Clean --> C_Chunk
+    C_Chunk --> C_Header
+    C_Header --> C_Parent
+    C_Parent --> C_Tag
+
+    C_Tag --> E_Embed
+    E_Embed --> Q_Upsert
+    Q_Upsert <--> Q_Target
+    Q_Upsert --> T_Ready
+    T_Ready --> C_Flush
+
+    %% Classes
+    classDef client fill:#E0E7FF,stroke:#4338CA,stroke-width:1.5px,color:#1E1B4B
+    classDef api fill:#DCFCE7,stroke:#15803D,stroke-width:1.5px,color:#14532D
+    classDef data fill:#FEF3C7,stroke:#B45309,stroke-width:1.5px,color:#78350F
+    classDef external fill:#F3E8FF,stroke:#7E22CE,stroke-width:1.5px,color:#581C87

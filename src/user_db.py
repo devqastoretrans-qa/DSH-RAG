@@ -1,6 +1,7 @@
 import os
 import time
 import json
+import logging
 import sqlite3
 import threading
 from pathlib import Path
@@ -9,6 +10,8 @@ import requests
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger("user_db")
 
 # Optional PyMySQL for Direct MySQL integration
 try:
@@ -34,7 +37,7 @@ class UserDatabaseManager:
         self.wp_url = os.getenv("WORDPRESS_URL", "").strip().rstrip("/")
         self.wp_user = os.getenv("WORDPRESS_USER", "").strip()
         self.wp_password = os.getenv("WORDPRESS_APP_PASSWORD", "").strip()
-        self.pab_api_key = os.getenv("PAB_API_KEY") or os.getenv("RAG_API_KEY", "dsh_rag_secret_key_2026")
+        self.pab_api_key = os.getenv("PAB_API_KEY", "").strip()
 
         # SSL Verification Configuration
         is_production = os.getenv("ENVIRONMENT", "").strip().lower() in ("production", "prod")
@@ -114,6 +117,10 @@ class UserDatabaseManager:
         Headers: X-API-Key: {pab_api_key}
         """
         if not self.wp_url:
+            return None
+
+        if not self.pab_api_key:
+            logger.error("[UserDB] PAB_API_KEY is not configured in environment. Skipping WordPress PAB profile lookup.")
             return None
 
         headers = {
@@ -527,10 +534,14 @@ class UserDatabaseManager:
         # Priority 2: Check WordPress PAB Profile API if not found
         if not profile and (self.backend == "WordPress PAB Profile API" or self.wp_url):
             profile = self._get_profile_from_pab_api(clean_uid)
+            if profile and profile.get("backend") == "PAB Profile API":
+                self._persist_profile_to_storage(profile)
 
         # Priority 3: Check live WordPress WooCommerce if not found
         if not profile and (self.backend.startswith("WordPress WooCommerce") or self.wp_url):
             profile = self._get_profile_from_woocommerce(clean_uid)
+            if profile and profile.get("backend") and not profile.get("backend").startswith("Graceful"):
+                self._persist_profile_to_storage(profile)
 
         # Priority 4: Check local SQLite fallback if not found
         if not profile:
@@ -558,6 +569,76 @@ class UserDatabaseManager:
                 self._cache[clean_uid] = {"profile": profile, "timestamp": time.time()}
 
         return profile
+
+    def _persist_profile_to_storage(self, profile: Dict[str, Any]) -> None:
+        """
+        Persists a dynamically fetched external profile (from PAB or WooCommerce fallback)
+        into MySQL and local SQLite so future queries are served locally in <1ms without
+        repeating external HTTP round-trips when in-memory cache expires.
+        """
+        user_id = str(profile.get("user_id") or "").strip()
+        name = str(profile.get("name") or profile.get("display_name") or user_id).strip()
+        email = str(profile.get("email") or "").strip().lower()
+        if not user_id or user_id.lower() in ("guest", "none", "unknown"):
+            return
+
+        courses = profile.get("courses_purchased") or []
+        books = profile.get("books_purchased") or []
+        records = profile.get("past_records") or []
+
+        # 1. MySQL Persistence
+        if getattr(self, "has_mysql", False):
+            try:
+                with self._get_mysql_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "INSERT INTO users (id, name, email) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE name=VALUES(name), email=VALUES(email)",
+                            (user_id, name, email or None)
+                        )
+                        if email and email != user_id:
+                            cur.execute(
+                                "INSERT INTO users (id, name, email) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE name=VALUES(name)",
+                                (email, name, email)
+                            )
+                        for c in courses:
+                            cur.execute("SELECT id FROM purchases WHERE user_id = %s AND item_title = %s LIMIT 1", (user_id, c))
+                            if not cur.fetchone():
+                                cur.execute("INSERT INTO purchases (user_id, item_type, item_title) VALUES (%s, 'course', %s)", (user_id, c))
+                        for b in books:
+                            cur.execute("SELECT id FROM purchases WHERE user_id = %s AND item_title = %s LIMIT 1", (user_id, b))
+                            if not cur.fetchone():
+                                cur.execute("INSERT INTO purchases (user_id, item_type, item_title) VALUES (%s, 'book', %s)", (user_id, b))
+                        for r in records:
+                            summary_text = str(r)
+                            cur.execute("SELECT id FROM past_records WHERE user_id = %s AND summary_notes = %s LIMIT 1", (user_id, summary_text))
+                            if not cur.fetchone():
+                                cur.execute("INSERT INTO past_records (user_id, interaction_type, summary_notes) VALUES (%s, 'PAB Record', %s)", (user_id, summary_text))
+            except Exception as e_mysql:
+                print(f"[UserDB] Fallback persistence to MySQL failed for '{user_id}': {e_mysql}")
+
+        # 2. Local SQLite Persistence
+        try:
+            with self._lock:
+                with self._get_sqlite_conn() as conn:
+                    conn.execute(
+                        "INSERT OR REPLACE INTO users (id, name, email) VALUES (?, ?, ?)",
+                        (user_id, name, email or f"{user_id}@example.com")
+                    )
+                    for c in courses:
+                        chk = conn.execute("SELECT id FROM purchases WHERE user_id = ? AND item_title = ? LIMIT 1", (user_id, c)).fetchone()
+                        if not chk:
+                            conn.execute("INSERT INTO purchases (user_id, item_type, item_title) VALUES (?, 'course', ?)", (user_id, c))
+                    for b in books:
+                        chk = conn.execute("SELECT id FROM purchases WHERE user_id = ? AND item_title = ? LIMIT 1", (user_id, b)).fetchone()
+                        if not chk:
+                            conn.execute("INSERT INTO purchases (user_id, item_type, item_title) VALUES (?, 'book', ?)", (user_id, b))
+                    for r in records:
+                        summary_text = str(r)
+                        chk = conn.execute("SELECT id FROM past_records WHERE user_id = ? AND summary_notes = ? LIMIT 1", (user_id, summary_text)).fetchone()
+                        if not chk:
+                            conn.execute("INSERT INTO past_records (user_id, interaction_type, summary_notes) VALUES (?, 'PAB Record', ?)", (user_id, summary_text))
+        except Exception as e_sqlite:
+            print(f"[UserDB] Fallback persistence to SQLite failed for '{user_id}': {e_sqlite}")
 
     def _get_profile_from_mysql(self, user_id: str) -> Optional[Dict[str, Any]]:
         try:
@@ -695,7 +776,9 @@ class UserDatabaseManager:
                             if not cur.fetchone():
                                 cur.execute("INSERT INTO purchases (user_id, item_type, item_title) VALUES (%s, 'book', %s)", (user_id, b))
                         for r in records:
-                            cur.execute("INSERT INTO past_records (user_id, interaction_type, summary_notes) VALUES (%s, 'Order', %s)", (user_id, r))
+                            cur.execute("SELECT id FROM past_records WHERE user_id = %s AND summary_notes = %s LIMIT 1", (user_id, r))
+                            if not cur.fetchone():
+                                cur.execute("INSERT INTO past_records (user_id, interaction_type, summary_notes) VALUES (%s, 'Order', %s)", (user_id, r))
             except Exception as e_mysql:
                 print(f"[UserDB Webhook] MySQL order write error: {e_mysql}")
 
@@ -707,20 +790,26 @@ class UserDatabaseManager:
                     (user_id, name, email or f"{user_id}@example.com")
                 )
                 for c in (courses + sessions):
-                    conn.execute(
-                        "INSERT INTO purchases (user_id, item_type, item_title) VALUES (?, 'course', ?)",
-                        (user_id, c)
-                    )
+                    cur_chk = conn.execute("SELECT id FROM purchases WHERE user_id = ? AND item_title = ? LIMIT 1", (user_id, c)).fetchone()
+                    if not cur_chk:
+                        conn.execute(
+                            "INSERT INTO purchases (user_id, item_type, item_title) VALUES (?, 'course', ?)",
+                            (user_id, c)
+                        )
                 for b in books:
-                    conn.execute(
-                        "INSERT INTO purchases (user_id, item_type, item_title) VALUES (?, 'book', ?)",
-                        (user_id, b)
-                    )
+                    cur_chk = conn.execute("SELECT id FROM purchases WHERE user_id = ? AND item_title = ? LIMIT 1", (user_id, b)).fetchone()
+                    if not cur_chk:
+                        conn.execute(
+                            "INSERT INTO purchases (user_id, item_type, item_title) VALUES (?, 'book', ?)",
+                            (user_id, b)
+                        )
                 for r in records:
-                    conn.execute(
-                        "INSERT INTO past_records (user_id, interaction_type, summary_notes) VALUES (?, 'Order', ?)",
-                        (user_id, r)
-                    )
+                    cur_chk = conn.execute("SELECT id FROM past_records WHERE user_id = ? AND summary_notes = ? LIMIT 1", (user_id, r)).fetchone()
+                    if not cur_chk:
+                        conn.execute(
+                            "INSERT INTO past_records (user_id, interaction_type, summary_notes) VALUES (?, 'Order', ?)",
+                            (user_id, r)
+                        )
 
         # Build full profile
         profile = {
@@ -796,11 +885,6 @@ class UserDatabaseManager:
                     "INSERT OR REPLACE INTO users (id, name, email) VALUES (?, ?, ?)",
                     (user_id, full_name, email or f"{user_id}@example.com")
                 )
-                if email and email != user_id:
-                    conn.execute(
-                        "INSERT OR REPLACE INTO users (id, name, email) VALUES (?, ?, ?)",
-                        (email, full_name, email)
-                    )
 
         profile = {
             "user_id": user_id,

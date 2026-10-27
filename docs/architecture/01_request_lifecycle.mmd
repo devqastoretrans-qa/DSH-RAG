@@ -1,0 +1,99 @@
+sequenceDiagram
+    autonumber
+    %% =====================================================================
+    %% 01_request_lifecycle.mmd
+    %% End-to-End Chat Request Lifecycle (Auth, Profile, Retrieval, LLM, Streaming)
+    %% =====================================================================
+
+    actor User as Client Browser / WordPress User
+    participant Nginx as Nginx (Reverse Proxy)
+    participant App as FastAPI app.py<br/>(chat_stream_endpoint / ask_api_v1)
+    participant UserDB as src/user_db.py<br/>(UserDB)
+    participant Memory as src/conversation_memory.py<br/>(ConversationMemoryManager)
+    participant SemCache as src/semantic_cache.py<br/>(SemanticQueryCache)
+    participant Search as src/search.py<br/>(search_similar_chunks)
+    participant Reranker as src/reranker.py<br/>(RerankerService)
+    participant Qdrant as Qdrant Vector DB<br/>(Docker Port 6333)
+    participant Gen as src/generator.py<br/>(OpenAIGeneratorService)
+    participant LLM as External LLM API<br/>(OpenAI gpt-4o-mini / Groq)
+
+    User->>Nginx: HTTPS POST /chat/stream (or /api/v1/ask)<br/>Payload: message, session_id, user_id, mode ('generic'|'sales'), client user_profile
+    Nginx->>App: Proxy HTTP 127.0.0.1:8000
+
+    %% 1. Validation & Safety Guardrails
+    rect rgb(254, 242, 242)
+        note over App: 1. Input Validation & Tier-0 Crisis Regex Check
+        App->>App: Validate non-empty message & user_id
+        alt Acute Crisis Detected (CRISIS_REGEX)
+            App-->>User: Immediate 988 Lifeline Crisis Text (SSE stream / JSON)
+        end
+    end
+
+    %% 2. Follow-Up Resolution & Multi-Turn Stitching
+    rect rgb(240, 249, 255)
+        note over App, Memory: 2. Conversation Context Resolution (<0.1ms)
+        App->>Memory: resolve_follow_up(user_id, session_id, message)
+        Memory-->>App: resolved_query, can_reuse_chunks, cached_chunks
+    end
+
+    %% 3. Profile Resolution & Lane Selection
+    rect rgb(245, 245, 255)
+        note over App, UserDB: 3. User Profile Resolution & Lane Selection
+        alt Client supplied user_profile payload (Trusted)
+            App->>App: Use client user_profile directly (Stateless Payload)
+        else Server-side Lookup
+            App->>UserDB: get_user_profile(user_id)
+            alt RAM Cache Hit (<300s TTL)
+                UserDB-->>App: Cached Profile Dict
+            else Cache Miss -> MySQL
+                UserDB->>UserDB: Query MySQL 8.4 (users, purchases, past_records)
+                UserDB-->>App: Profile Dict (Name, Courses, Attachment Style)
+            end
+        end
+        App->>App: Determine Lane: mode = request.mode or 'generic'
+    end
+
+    %% 4. Semantic Cache Check
+    rect rgb(255, 250, 240)
+        note over App, SemCache: 4. Semantic Query Cache Check (<15ms)
+        alt Cache Lookup (Cosine Sim >= 0.92)
+            App->>SemCache: lookup(query_vector, user_id, mode)
+            SemCache-->>App: Cached Answer HIT
+            App-->>User: Fast Response SSE Stream (Cached Tokens)
+        end
+    end
+
+    %% 5. Hybrid Retrieval & Cross-Encoder Re-Ranking
+    rect rgb(240, 253, 244)
+        note over App, Qdrant: 5. Hybrid Search & Cross-Encoder Re-Ranking
+        App->>Search: search_similar_chunks(query, top_k=5, mode=mode)
+        Search->>Search: expand_query_semantics() (Slang -> Clinical terms)
+        Search->>Search: Dense MiniLM Embeddings (384-dim)
+        Search->>Qdrant: search_similar(query_vector) across target collection(s)
+        Qdrant-->>Search: Dense Candidate Vectors
+        Search->>Search: Compute BM25 Sparse Keyword Scores on text + context
+        Search->>Search: Reciprocal Rank Fusion (RRF: 50/50 sales, 60/40 generic)
+        Search->>Reranker: rerank(expanded_query, candidates[:16])
+        Reranker-->>Search: Cross-Encoder ms-marco Joint Scored Chunks
+        Search-->>App: top_k=5 Reranked Chunks + Disambiguation Options
+    end
+
+    %% 6. Prompt Assembly & LLM Generation
+    rect rgb(253, 244, 255)
+        note over App, LLM: 6. Prompt Construction & LLM Generation
+        App->>Gen: generate_answer_stream(query, chunks, user_profile, mode, chat_history)
+        Gen->>Gen: Build System Prompt (Sales Advisor vs. Clinical Educational)
+        Gen->>Gen: Weave Verified Profile (Courses Owned, Attachment Style)
+        Gen->>LLM: Stream ChatCompletion request (temperature=0.0 / 0.2)
+        LLM-->>Gen: Token Chunks (SSE Delta)
+        Gen-->>App: Token Stream Yield
+        App-->>User: SSE Event Stream (event: token, data: {'token': '...'})
+    end
+
+    %% 7. Post-Processing & Persistence
+    rect rgb(255, 255, 240)
+        note over App, Memory: 7. Memory Tracking & Semantic Cache Priming
+        App->>Memory: record_turn(session_id, user_id, query, full_answer, mode)
+        App->>SemCache: store(query_vector, user_id, full_answer, mode)
+        App-->>User: Final Done Event (event: done, data: {sources, metadata})
+    end

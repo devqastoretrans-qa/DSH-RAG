@@ -1,0 +1,101 @@
+sequenceDiagram
+    autonumber
+    %% =====================================================================
+    %% 03_chat_request_sequence.mmd
+    %% End-to-End Chat Request Sequence for DSH-RAG
+    %% =====================================================================
+
+    actor User as User / Browser
+    participant Nginx as Nginx (Reverse Proxy)
+    participant App as FastAPI app.py<br/>(/chat/stream)
+    participant RAG as src/rag_service.py<br/>(execute_rag_pipeline)
+    participant Mem as src/conversation_memory.py<br/>(Session Turns)
+    participant MySQL as MySQL 8.4 Server<br/>(rag_users)
+    participant Cache as src/semantic_cache.py<br/>(In-Memory Cache)
+    participant UserDB as src/user_db.py<br/>(User Profile)
+    participant Search as src/search.py<br/>(Hybrid Search & Rerank)
+    participant Qdrant as Qdrant Vector DB<br/>(Docker 127.0.0.1:6333)
+    participant Catalog as src/sales_catalog.py<br/>(Unowned Course Guardrail)
+    participant Gen as src/generator.py<br/>(Prompt Builder & Streamer)
+    participant LLM as External LLM API<br/>(OpenAI / Groq)
+
+    %% 1. Inbound Request
+    User->>Nginx: HTTPS POST /chat/stream<br/>Body: {"session_id": "...", "message": "...", "user_id": "1836", "mode": "sales"}
+    Nginx->>App: Forward to 127.0.0.1:8000 (proxy_buffering off)
+    App->>RAG: execute_rag_pipeline(query, user_id, session_id, mode, stream=True)
+
+    %% 2. Crisis Gate
+    rect rgb(255, 235, 238)
+        note over RAG: Step 1: Safety & Crisis Guardrail Check
+        RAG->>RAG: Evaluate CRISIS_REGEX & VAGUE_DISTRESS_REGEX
+        alt Crisis Match Detected
+            RAG-->>App: Return immediate 988 Suicide & Crisis Lifeline response
+            App-->>Nginx-->>User: Immediate Emergency Protocol message (No LLM / No Vector search)
+        end
+    end
+
+    %% 3. Session Context & Query Resolution
+    note over RAG, MySQL: Step 2: History Retrieval & Multi-Turn Resolution
+    RAG->>Mem: get_chat_history(user_id, conversation_id, max_turns=3)
+    Mem->>MySQL: SELECT role, content FROM conversation_turns<br/>WHERE session_key = %s ORDER BY created_at ASC
+    MySQL-->>Mem: Return recent turn history
+    Mem-->>RAG: Formatted history turns
+    RAG->>RAG: Stitches follow-up questions if contextual pronouns detected
+
+    %% 4. Semantic Cache Check
+    note over RAG, Cache: Step 3: Semantic Cache Lookup
+    RAG->>Cache: get(resolved_query, mode="sales")
+    alt Semantic Cache HIT (Cosine Similarity >= 0.95)
+        Cache-->>RAG: Cached response & sources
+        RAG-->>App: Stream cached tokens (0ms generation)
+        App-->>Nginx-->>User: StreamingResponse (cached)
+    else Semantic Cache MISS
+        Cache-->>RAG: None
+
+        %% 5. User Profile Resolution
+        note over RAG, UserDB: Step 4: User Profile & Ownership Resolution
+        RAG->>UserDB: get_user_profile(user_id="1836")
+        UserDB->>MySQL: SELECT user, purchases, records
+        MySQL-->>UserDB: Profile: Name, Attachment Style, Owned Courses/Books
+        UserDB-->>RAG: user_context Dict
+
+        %% 6. Hybrid Vector & Keyword Retrieval
+        note over RAG, Qdrant: Step 5: Hybrid Knowledge Retrieval & Re-ranking
+        RAG->>Search: search_similar_chunks(query, top_k=5, subfolders=None)
+        Search->>Search: MiniLM-L6-v2 Embed Query -> 384-dim Dense Vector
+        Search->>Qdrant: POST /collections/{col}/points/search (Dense Cosine Similarity)
+        Qdrant-->>Search: Top Vector Matches
+        Search->>Search: BM25 Sparse Keyword Scorer (Filtered on Stopwords)
+        Search->>Search: Reciprocal Rank Fusion (70% Vector / 30% BM25)
+        Search->>Search: BAAI/bge-reranker-base (Cross-Encoder Re-scoring)
+        Search-->>RAG: Top 5 Relevant Chunks with Citations
+
+        %% 7. Unowned Course Recommendation Guardrail
+        note over RAG, Catalog: Step 6: Commercial Recommendation Guardrail (Sales Mode)
+        RAG->>Catalog: match_relevant_unowned_products(query, user_profile, limit=2)
+        Catalog->>Catalog: Inspect user_profile["courses_purchased"]
+        Catalog->>Catalog: Filter out owned items (Never pitch an owned course)
+        Catalog-->>RAG: Selected unowned recommendation (e.g. "Secure Relationship Masterclass")
+
+        %% 8. Prompt Synthesis & LLM Streaming
+        note over RAG, LLM: Step 7: System Prompt Assembly & LLM Call
+        RAG->>Gen: generate_answer_stream(query, chunks, user_context, mode, recommendations)
+        Gen->>Gen: Construct Clinical Prompt (Grounding, Tone, Unowned Products, Persona)
+        Gen->>LLM: HTTPS POST /v1/chat/completions (stream=True)<br/>Bearer: OPENAI_API_KEY (model: gpt-4o-mini)<br/>Messages: [System Prompt, Context Chunks, User Query]
+        
+        loop Stream Token Chunks
+            LLM-->>Gen: data: {"choices": [{"delta": {"content": "token"}}]}
+            Gen-->>RAG: Yield token
+            RAG-->>App: SSE Chunk
+            App-->>Nginx: Raw Stream
+            Nginx-->>User: data: {"token": "...", "session_id": "..."}
+        end
+
+        %% 9. Post-Generation State Persistence
+        note over RAG, MySQL: Step 8: Persistence & Cache Priming
+        RAG->>Mem: add_turn(user_id, session_id, role="user", content=query)
+        Mem->>MySQL: INSERT INTO conversation_turns (session_key, user_id, role, content, mode, created_at)
+        RAG->>Mem: add_turn(user_id, session_id, role="assistant", content=full_answer)
+        Mem->>MySQL: INSERT INTO conversation_turns (session_key, user_id, role, content, mode, created_at)
+        RAG->>Cache: put(query, full_answer, sources, mode="sales")
+    end

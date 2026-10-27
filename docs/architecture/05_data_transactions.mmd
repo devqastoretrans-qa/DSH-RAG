@@ -1,0 +1,112 @@
+flowchart LR
+%% =====================================================================
+%% 05_data_transactions.mmd
+%% Complete Data Transactions & Movement Map for DSH-RAG
+%% =====================================================================
+
+    subgraph CLUSTER_CLIENT ["Client & External Data Sources"]
+        UserBrowser["Web Browser Client"]
+        WPStore["WordPress / WooCommerce Store ('Levamo')"]
+        GDriveAPI["Google Drive Cloud Folder"]
+        OpenAICloud["OpenAI / Groq API Services"]
+    end
+
+    subgraph CLUSTER_GATEWAY ["Ingress & Reverse Proxy"]
+        NginxProxy["Nginx Reverse Proxy\n(Ports 80 / 443)"]
+    end
+
+    subgraph CLUSTER_APP ["FastAPI Backend Processing Core (127.0.0.1:8000)"]
+        ChatRouter["Chat & Stream Routes\n(/chat, /chat/stream, /chat/reset)"]
+        AdminRouter["Admin Protected Routes\n(/upload, /api/users, /drive/sync, /cache/clear)"]
+        WebhookRouter["Webhook Ingestion Routes\n(/api/webhooks/woocommerce, /drive/webhook)"]
+        RAGCore["RAG Orchestrator\n(rag_service.py)"]
+        SearchEngine["Hybrid Search Engine\n(search.py & reranker.py)"]
+        GenEngine["Prompt & LLM Streamer\n(generator.py)"]
+        UserDBManager["User DB Manager\n(user_db.py)"]
+        MemManager["Conversation Memory\n(conversation_memory.py)"]
+        DocIngest["Document Ingestion\n(ingestion.py & document_manager.py)"]
+        ETLJob["Nightly ETL Sync Script\n(sync_wordpress_to_mysql.py)"]
+    end
+
+    subgraph CLUSTER_STORAGE ["Persistence & Vector Datastores (127.0.0.1)"]
+        MySQL_Users[("MySQL: users\n(id, name, email)")]
+        MySQL_Purchases[("MySQL: purchases\n(user_id, item_type, item_title)")]
+        MySQL_Records[("MySQL: past_records\n(user_id, interaction_type, notes)")]
+        MySQL_Turns[("MySQL: conversation_turns\n(session_key, role, content, mode)")]
+        QdrantVectors[("Qdrant Vector DB (Docker: 6333)\n(384-dim MiniLM Vectors + Chunks)")]
+        SQLiteTracker[("SQLite: ingestion_tracker.db\n(file_id, md5, status)")]
+        RAM_Cache[("Process RAM Caches\n(SemanticCache & UserDB._cache)")]
+        DiskLogs[("Local Disk Log Files\n(logs/application.log, sync.log)")]
+    end
+
+    %% Transactions: Client -> Nginx -> App
+    UserBrowser -->|"TX 1: POST /chat/stream\n[Public / Unauthenticated]\nBody: message, session_id, user_id"| NginxProxy
+    UserBrowser -->|"TX 2: POST /chat/reset\n[Public / Unauthenticated]\nBody: session_id"| NginxProxy
+    UserBrowser -->|"TX 3: GET /api/chat/history\n[Public / Unauthenticated]\nParams: session_id"| NginxProxy
+    UserBrowser -->|"TX 4: POST /upload\n[Auth: RAG_API_KEY]\nMultipart: PDF, DOCX file"| NginxProxy
+    UserBrowser -->|"TX 5: GET /api/users\n[Auth: RAG_API_KEY]\nParams: none"| NginxProxy
+    WPStore -->|"TX 6: POST /api/webhooks/woocommerce\n[Auth: HMAC-SHA256]\nBody: order, customer, line_items"| NginxProxy
+    GDriveAPI -->|"TX 7: POST /drive/webhook\n[Auth: Channel Token]\nHeaders: state, channel_id"| NginxProxy
+
+    NginxProxy -->|"Proxy HTTP 127.0.0.1:8000"| ChatRouter
+    NginxProxy -->|"Proxy HTTP 127.0.0.1:8000"| AdminRouter
+    NginxProxy -->|"Proxy HTTP 127.0.0.1:8000"| WebhookRouter
+
+    %% Transactions: App Internals & RAG
+    ChatRouter -->|"Dispatch Query"| RAGCore
+    RAGCore <-->|"TX 8: Check / Put Cached Answer\n[RAM / O(N) Cosine Sim]"| RAM_Cache
+    RAGCore -->|"TX 9: Retrieve / Stitch Turns"| MemManager
+    MemManager <-->|"TX 10: SELECT / INSERT / DELETE\n[SQL / rag_user / TCP 3306]"| MySQL_Turns
+
+    RAGCore -->|"TX 11: Resolve User Context"| UserDBManager
+    UserDBManager <-->|"TX 12: Check / Put RAM Profile\n[RAM / 300s TTL]"| RAM_Cache
+    UserDBManager <-->|"TX 13: SELECT Profile & Orders\n[SQL / rag_user / TCP 3306]"| MySQL_Users
+    UserDBManager <-->|"TX 14: SELECT Purchases\n[SQL / rag_user / TCP 3306]"| MySQL_Purchases
+    UserDBManager <-->|"TX 15: SELECT Quiz / Intake Notes\n[SQL / rag_user / TCP 3306]"| MySQL_Records
+
+    %% Fallback lookups to WordPress
+    UserDBManager -.->|"TX 16: GET /wp-json/pab/v1/inspect/profile\n[Auth: PAB_API_KEY]\nFallback if missing in MySQL"| WPStore
+    UserDBManager -.->|"TX 17: GET /wp-json/wc/v3/customers\n[Basic Auth: WP_USER, WP_PASS]\nSecondary Fallback"| WPStore
+
+    %% Retrieval & Vector Search
+    RAGCore -->|"TX 18: Hybrid Search Query"| SearchEngine
+    SearchEngine <-->|"TX 19: Vector Match & Payload Fetch\n[REST / gRPC / TCP 6333]"| QdrantVectors
+
+    %% LLM Generation & Streaming
+    RAGCore -->|"TX 20: Prompt & Context Injection"| GenEngine
+    GenEngine -->|"TX 21: HTTPS POST /v1/chat/completions\n[Auth: Bearer OPENAI_API_KEY]\nPayload: Prompt, PII, Chunks"| OpenAICloud
+    OpenAICloud -->|"TX 22: SSE Streaming Tokens"| GenEngine
+    GenEngine -->|"Stream SSE Chunks"| ChatRouter
+    ChatRouter -->|"Stream Response"| UserBrowser
+
+    %% Webhook Ingestion Data Flow
+    WebhookRouter -->|"Parse Webhook Payload"| UserDBManager
+    UserDBManager -->|"TX 23: INSERT ... ON DUPLICATE KEY UPDATE\n[SQL: Users]"| MySQL_Users
+    UserDBManager -->|"TX 24: INSERT Purchases"| MySQL_Purchases
+    UserDBManager -->|"TX 25: INSERT Intake / Order Notes"| MySQL_Records
+
+    %% Ingestion Data Flow
+    AdminRouter -->|"Dispatch Upload File"| DocIngest
+    DocIngest <-->|"TX 26: Check MD5 & Set READY State"| SQLiteTracker
+    DocIngest -->|"TX 27: Batch Vector Upsert (384-dim)"| QdrantVectors
+
+    %% Nightly ETL Flow
+    ETLJob -->|"TX 28: HTTPS GET /wp-json/wc/v3 (Customers & Orders)\n[Basic Auth: WP_USER, WP_PASS]"| WPStore
+    ETLJob -->|"TX 29: Batch Sync Users"| MySQL_Users
+    ETLJob -->|"TX 30: Batch Sync Purchases"| MySQL_Purchases
+    ETLJob -->|"TX 31: Batch Sync Order Notes"| MySQL_Records
+
+    %% Logging
+    RAGCore -->|"TX 32: Append Query Telemetry"| DiskLogs
+    ETLJob -->|"TX 33: Append Sync Logs"| DiskLogs
+
+    %% Styling
+    classDef clientStyle fill:#fff3e0,stroke:#e65100,stroke-width:2px;
+    classDef proxyStyle fill:#ede7f6,stroke:#512da8,stroke-width:2px;
+    classDef appStyle fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+    classDef dbStyle fill:#e1f5fe,stroke:#0277bd,stroke-width:2px;
+
+    class UserBrowser,WPStore,GDriveAPI,OpenAICloud clientStyle;
+    class NginxProxy proxyStyle;
+    class ChatRouter,AdminRouter,WebhookRouter,RAGCore,SearchEngine,GenEngine,UserDBManager,MemManager,DocIngest,ETLJob appStyle;
+    class MySQL_Users,MySQL_Purchases,MySQL_Records,MySQL_Turns,QdrantVectors,SQLiteTracker,RAM_Cache,DiskLogs dbStyle;

@@ -1,0 +1,41 @@
+flowchart TB
+%% =====================================================================
+%% 05_bot_lanes_and_prompts.mmd
+%% Two-Lane Bot Architecture: Sales Lane vs. Generic Educational Lane
+%% =====================================================================
+
+    subgraph SUB_INGRESS ["1. Ingress & Lane Routing (app.py)"]
+        Req_In["Chat / Query Ingress<br/>POST /chat, /chat/stream, /api/v1/ask, /api/v1/sales/ask"]:::client
+        Router_Check{"Endpoint or Payload Mode?<br/>mode == 'sales'?"}:::api
+    end
+
+    subgraph SUB_SALES_LANE ["2. Sales Lane Architecture (mode = 'sales')"]
+        S_Retrieval["src/search.py (Sales Mode)<br/>• Target: 'documents' collection (Sales catalog & pricing)<br/>• Fusion: 50% Dense + 50% BM25"]:::api
+        S_Prompt["src/generator.py :: _build_system_prompt('sales')<br/>• Persona: Senior Relationship Program Advisor<br/>• Voice: Soft Consultative, Value-First"]:::api
+        S_Rules["Mandatory Sales Rules:<br/>1. Line 1 Salutation: 'Hi {greeting_name},'<br/>2. Acknowledge enrolled courses from profile<br/>3. Strict Citation Rule: Zero [1], [Doc] markers<br/>4. MANDATORY SECTION:<br/>   '### Recommended Next Step for Your Journey'<br/>5. Guardrail: NEVER pitch products already owned!"]:::api
+        S_Output["Sales Answer Output<br/>Empathy + Value + Dedicated Next-Step Product Link"]:::api
+    end
+
+    subgraph SUB_GENERIC_LANE ["3. Generic Educational Lane (mode = 'generic')"]
+        G_Retrieval["src/search.py (Generic Mode)<br/>• Target: Clinical collections ('tools', 'reflections', etc.)<br/>• Fusion: 60% Dense + 40% BM25<br/>• Defense-in-depth: Excludes sales & pricing chunks!"]:::api
+        G_Prompt["src/generator.py :: _build_system_prompt('generic')<br/>• Persona: Clinical Educational AI Assistant<br/>• Voice: Psychoeducational & Somatic Guide"]:::api
+        G_Rules["Mandatory Clinical Rules:<br/>1. Line 1 Salutation: 'Hi {greeting_name},'<br/>2. Weave enrolled tools & attachment dynamic<br/>3. STRICT NON-COMMERCIAL BOUNDARY:<br/>   Zero product pitches or pricing unprompted!<br/>4. Inquiry Exception: Only if user explicitly asks<br/>5. Strict Citation Rule: Natural voice, no bracket tags<br/>6. Multi-tool disambiguation breakdown"]:::api
+        G_Output["Clinical Answer Output<br/>Attachment-grounded therapeutic education"]:::api
+    end
+
+    %% Wiring
+    Req_In --> Router_Check
+    Router_Check -->|Yes: /sales/ask or mode='sales'| S_Retrieval
+    Router_Check -->|No: /ask, /chat or mode='generic'| G_Retrieval
+
+    S_Retrieval --> S_Prompt
+    S_Prompt --> S_Rules
+    S_Rules --> S_Output
+
+    G_Retrieval --> G_Prompt
+    G_Prompt --> G_Rules
+    G_Rules --> G_Output
+
+    %% Classes
+    classDef client fill:#E0E7FF,stroke:#4338CA,stroke-width:1.5px,color:#1E1B4B
+    classDef api fill:#DCFCE7,stroke:#15803D,stroke-width:1.5px,color:#14532D

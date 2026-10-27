@@ -1,0 +1,67 @@
+flowchart TD
+%% =====================================================================
+%% 04_ingestion_flow.mmd
+%% Document Ingestion Pipeline Flowchart (Google Drive & Direct Upload to Qdrant)
+%% =====================================================================
+
+    subgraph Ingestion_Sources ["Ingestion Ingress Points"]
+        GDrive["Google Drive Shared Folder\n(GOOGLE_DRIVE_FOLDER_ID)"]
+        GDriveWebhook["Google Cloud PubSub Webhook\n(POST /drive/webhook)"]
+        AdminUpload["Admin Direct Upload\n(POST /upload)\nAuth: Bearer / X-API-Key: RAG_API_KEY"]
+    end
+
+    subgraph Host_Ingestion_Engine ["Ingestion & Transformation Engine (EC2 FastAPI)"]
+        DriveMonitor["src/drive_monitor.py\n(Background Poller / Webhook Listener)"]
+        DriveService["src/drive_service.py\n(Google Drive API v3 Client)"]
+        UploadRoute["app.py: upload_document()\n(Validated Supported Extensions)"]
+        IngestCore["src/ingestion.py: ingest_pdf_document()\n(Extraction, Cleaning, Chunking)"]
+        TrackerDB[("SQLite: ingestion_tracker.db\n(File MD5, Version, Lifecycle State:\nPENDING -> PROCESSING -> READY -> ERROR)")]
+        LocalEmbed["src/embeddings.py\n(sentence-transformers/all-MiniLM-L6-v2)\nLocal In-Memory CPU Inference"]
+    end
+
+    subgraph Qdrant_Target ["Destination: Qdrant Vector DB (Docker 127.0.0.1:6333)"]
+        QdrantClient["qdrant_client.QdrantClient"]
+        ColTools[("clinical_knowledge_tools\n(384-dim Vectors + Metadata)")]
+        ColJournals[("clinical_knowledge_journals\n(384-dim Vectors + Metadata)")]
+        ColReflections[("clinical_knowledge_reflections\n(384-dim Vectors + Metadata)")]
+        ColOther[("clinical_knowledge_other\n(384-dim Vectors + Metadata)")]
+        ColDocs[("documents\n(Sales & General Offerings)")]
+    end
+
+    %% Trigger Paths
+    GDriveWebhook -->|"Push Notification"| DriveMonitor
+    DriveMonitor -->|"Poll Check every 60s\n(service_account.json JWT)"| DriveService
+    DriveService -->|"HTTPS GET /drive/v3/files\nDownload file binary stream"| GDrive
+    DriveService -->|"Binary Bytes + Filename"| IngestCore
+
+    AdminUpload -->|"Multipart Form Data\n(.pdf, .docx, .txt, .md, .vtt)"| UploadRoute
+    UploadRoute -->|"Binary Buffer"| IngestCore
+
+    %% Ingestion Steps
+    IngestCore -->|"1. Check MD5 checksum & modified timestamp"| TrackerDB
+    TrackerDB -->>|"Skip if unchanged & status==READY"| IngestCore
+    IngestCore -->|"2. Extract Text via PyPDF / docx / UTF-8 reader"| IngestCore
+    IngestCore -->|"3. Clean & Normalize whitespace / formatting"| IngestCore
+    IngestCore -->|"4. Chunk (Chunk Size: 150 words, Overlap: 25 words)"| IngestCore
+    IngestCore -->|"5. Generate 384-dim Embeddings"| LocalEmbed
+    LocalEmbed -->>|"Float32 Vector Arrays"| IngestCore
+    IngestCore -->|"6. Batch Upsert Points (Vectors + Payload Chunks)"| QdrantClient
+
+    %% Qdrant Collections Partitioning
+    QdrantClient -->|"Payload folder: tools"| ColTools
+    QdrantClient -->|"Payload folder: journals"| ColJournals
+    QdrantClient -->|"Payload folder: reflections"| ColReflections
+    QdrantClient -->|"Payload folder: other"| ColOther
+    QdrantClient -->|"Payload folder: catalog / root"| ColDocs
+
+    %% Finalize
+    IngestCore -->|"7. Update Lifecycle to 'READY' (Points, Chunks Count)"| TrackerDB
+
+    %% Styling
+    classDef source fill:#fff3e0,stroke:#ef6c00,stroke-width:2px;
+    classDef engine fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+    classDef storage fill:#e1f5fe,stroke:#0277bd,stroke-width:2px;
+
+    class GDrive,GDriveWebhook,AdminUpload source;
+    class DriveMonitor,DriveService,UploadRoute,IngestCore,LocalEmbed engine;
+    class TrackerDB,QdrantClient,ColTools,ColJournals,ColReflections,ColOther,ColDocs storage;

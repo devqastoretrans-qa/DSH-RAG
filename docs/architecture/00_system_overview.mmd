@@ -1,0 +1,76 @@
+flowchart TB
+%% =====================================================================
+%% 00_system_overview.mmd
+%% High-Level System Overview: Clients -> Nginx -> FastAPI -> Layers -> External
+%% =====================================================================
+
+    subgraph SUB_CLIENTS ["1. Client & External Ingress"]
+        C_Browser["Web Browser Client<br/>(Chat Widget UI)"]:::client
+        C_WP["WordPress / WooCommerce Store<br/>('Levamo' @ dshstaging...)"]:::client
+        C_Drive["Google Drive Cloud Folder<br/>(File Uploads / Webhook)"]:::external
+    end
+
+    subgraph SUB_GATEWAY ["2. Gateway & Reverse Proxy"]
+        G_Nginx["Nginx Reverse Proxy<br/>(Ports 80/443 SSL Termination)"]:::api
+    end
+
+    subgraph SUB_FASTAPI ["3. FastAPI Core Services (app.py : 127.0.0.1:8000)"]
+        A_Routes["FastAPI Route Handlers<br/>app.py :: chat_stream_endpoint() / ask_api_v1()"]:::api
+        A_Webhook["WooCommerce Webhook Handler<br/>app.py :: woocommerce_webhook()"]:::api
+        A_DriveSync["Google Drive Monitor<br/>src/drive_monitor.py :: GoogleDriveMonitor"]:::api
+    end
+
+    subgraph SUB_LAYERS ["4. Internal Processing & Pipeline Layers"]
+        L_Profile["Profile & Identity Layer<br/>src/user_db.py :: UserDB"]:::api
+        L_Memory["Conversation Memory<br/>src/conversation_memory.py :: ConversationMemoryManager"]:::api
+        L_Retrieve["Hybrid Retrieval Layer<br/>src/search.py :: search_similar_chunks()"]:::api
+        L_Rerank["Cross-Encoder Re-ranker<br/>src/reranker.py :: RerankerService"]:::api
+        L_Generate["Answer Synthesis Engine<br/>src/generator.py :: OpenAIGeneratorService"]:::api
+        L_SemCache["Semantic Query Cache<br/>src/semantic_cache.py :: SemanticQueryCache"]:::api
+    end
+
+    subgraph SUB_STORAGE ["5. Persistence & Vector Stores (Host Localhost)"]
+        S_MySQL[("MySQL 8.4 Server (3306)<br/>DB: rag_users (users, purchases, past_records, turns)")]:::data
+        S_Qdrant[("Qdrant Vector DB (Docker: 6333)<br/>Collections: documents & clinical subfolders")]:::data
+        S_SQLite[("SQLite Trackers (users_data.db & ingestion_tracker.db)")]:::data
+    end
+
+    subgraph SUB_EXTERNAL ["6. External Upstream APIs"]
+        E_PAB["WordPress PAB API<br/>/wp-json/pab/v1/inspect/profile"]:::external
+        E_LLM["LLM Cloud Providers<br/>OpenAI (gpt-4o-mini) / Groq (gpt-oss-120b)"]:::external
+    end
+
+    %% Wiring: Clients to Gateway
+    C_Browser -->|"HTTPS POST /chat/stream<br/>[Public Unauthenticated]"| G_Nginx
+    C_WP -->|"HTTPS POST /api/webhooks/woocommerce<br/>[HMAC-SHA256 Sig]"| G_Nginx
+    C_Drive -->|"HTTPS POST /drive/webhook<br/>[Google Channel Token]"| G_Nginx
+
+    %% Wiring: Gateway to FastAPI
+    G_Nginx -->|"Proxy HTTP 127.0.0.1:8000"| A_Routes
+    G_Nginx -->|"Proxy HTTP 127.0.0.1:8000"| A_Webhook
+    G_Nginx -->|"Proxy HTTP 127.0.0.1:8000"| A_DriveSync
+
+    %% Wiring: FastAPI to Internal Layers
+    A_Routes --> L_Profile
+    A_Routes --> L_Memory
+    A_Routes --> L_SemCache
+    A_Routes --> L_Retrieve
+    A_Routes --> L_Generate
+    A_Webhook --> L_Profile
+    A_DriveSync --> S_Qdrant
+
+    %% Wiring: Layers to Engines & Storage
+    L_Profile <-->|"TCP 3306 SQL / Fallback HTTP"| S_MySQL
+    L_Profile -.->|"On-Demand Fallback [X-API-Key]"| E_PAB
+    L_Memory <-->|"SQL conversation_turns"| S_MySQL
+    L_Retrieve <-->|"Cosine Search / HTTP:6333"| S_Qdrant
+    L_Retrieve --> L_Rerank
+    L_Generate -->|"Synthesize Prompt"| E_LLM
+    A_DriveSync <-->|"SQLite WAL"| S_SQLite
+
+    %% Classes & Legend
+    classDef client fill:#E0E7FF,stroke:#4338CA,stroke-width:1.5px,color:#1E1B4B
+    classDef api fill:#DCFCE7,stroke:#15803D,stroke-width:1.5px,color:#14532D
+    classDef data fill:#FEF3C7,stroke:#B45309,stroke-width:1.5px,color:#78350F
+    classDef external fill:#F3E8FF,stroke:#7E22CE,stroke-width:1.5px,color:#581C87
+    classDef security_risk fill:#FEE2E2,stroke:#B91C1C,stroke-width:2px,color:#7F1D1D

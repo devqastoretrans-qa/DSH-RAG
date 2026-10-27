@@ -1,0 +1,104 @@
+flowchart TB
+%% =====================================================================
+%% 01_system_overview.mmd
+%% Complete Architecture & Data Movement Flowchart for DSH-RAG
+%% =====================================================================
+
+    subgraph Client_Boundary ["Client & Upstream External Zone (Untrusted)"]
+        Browser["Web Browser (User / Admin UI)"]
+        WordPress["WordPress / WooCommerce Store ('Levamo')\n(dshstaging.doctorsarahhensley.com)"]
+        GDrive["Google Drive API / Cloud Folder"]
+        LLMProvider["External LLM Provider\n(OpenAI gpt-4o-mini / Groq)"]
+    end
+
+    subgraph EC2_Host ["Trust Boundary: AWS EC2 Host (18.118.138.91)"]
+        Nginx["Nginx Reverse Proxy\n(Ports 80 / 443)\nTLS Termination & Header Hardening"]
+
+        subgraph App_Modules ["FastAPI Application (127.0.0.1:8000)"]
+            AppMain["app.py\n(FastAPI Routes & Middlewares)"]
+            RAGService["src/rag_service.py\n(Orchestration & Guardrails)"]
+            SearchService["src/search.py\n(Hybrid BM25 + Vector + Re-ranker)"]
+            GeneratorService["src/generator.py\n(Prompt Synthesis & Streaming)"]
+            UserDB["src/user_db.py\n(User Profile & In-Memory Cache)"]
+            ConvMemory["src/conversation_memory.py\n(Multi-Turn Session Memory)"]
+            SemCache["src/semantic_cache.py\n(In-Memory Query Cache)"]
+            DriveMonitor["src/drive_monitor.py & drive_service.py\n(Polling & Webhook Handler)"]
+            IngestionService["src/ingestion.py & document_manager.py\n(Extract, Chunk, MiniLM Embed)"]
+            SalesCatalog["src/sales_catalog.py\n(Unowned Course Guardrail)"]
+        end
+
+        subgraph Data_Stores ["Internal Data Stores (Loopback 127.0.0.1 Only)"]
+            MySQLDB[("MySQL 8.4 Server ('rag_users')\n(users, purchases, past_records,\nconversation_turns)")]
+            QdrantDB[("Qdrant Vector DB (Docker)\n(384-dim MiniLM Vectors\n5 Collections)")]
+            SQLiteDB[("Local SQLite Fallback\n(users_data.db & ingestion_tracker.db)")]
+            LogFiles[("Rotated Log Files\n(logs/application.log, sync.log)")]
+        end
+
+        ETLScript["scripts/sync_wordpress_to_mysql.py\n(Nightly 2:00 AM Cron ETL)"]
+    end
+
+    %% External to Nginx
+    Browser -->|"HTTP GET/POST /chat, /chat/stream\n(Unauthenticated)"| Nginx
+    Browser -->|"HTTP POST /upload, /drive/sync\n(Bearer / X-API-Key: RAG_API_KEY)"| Nginx
+    WordPress -->|"HTTP POST /api/webhooks/woocommerce\n(HMAC-SHA256: WC_WEBHOOK_SECRET)"| Nginx
+    GDrive -->|"HTTP POST /drive/webhook\n(Google-Channel-Token)"| Nginx
+
+    %% Nginx to FastAPI
+    Nginx -->|"Reverse Proxy HTTP 127.0.0.1:8000\n(X-Forwarded-For, Streaming Buffering Off)"| AppMain
+
+    %% FastAPI Routing to Modules
+    AppMain -->|"Route dispatch"| RAGService
+    AppMain -->|"Webhook payload"| UserDB
+    AppMain -->|"Manual sync trigger"| DriveMonitor
+    AppMain -->|"Document payload"| IngestionService
+    AppMain -->|"Admin cache flush"| SemCache
+    AppMain -->|"Admin cache flush"| UserDB
+
+    %% RAG Pipeline Data Flow
+    RAGService -->|"Check / Put cached answer"| SemCache
+    RAGService -->|"Get/Update multi-turn turns"| ConvMemory
+    RAGService -->|"Get user profile & purchases"| UserDB
+    RAGService -->|"Dense + Sparse search query"| SearchService
+    SearchService -->|"Hybrid 384-dim vector match"| QdrantDB
+    RAGService -->|"Profile + Chunks + System Prompt"| GeneratorService
+    GeneratorService -->|"Filter owned courses"| SalesCatalog
+    GeneratorService -->|"HTTPS POST /v1/chat/completions\n(Bearer: OPENAI_API_KEY or GROQ_API_KEY)"| LLMProvider
+    LLMProvider -->|"SSE Streaming Tokens"| GeneratorService
+    GeneratorService -->|"Token Stream"| RAGService
+    RAGService -->|"FastAPI StreamingResponse"| AppMain
+    AppMain -->|"SSE Chunks"| Nginx
+    Nginx -->|"Live Stream"| Browser
+
+    %% UserDB Data Paths
+    UserDB -->|"Priority 1: SQL SELECT/INSERT\n(rag_user / DB_PASS)"| MySQLDB
+    UserDB -.->|"Priority 4 Fallback: SQLite SELECT"| SQLiteDB
+    UserDB -->|"Priority 2: HTTPS GET /wp-json/pab/v1/inspect/profile\n(Header: PAB_API_KEY)"| WordPress
+    UserDB -->|"Priority 3: HTTPS GET /wp-json/wc/v3/customers\n(Basic Auth: WP_USER & WP_APP_PASSWORD)"| WordPress
+
+    %% Conversation Memory Data Paths
+    ConvMemory -->|"SQL SELECT / INSERT / DELETE\n(rag_user / DB_PASS)"| MySQLDB
+    ConvMemory -.->|"Offline Fallback: SQLite"| SQLiteDB
+
+    %% Ingestion Pipeline Data Paths
+    DriveMonitor -->|"HTTPS GET /drive/v3/files\n(Google Service Account JWT)"| GDrive
+    DriveMonitor -->|"PDF / DOCX Bytes"| IngestionService
+    IngestionService -->|"Read/Write sync status"| SQLiteDB
+    IngestionService -->|"Upsert vectors & payloads"| QdrantDB
+
+    %% Nightly ETL Path
+    ETLScript -->|"HTTPS GET /wp-json/wc/v3 (Customers & Orders)\n(Basic Auth: WP_USER / WP_PASS)"| WordPress
+    ETLScript -->|"SQL INSERT ... ON DUPLICATE KEY UPDATE\n(rag_user / DB_PASS)"| MySQLDB
+    ETLScript -->|"Write status logs"| LogFiles
+    AppMain -->|"Operational & audit logs"| LogFiles
+    RAGService -->|"Telemetry (Masked)"| LogFiles
+
+    %% Styling
+    classDef untrusted fill:#ffebee,stroke:#c62828,stroke-width:2px;
+    classDef internal fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+    classDef datastore fill:#e1f5fe,stroke:#0277bd,stroke-width:2px;
+    classDef externalThirdParty fill:#fff3e0,stroke:#ef6c00,stroke-width:2px;
+
+    class Browser,WordPress untrusted;
+    class GDrive,LLMProvider externalThirdParty;
+    class Nginx,AppMain,RAGService,SearchService,GeneratorService,UserDB,ConvMemory,SemCache,DriveMonitor,IngestionService,SalesCatalog,ETLScript internal;
+    class MySQLDB,QdrantDB,SQLiteDB,LogFiles datastore;

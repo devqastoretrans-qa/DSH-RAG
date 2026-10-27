@@ -1,0 +1,104 @@
+flowchart TB
+%% =====================================================================
+%% entire_system_architecture.mmd
+%% Complete Unified Architecture Diagram for Doctor Sarah Hensley AI RAG
+%% =====================================================================
+
+    subgraph CLIENTS ["1. Client & External Ingress Layer"]
+        C_Chat["Web Browser Client<br/>(Interactive Chat Widget UI)"]:::client
+        C_Admin["Admin & Testing Client<br/>(API v1 / Dashboard / Uploads)"]:::client
+        C_WP["WordPress Store ('Levamo')<br/>(dshstaging.doctorsarahhensley.com)"]:::client
+        C_Drive["Google Drive Cloud Folder<br/>(Document Storage & Webhooks)"]:::external
+    end
+
+    subgraph GATEWAY ["2. Gateway & Edge Security Layer (AWS EC2 Host)"]
+        Nginx["Nginx Reverse Proxy (Ports 80 / 443)<br/>• TLS 1.3 Let's Encrypt Termination<br/>• SSE Streaming: X-Accel-Buffering: no<br/>• Reverse Proxy to 127.0.0.1:8000"]:::api
+    end
+
+    subgraph APP ["3. FastAPI Application Core (app.py : 127.0.0.1:8000)"]
+        subgraph ROUTERS ["HTTP Ingress Routes"]
+            R_Chat["Chat UI Endpoints<br/>/chat, /chat/stream, /chat/reset<br/>/api/chat/history (Public)"]:::api
+            R_Ask["REST API v1 Endpoints<br/>/api/v1/ask, /api/v1/sales/ask<br/>/api/v1/ask/stream (Auth: RAG_API_KEY)"]:::api
+            R_Ingest["Ingestion & Admin Endpoints<br/>/upload, /drive/sync (Auth: RAG_API_KEY)<br/>/drive/webhook, /api/webhooks/woocommerce"]:::api
+            R_Admin["Diagnostic & Health Routes<br/>/api/v1/health, /api/system/stats<br/>/api/database/table/{name}"]:::api
+        end
+
+        subgraph CORE_MODULES ["Processing & Orchestration Services"]
+            M_RAG["RAG Orchestrator<br/>src/rag_service.py :: execute_rag_pipeline()"]:::api
+            M_Memory["Conversation Memory & Rewriter<br/>src/conversation_memory.py :: ConversationMemoryManager"]:::api
+            M_UserDB["User & Profile Manager<br/>src/user_db.py :: UserDB"]:::api
+            M_Search["Hybrid Search Engine<br/>src/search.py :: search_similar_chunks()"]:::api
+            M_Rerank["Cross-Encoder Joint Re-ranker<br/>src/reranker.py :: RerankerService (ms-marco)"]:::api
+            M_Gen["Answer Synthesis Engine<br/>src/generator.py :: OpenAIGeneratorService<br/>(Sales Lane vs. Generic Educational Lane)"]:::api
+            M_IngestService["Document Ingestion Core<br/>src/ingestion.py & chunker.py (PDF, DOCX, TXT)"]:::api
+            M_DriveMonitor["Google Drive Poller / Monitor<br/>src/drive_monitor.py :: GoogleDriveMonitor"]:::api
+            M_ETL["Nightly Reconciliation Cron (2:00 AM)<br/>scripts/sync_wordpress_to_mysql.py"]:::api
+        end
+
+        subgraph RAM_CACHES ["In-Process High-Speed RAM Caches"]
+            Cache_Profile["Profile RAM Cache<br/>self._cache (TTL: 300s, Triple-Keyed)"]:::data
+            Cache_Semantic["Semantic Query Cache<br/>Cosine Similarity >= 0.92 (<15ms return)"]:::data
+        end
+    end
+
+    subgraph STORAGE ["4. Local Persistence Layer (127.0.0.1 on EC2 Host)"]
+        DB_MySQL[("MySQL 8.4 Server (Port 3306)<br/>Database: rag_users<br/>• users (id, name, email)<br/>• purchases (courses, books, sessions)<br/>• past_records (orders, attachment style)<br/>• conversation_turns (chat transcripts)")]:::data
+        DB_Qdrant[("Qdrant Vector Database (Docker Port 6333)<br/>• documents (sales catalog & pricing)<br/>• tools, reflections, journals, other (clinical)")]:::data
+        DB_SQLite[("SQLite Files (users_data.db & ingestion_tracker.db)")]:::data
+    end
+
+    subgraph EXTERNAL ["5. External Cloud Services & APIs"]
+        Ext_LLM["LLM Cloud Providers (HTTPS)<br/>• OpenAI (gpt-4o-mini)<br/>• Groq (openai/gpt-oss-120b)"]:::external
+        Ext_WP["WordPress & PAB API (HTTPS)<br/>• /wp-json/pab/v1/inspect/profile (X-API-Key)<br/>• /wp-json/wc/v3/customers, /orders (Basic Auth)"]:::external
+        Ext_Drive["Google Drive API v3 (HTTPS)<br/>Files & Changes Watch Service"]:::external
+    end
+
+    %% Client -> Gateway
+    C_Chat -->|"HTTPS POST /chat/stream"| Nginx
+    C_Admin -->|"HTTPS POST /api/v1/ask"| Nginx
+    C_WP -->|"HTTPS POST /api/webhooks/woocommerce"| Nginx
+    C_Drive -->|"HTTPS POST /drive/webhook"| Nginx
+
+    %% Gateway -> Routers
+    Nginx -->|"Proxy Pass (127.0.0.1:8000)"| R_Chat
+    Nginx -->|"Proxy Pass (127.0.0.1:8000)"| R_Ask
+    Nginx -->|"Proxy Pass (127.0.0.1:8000)"| R_Ingest
+    Nginx -->|"Proxy Pass (127.0.0.1:8000)"| R_Admin
+
+    %% Routers -> Modules
+    R_Chat --> M_RAG
+    R_Ask --> M_RAG
+    R_Ingest --> M_IngestService
+    R_Ingest --> M_UserDB
+    R_Ingest --> M_DriveMonitor
+    R_Admin --> M_UserDB
+
+    %% RAG Workflow Connections
+    M_RAG <--> M_Memory
+    M_RAG <--> Cache_Semantic
+    M_RAG <--> M_UserDB
+    M_UserDB <--> Cache_Profile
+    M_UserDB <-->|"TCP 3306 SQL"| DB_MySQL
+    M_UserDB -.->|"Fallback HTTP"| Ext_WP
+
+    M_RAG --> M_Search
+    M_Search <-->|"Vector Scan :6333"| DB_Qdrant
+    M_Search --> M_Rerank
+    M_Rerank --> M_RAG
+    M_RAG --> M_Gen
+    M_Gen -->|"Prompt Streaming"| Ext_LLM
+    M_Memory <-->|"Store Turns"| DB_MySQL
+
+    %% Ingestion Connections
+    M_DriveMonitor <-->|"Poll / Download"| Ext_Drive
+    M_DriveMonitor --> M_IngestService
+    M_IngestService -->|"Upsert Vectors"| DB_Qdrant
+    M_IngestService <-->|"State Tracking"| DB_SQLite
+    M_ETL <-->|"Nightly Pull"| Ext_WP
+    M_ETL -->|"Batch Upserts"| DB_MySQL
+
+    %% Class Styling
+    classDef client fill:#E0E7FF,stroke:#4338CA,stroke-width:1.5px,color:#1E1B4B
+    classDef api fill:#DCFCE7,stroke:#15803D,stroke-width:1.5px,color:#14532D
+    classDef data fill:#FEF3C7,stroke:#B45309,stroke-width:1.5px,color:#78350F
+    classDef external fill:#F3E8FF,stroke:#7E22CE,stroke-width:1.5px,color:#581C87

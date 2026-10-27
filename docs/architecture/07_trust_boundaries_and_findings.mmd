@@ -1,0 +1,66 @@
+flowchart TB
+%% =====================================================================
+%% 07_trust_boundaries_and_findings.mmd
+%% Trust Boundaries, Data Crossings & Architectural Findings Map
+%% =====================================================================
+
+    subgraph TB_ZONE1 ["Trust Boundary 1: Untrusted Public Network"]
+        PublicClient["Public Web Browser / Potential Attacker"]
+        WP_Remote["WordPress WooCommerce & PAB Plugin\n('Levamo' - Remote Identity Unverified in Code)"]
+    end
+
+    subgraph TB_ZONE2 ["Trust Boundary 2: AWS EC2 Host Boundary (18.118.138.91)"]
+        Nginx["Nginx Reverse Proxy (80/443)\nTLS Termination & Security Headers"]
+        
+        subgraph TB_ZONE3 ["Trust Boundary 3: Application Runtime Process Space (127.0.0.1:8000)"]
+            FastAPI_Core["FastAPI Core Engine\n(app.py & rag_service.py)"]
+            Memory_Space["Process RAM Caches\n(SemanticCache & UserDB._cache)"]
+            
+            subgraph INCONSISTENCY_BOX ["Architectural Inconsistencies Found"]
+                Inc_History["INCONSISTENCY 1: Client chat_history Override\n(Code accepts client history, bypassing MySQL memory)"]
+                Inc_Schema["INCONSISTENCY 2: Public Schema Inspector\n(GET /api/schema and /table allow unauth DB browsing)"]
+            end
+        end
+
+        subgraph TB_ZONE4 ["Trust Boundary 4: Internal Datastores (Loopback Isolated)"]
+            MySQL_Store[("MySQL 8.4 Server ('rag_users')\n(users, purchases, past_records, turns)")]
+            Qdrant_Store[("Qdrant Vector DB (Docker 6333)\n(Bound to 127.0.0.1 - No Public Binding)")]
+            Disk_Logs[("Local Disk Log Files\n(logs/application.log)")]
+        end
+    end
+
+    subgraph TB_ZONE5 ["Trust Boundary 5: Third-Party AI Cloud Providers"]
+        OpenAI_API["OpenAI API Cloud\n(api.openai.com / gpt-4o-mini)"]
+        Groq_API["Groq Cloud API\n(api.groq.com / gpt-oss-120b)"]
+    end
+
+    %% Inbound Connections & Crossings
+    PublicClient -->|"Public Chat Query (Unauthenticated)\n[FINDING 1: No rate limits per IP/user]"| Nginx
+    PublicClient -->|"GET /api/schema & /table/{name}\n[FINDING 2: Public DB structure exposure]"| Nginx
+    WP_Remote -->|"POST /api/webhooks/woocommerce\n(HMAC-SHA256: WC_WEBHOOK_SECRET)"| Nginx
+    Nginx -->|"Proxy Loopback HTTP 127.0.0.1:8000"| FastAPI_Core
+
+    %% Process Internal Interactions
+    FastAPI_Core <-->|"In-Memory Cache Check"| Memory_Space
+    FastAPI_Core <-->|"Read/Write User Profile & Session Turns"| MySQL_Store
+    FastAPI_Core <-->|"Hybrid Vector Search"| Qdrant_Store
+
+    %% Sensitive Crossings
+    FastAPI_Core ==>|"SENSITIVE CROSSING 1: Prompt Payload with PII\n(Includes: Name, Attachment Style, Owned Courses, Quiz Notes)\nSent across public internet to external AI provider"| OpenAI_API
+    FastAPI_Core -.->|"Optional Fallback Prompt"| Groq_API
+    FastAPI_Core ==>|"SENSITIVE CROSSING 2: Plaintext Query Logging\n(User crisis / infidelity / relationship trauma queries)\nWritten to unencrypted disk log file"| Disk_Logs
+
+    %% Styling & Class Assignments
+    classDef untrustedZone fill:#ffebee,stroke:#b71c1c,stroke-width:2px;
+    classDef hostZone fill:#f5f5f5,stroke:#424242,stroke-width:2px;
+    classDef appZone fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px;
+    classDef storeZone fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef externalAiZone fill:#fff3e0,stroke:#e65100,stroke-width:2px;
+    classDef alertBox fill:#fffde7,stroke:#f57f17,stroke-width:2px,stroke-dasharray: 5 5;
+
+    class PublicClient,WP_Remote untrustedZone;
+    class Nginx hostZone;
+    class FastAPI_Core,Memory_Space appZone;
+    class MySQL_Store,Qdrant_Store,Disk_Logs storeZone;
+    class OpenAI_API,Groq_API externalAiZone;
+    class Inc_History,Inc_Schema alertBox;
