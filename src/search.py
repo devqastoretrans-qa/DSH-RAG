@@ -8,23 +8,53 @@ from src.qdrant_service import get_qdrant_service
 from src.reranker import get_reranker_service
 
 
-# Colloquial Dating & Pop-Psychology Slang -> Dr. Sarah Hensley's Clinical Terminology
+# Comprehensive Mapping: Colloquial Dating, Relationship Slang & Pop-Psychology -> Dr. Sarah Hensley's Clinical Attachment Framework
 SLANG_EXPANSIONS = {
-    r"\bghost(ing|ed)?\b": "avoidant deactivation emotional withdrawal sudden silent cutoff",
-    r"\bhot\s+and\s+cold\b": "intermittent reinforcement anxious avoidant dance ambivalent cycle",
-    r"\bbreadcrumb(ing|s|ed)?\b": "intermittent reinforcement minimal effort anxious attachment trap",
-    r"\blove\s+bomb(ing|ed)?\b": "narcissistic idealization hyper-attentive courtship fast pacing",
-    r"\bstonewall(ing|ed)?\b": "emotional shutdown avoidant overwhelm defensiveness silent treatment",
-    r"\bwalking\s+on\s+egg\s*shells\b": "hypervigilance anxious appeasement emotional volatility fear of conflict",
-    r"\bgaslight(ing|ed)?\b": "reality distortion psychological manipulation invalidation",
-    r"\bclingy\b": "anxious attachment hyperactivating strategies protest behavior fear of abandonment",
-    r"\bpush\s*pull\b": "anxious avoidant trap pursue withdraw dynamic polarity",
-    r"\bemotionally\s+unavailable\b": "dismissive avoidant attachment deactivating strategies emotional suppression",
-    r"\bshutting\s+down\b": "avoidant deactivation nervous system flooding overwhelm withdrawal",
-    r"\bobsess(ing|ive)?\b": "hyperactivation anxious preoccupation rumination",
-    r"\bmixed\s+signals\b": "inconsistent communication ambivalent attachment intermittent reinforcement",
-    r"\btoxic\s+ex\b": "unhealed attachment wounding repetitive trauma bond dysregulation",
-    r"\btrauma\s+bond(ing|ed)?\b": "intermittent reinforcement addictive attachment cycle dysregulation",
+    # 1. Sudden Disconnection, Fade & Withdrawal
+    r"\bghost(ing|ed|s)?\b": "avoidant deactivation emotional withdrawal sudden silent cutoff detachment",
+    r"\b(slow[-_\s]?fad(e|ing|ed|es)|dry[-_\s]?text(ing|ed|s)?)\b": "passive avoidant emotional withdrawal gradual deactivation conflict avoidance decrease intimacy",
+    r"\b(zombie(ing|ed|s)?|submarin(e|ing|ed|es)?)\b": "avoidant post-deactivation reconnection intermittent reinforcement sudden re-engagement hoovering",
+    r"\borbit(ing|ed|s)?\b": "avoidant low-investment surveillance boundary ambiguity non-committal engagement",
+    r"\bstonewall(ing|ed|s)?\b": "emotional shutdown avoidant overwhelm defensiveness silent treatment flooded nervous system",
+    r"\bshutting[-_\s]?down\b": "avoidant deactivation nervous system flooding overwhelm withdrawal",
+    
+    # 2. Cycle of Inconsistency & Mixed Messages
+    r"\bhot[-_\s]+and[-_\s]+cold\b": "intermittent reinforcement anxious avoidant dance ambivalent cycle inconsistent connection",
+    r"\bbread[-_\s]?crumb(ing|ed|s)?\b": "intermittent reinforcement minimal effort anxious attachment trap false hope",
+    r"\bmixed[-_\s]?signals\b": "inconsistent communication ambivalent attachment intermittent reinforcement boundary confusion",
+    r"\bpush[-_\s]?pull\b": "anxious avoidant trap pursue withdraw dynamic polarity intermittent intimacy",
+    
+    # 3. Flaw Finding, Situationships & Commitment Avoidance
+    r"\b(the\s+ick|getting\s+the\s+ick|got\s+the\s+ick)\b": "dismissive avoidant hypercritical flaw magnification deactivation strategy subconscious intimacy avoidance",
+    r"\bsituationship(s)?\b": "ambivalent non-committal avoidance relational accountability fear of vulnerability commitment resistance",
+    r"\bemotionally[-_\s]?unavailable\b": "dismissive avoidant attachment deactivating strategies emotional suppression intimacy defense",
+    r"\b(pocket(ing|ed|s)?)\b": "compartmentalization dismissive avoidant relationship partitioning reluctance integrate partner",
+    r"\b(bench(ing|ed|s)?|cushion(ing|ed|s)?)\b": "counter-dependency intimacy hedging backup options attachment insecurity emotional safety net",
+    r"\bfuture[-_\s]?fak(e|ing|ed|es)\b": "courtship idealization false relational promises manipulatory pacing over-promising",
+    
+    # 4. Intensity, Control & Manipulation
+    r"\blove[-_\s]?bomb(ing|ed|s)?\b": "narcissistic idealization hyper-attentive courtship fast pacing overwhelming affection",
+    r"\bgas[-_\s]?light(ing|ed|s)?\b": "reality distortion psychological manipulation invalidation questioning sanity",
+    r"\btrauma[-_\s]?bond(ing|ed|s)?\b": "intermittent reinforcement addictive attachment cycle dysregulation biochemical bond",
+    r"\btoxic[-_\s]?(ex|relationship|partner)?\b": "unhealed attachment wounding repetitive trauma bond dysregulation high conflict dynamic",
+    r"\bwalking\s+on\s+egg[-_\s]*shells\b": "hypervigilance anxious appeasement emotional volatility fear of conflict walking on eggshells",
+    r"\bnarcissis(t|tic|m)\b": "pathological grandiosity emotional invalidation defensive projection lack of empathy relational entitlement",
+    
+    # 5. Anxious Attachment & Over-Functioning
+    r"\bclingy\b": "anxious attachment hyperactivating strategies protest behavior fear of abandonment excessive texting",
+    r"\bobsess(ing|ive|ion)?\b": "hyperactivation anxious preoccupation mental rumination threat sensitivity",
+    r"\b(people[-_\s]?pleas(ing|er|e|ed)|fawn(ing)?)\b": "anxious appeasement boundary collapse fear of conflict rejection self-abandonment",
+    r"\bchasing\b": "anxious pursue dynamic protest behavior seeking urgent reassurance",
+    
+    # 6. Core Attachment States & Dynamics
+    r"\bphantom[-_\s]?ex\b": "dismissive avoidant idealization of past partner defense mechanism against present intimacy",
+    r"\bvulnerability[-_\s]?hangover\b": "post-intimacy anxiety emotional exposure avoidant panic or anxious regret after sharing",
+    r"\bprotest[-_\s]?behaviors?\b": "anxious hyperactivation demands for reassurance passive aggression emotional dysregulation",
+    r"\bdeactivat(ing|ion|e|es)\b": "avoidant shutdown emotional numbness suppressing feelings hyper-independence escape",
+    r"\bhyperactivat(ing|ion|e|es)\b": "anxious attachment threat monitoring overthinking hypervigilance nervous system activation",
+    r"\bcore[-_\s]?wound(s)?\b": "fear of abandonment fear of engulfment core shame rejection sensitivity defectiveness",
+    r"\b(anxious[-_\s]?avoidant\s+trap|anxious[-_\s]?avoidant\s+dynamic)\b": "pursue withdraw cycle intermittent reinforcement polarity trap attachment dysregulation",
+    r"\bsecure[-_\s]?attachment\b": "earned secure emotional regulation effective direct communication healthy boundaries safety",
 }
 
 
@@ -32,19 +62,26 @@ def expand_query_semantics(query: str) -> str:
     """
     Expands dating slang, pop-psychology expressions, and colloquial terms
     into Dr. Sarah Hensley's clinical attachment terminology for hybrid retrieval.
+    Tolerates hyphens, compound words, and plural/tense variations, with deduplication.
     """
     if not query:
         return query
 
-    expanded_terms = []
     clean_lower = query.lower()
+    matched_clinical_terms = []
+    seen_words = set(re.findall(r"\w+", clean_lower))
+
     for pattern, clinical_terms in SLANG_EXPANSIONS.items():
         if re.search(pattern, clean_lower):
-            expanded_terms.append(clinical_terms)
+            # Deduplicate keywords to prevent diluting the dense vector embedding
+            for term in clinical_terms.split():
+                if term not in seen_words:
+                    matched_clinical_terms.append(term)
+                    seen_words.add(term)
 
-    if expanded_terms:
-        # Preserve user's original words and append clinical expansions
-        return f"{query.strip()} " + " ".join(expanded_terms)
+    if matched_clinical_terms:
+        # Preserve user's original words and append deduplicated clinical expansions
+        return f"{query.strip()} " + " ".join(matched_clinical_terms)
     return query.strip()
 
 
