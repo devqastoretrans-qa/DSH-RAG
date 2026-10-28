@@ -9,9 +9,14 @@ import pymysql
 import subprocess
 from pathlib import Path
 
-DB_NAME = "rag_users"
-DB_USER = "rag_user"
-DB_PASS = "DshRag_MySQL_2026_x8K2q"
+import secrets
+from dotenv import load_dotenv
+
+load_dotenv()
+
+DB_NAME = os.getenv("MYSQL_DATABASE", "rag_users")
+DB_USER = os.getenv("MYSQL_USER", "rag_user")
+DB_PASS = os.getenv("MYSQL_PASSWORD", "").strip() or secrets.token_urlsafe(18)
 BASE_DIR = Path("/home/ubuntu/DSH-RAG")
 SQLITE_PATH = BASE_DIR / "users_data.db"
 ENV_PATH = BASE_DIR / ".env"

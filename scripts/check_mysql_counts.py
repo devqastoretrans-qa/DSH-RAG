@@ -1,10 +1,14 @@
+import os
 import pymysql
+from dotenv import load_dotenv
+
+load_dotenv()
 
 conn = pymysql.connect(
-    host="127.0.0.1",
-    user="rag_user",
-    password="DshRag_MySQL_2026_x8K2q",
-    database="rag_users"
+    host=os.getenv("MYSQL_HOST", "127.0.0.1"),
+    user=os.getenv("MYSQL_USER", "rag_user"),
+    password=os.getenv("MYSQL_PASSWORD", "").strip(),
+    database=os.getenv("MYSQL_DATABASE", "rag_users")
 )
 with conn.cursor() as cur:
     cur.execute("SELECT COUNT(*) FROM users;")

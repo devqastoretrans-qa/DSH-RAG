@@ -112,10 +112,10 @@ LATEST_MYSQL=$(ls -t backups/rag_users_*.sql.gz | head -n 1)
 echo "Restoring MySQL from: $LATEST_MYSQL"
 
 # 2. Decompress and pipe directly into MySQL
-gunzip -c "$LATEST_MYSQL" | mysql -h 127.0.0.1 -u rag_user -pDshRag_MySQL_2026_x8K2q rag_users
+gunzip -c "$LATEST_MYSQL" | mysql -h 127.0.0.1 -u rag_user -p"$MYSQL_PASSWORD" rag_users
 
 # 3. Verify tables and row counts
-mysql -h 127.0.0.1 -u rag_user -pDshRag_MySQL_2026_x8K2q rag_users -e "
+mysql -h 127.0.0.1 -u rag_user -p"$MYSQL_PASSWORD" rag_users -e "
   SHOW TABLES;
   SELECT COUNT(*) AS total_users FROM users;
   SELECT COUNT(*) AS total_purchases FROM purchases;
@@ -133,7 +133,7 @@ LATEST_S3_KEY=$(aws s3 ls s3://${S3_BUCKET}/database_backups/ --recursive | grep
 aws s3 cp s3://${S3_BUCKET}/${LATEST_S3_KEY} ./rag_users_restore.sql.gz
 
 # 2. Restore into MySQL
-gunzip -c ./rag_users_restore.sql.gz | mysql -h 127.0.0.1 -u rag_user -pDshRag_MySQL_2026_x8K2q rag_users
+gunzip -c ./rag_users_restore.sql.gz | mysql -h 127.0.0.1 -u rag_user -p"$MYSQL_PASSWORD" rag_users
 rm -f ./rag_users_restore.sql.gz
 ```
 
