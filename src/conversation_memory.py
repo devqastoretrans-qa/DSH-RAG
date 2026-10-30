@@ -402,6 +402,26 @@ class ConversationMemoryManager:
             except Exception:
                 pass
 
+            # Persist to human-readable logs/chat.log
+            try:
+                from src.logger import log_chat_interaction
+                src_list = []
+                if retrieved_chunks:
+                    for c in retrieved_chunks:
+                        name = c.get("document_name") or c.get("filename") or str(c.get("document", ""))
+                        if name and name not in src_list:
+                            src_list.append(name)
+                log_chat_interaction(
+                    user_id=user_id,
+                    conversation_id=cid,
+                    user_query=user_query,
+                    assistant_answer=assistant_answer,
+                    mode=mode,
+                    sources=src_list
+                )
+            except Exception:
+                pass
+
     def get_chat_history(
         self,
         user_id: str,

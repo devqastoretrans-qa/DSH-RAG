@@ -229,7 +229,7 @@ async def serve_ui(request: Request):
 # Request & Response Schemas
 # -----------------------------------------------------------------------------
 class SearchQueryRequest(BaseModel):
-    query: str = Field(..., description="Natural language search query", json_schema_extra={"example": "How to avoid being short-tempered?"})
+    query: str = Field(..., min_length=1, max_length=2000, description="Natural language search query", json_schema_extra={"example": "How to avoid being short-tempered?"})
     top_k: int = Field(default=5, ge=1, le=20, description="Number of top matching chunks to retrieve")
     generate_answer: bool = Field(default=True, description="Whether to synthesize an AI answer using retrieved chunks")
     user_id: Optional[str] = Field(default="admin", description="Authenticated user ID to personalize response with purchase history and past records")
@@ -241,7 +241,7 @@ class SearchQueryRequest(BaseModel):
 
 class AskRequest(BaseModel):
     user_id: Optional[str] = Field(default="guest", description="Identifies the user asking the question", json_schema_extra={"example": "john"})
-    question: str = Field(..., description="The question asked by the user", json_schema_extra={"example": "How can I stay calm when I have ADHD?"})
+    question: str = Field(..., min_length=1, max_length=2000, description="The question asked by the user", json_schema_extra={"example": "How can I stay calm when I have ADHD?"})
     user_profile: Optional[Dict[str, Any]] = Field(default=None, description="Direct customer profile passed from frontend (eliminates database duplication and lookups)")
     chat_history: Optional[List[Dict[str, str]]] = Field(default=None, description="Optional conversational history passed directly from frontend")
     conversation_id: Optional[str] = Field(default=None, description="Allows maintaining conversation history", json_schema_extra={"example": "conv_abc123"})
@@ -270,7 +270,7 @@ class SessionTokenResponse(BaseModel):
 
 class ChatRequest(BaseModel):
     session_id: str = Field(..., description="Unique frontend session ID for conversation tracking", json_schema_extra={"example": "sess_abc123"})
-    message: str = Field(..., min_length=1, description="User question or follow-up prompt", json_schema_extra={"example": "How do I communicate with my partner?"})
+    message: str = Field(..., min_length=1, max_length=2000, description="User question or follow-up prompt", json_schema_extra={"example": "How do I communicate with my partner?"})
     user_id: Optional[str] = Field(default="admin", description="WordPress user ID or persona key")
     user_profile: Optional[Dict[str, Any]] = Field(default=None, description="Direct customer profile passed from frontend")
     chat_history: Optional[List[Dict[str, str]]] = Field(default=None, description="Optional conversation turns passed directly from frontend")

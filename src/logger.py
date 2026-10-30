@@ -25,6 +25,7 @@ APP_LOG_FILE = LOGS_DIR / "application.log"
 INGESTION_LOG_FILE = LOGS_DIR / "ingestion.log"
 ERRORS_LOG_FILE = LOGS_DIR / "errors.log"
 EMBEDDING_STATUS_LOG_FILE = LOGS_DIR / "embedding_status.log"
+CHAT_LOG_FILE = LOGS_DIR / "chat.log"
 
 # Rotation settings: Default 10MB per file, keeping 5 backup files (50MB cap per log file)
 LOG_MAX_BYTES = int(os.getenv("LOG_MAX_BYTES", 10 * 1024 * 1024))
@@ -99,6 +100,21 @@ if not audit_logger.handlers:
     )
     audit_handler.setFormatter(raw_formatter)
     audit_logger.addHandler(audit_handler)
+
+# 5. Dedicated chat interactions logger (chat.log with rotation)
+chat_logger = logging.getLogger("chat_interactions")
+chat_logger.setLevel(logging.INFO)
+chat_logger.propagate = False
+
+if not chat_logger.handlers:
+    chat_handler = RotatingFileHandler(
+        CHAT_LOG_FILE,
+        maxBytes=LOG_MAX_BYTES,
+        backupCount=LOG_BACKUP_COUNT,
+        encoding="utf-8"
+    )
+    chat_handler.setFormatter(raw_formatter)
+    chat_logger.addHandler(chat_handler)
 
 
 class LifecycleEvent:
@@ -214,6 +230,8 @@ def get_recent_logs(max_lines: int = 50, log_type: str = "ingestion") -> List[st
         target_file = INGESTION_LOG_FILE
     elif log_type == "errors":
         target_file = ERRORS_LOG_FILE
+    elif log_type == "chat":
+        target_file = CHAT_LOG_FILE
     else:
         target_file = APP_LOG_FILE
 
@@ -277,3 +295,36 @@ def log_scan_heartbeat(
         line = f"[{now_ist}] | Drive Scan (60s cycle) | Monitored: [{folders_str}] | Files Found: {files_found} | Processed: {processed} | Skipped: {skipped}"
 
     audit_logger.info(line)
+
+
+def log_chat_interaction(
+    user_id: str,
+    conversation_id: str,
+    user_query: str,
+    assistant_answer: str,
+    mode: str = "generic",
+    sources: Optional[List[str]] = None,
+    duration_seconds: Optional[float] = None
+):
+    """
+    Appends a structured, human-readable record of user queries and bot answers
+    to logs/chat.log in Indian Standard Time (IST).
+    """
+    now_ist = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST")
+    sources_str = ", ".join(sources) if sources else "None / Direct / Guardrail"
+    dur_str = f" | Latency: {duration_seconds:.2f}s" if duration_seconds is not None else ""
+
+    clean_q = user_query.strip()
+    clean_a = assistant_answer.strip()
+
+    entry = (
+        f"================================================================================\n"
+        f"[{now_ist}] USER: {user_id} | MODE: {mode} | SESSION: {conversation_id}{dur_str}\n"
+        f"SOURCES : {sources_str}\n"
+        f"--------------------------------------------------------------------------------\n"
+        f"QUESTION:\n{clean_q}\n\n"
+        f"ANSWER:\n{clean_a}\n"
+        f"================================================================================\n"
+    )
+    chat_logger.info(entry)
+
