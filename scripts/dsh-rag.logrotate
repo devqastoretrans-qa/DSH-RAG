@@ -1,0 +1,15 @@
+# =============================================================================
+# Automated Log Rotation Configuration for Doctor Sarah Hensley AI (DSH-RAG)
+# Target: /etc/logrotate.d/dsh-rag
+# =============================================================================
+/home/ubuntu/DSH-RAG/logs/*.log {
+    daily
+    size 10M
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    create 0640 ubuntu ubuntu
+}
