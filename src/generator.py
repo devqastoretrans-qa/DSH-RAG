@@ -48,6 +48,58 @@ def strip_citation_markers(text: str) -> str:
     return text.strip()
 
 
+def clean_trailing_truncation(text: str) -> str:
+    """
+    Layer 3 Truncation Safety Net:
+    Gracefully cleans up dangling incomplete fragments, unclosed markdown tags,
+    incomplete URLs, or severed bullet points if LLM output was cut short.
+    """
+    if not text or not isinstance(text, str):
+        return text
+
+    cleaned = text.rstrip()
+
+    # 1. Strip incomplete markdown links at the very end: e.g. [Enroll now](https://doctorsarah
+    cleaned = re.sub(r'\[([^\]]*)\]\([^)\n]*$', '', cleaned).rstrip()
+    cleaned = re.sub(r'\[[^\]\n]*$', '', cleaned).rstrip()
+
+    # 2. Iterate backwards through lines to clean dangling fragments
+    lines = cleaned.split('\n')
+    while lines:
+        last_line = lines[-1].strip()
+        if not last_line:
+            lines.pop()
+            continue
+
+        # Check if line ends cleanly with terminal punctuation or closing markdown quote/paren/bold
+        has_terminal_punct = bool(re.search(r'[\.\!\?\"\”\’\)\`]$', last_line)) or last_line.endswith(('**', '***'))
+
+        # If it has an unclosed markdown header or bolding prefix without closing: e.g. **Practical
+        is_unclosed_header = bool(re.match(r'^(#+|\*{1,3}|-\s*|\d+\.\s*\*?)[^*#\n]*$', last_line)) and not last_line.endswith(('**', '***'))
+
+        if is_unclosed_header:
+            lines.pop()
+            continue
+
+        if not has_terminal_punct:
+            # Last line is cut off mid-sentence (e.g. '4. **Seek a Clinician** - A psychologist or')
+            if len(lines) > 1:
+                lines.pop()
+                continue
+            else:
+                # If only 1 line total, find the last sentence terminator in it
+                matches = list(re.finditer(r'[\.\!\?](?:\s|$)', last_line))
+                if matches:
+                    last_idx = matches[-1].end()
+                    lines[-1] = last_line[:last_idx].strip()
+                break
+        else:
+            break
+
+    result = '\n'.join(lines).rstrip()
+    return result if result else text.rstrip()
+
+
 OFF_TOPIC_REGEX = re.compile(
     r'\b(python|javascript|typescript|c\+\+|java|golang|rust|html|css|sql|coding|write\s+(?:me\s+)?a\s+(?:python|bash|code|script)|scrape|scraping|bitcoin|crypto|cryptocurrency|ethereum|stock\s+price|stock\s+market|forex|invest\s+in\s+bitcoin|trading|weather\s+forecast)\b',
     re.IGNORECASE
@@ -285,7 +337,7 @@ class OpenAIGeneratorService:
                 "   - STRICT GUARDRAIL: NEVER recommend or pitch a product or course the user already owns in their profile!\n\n"
                 "3. DYNAMIC LENGTH & ADAPTIVE DEPTH:\n"
                 "   - SHORT / SIMPLE QUERIES (Definitions, single questions, quick lookups, price questions): Total response must be strictly UNDER 80-100 words.\n"
-                "   - COMPLEX / MULTI-PART RELATIONSHIP SCENARIOS: Provide a thorough, empathetic, and structured breakdown (160 to 250 words) covering root attachment triggers, 2 regulation takeaways, and the dedicated next-tier program solution.\n\n"
+                "   - COMPLEX / MULTI-PART RELATIONSHIP SCENARIOS: Provide a thorough, empathetic, and structured breakdown (160 to 220 words) covering root attachment triggers, 2 regulation takeaways, and the dedicated next-tier program solution. Conclude all sections cleanly.\n\n"
                 "4. VALUE-FIRST CLINICAL GUIDANCE & STRICT CITATION RULE:\n"
                 "   - Give an empathetic, insightful explanation grounded strictly in the knowledge excerpts.\n"
                 "   - STRICT CITATION RULE: Do NOT include citations, bracketed numbers like [1], [Doc: ...], footnotes, or reference lists. Speak authoritatively and seamlessly in Dr. Sarah Hensley's natural clinical voice.\n\n"
@@ -310,7 +362,7 @@ class OpenAIGeneratorService:
                 "   - If the customer is an unauthenticated visitor or has no purchases, provide warm clinical guidance without fabricating purchases.\n\n"
                 "3. DYNAMIC LENGTH & ADAPTIVE DEPTH:\n"
                 "   - SHORT / SIMPLE QUERIES (Definitions, single terms, quick questions like 'What is deactivation?'): Answer directly in 80-120 words with clear clinical definition and brief application.\n"
-                "   - COMPLEX / NUANCED SCENARIOS (Personal relationship dilemmas, conflicts, vulnerability): Provide a comprehensive clinical breakdown (160 to 250 words) with structured takeaways.\n\n"
+                "   - COMPLEX / NUANCED SCENARIOS (Personal relationship dilemmas, conflicts, vulnerability): Provide a comprehensive clinical breakdown (150 to 220 words) with 2-3 structured takeaways, concluding gracefully.\n\n"
                 "4. STRICT NON-COMMERCIAL BOUNDARY & COURSE INQUIRY EXCEPTION:\n"
                 "   - You are primarily a clinical educator and mindfulness guide. Never proactively pitch, price, or sell paid programs to them.\n"
                 "   - EXPLICIT USER INQUIRY EXCEPTION: If the user explicitly asks about available courses or pricing, acknowledge specialized programs and direct them to connect with the Program Advisor or visit drsarahhensley.com.\n\n"
@@ -505,16 +557,16 @@ class OpenAIGeneratorService:
                 messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content": user_prompt})
 
-        # Lane-specific dynamic max_tokens ceiling (Fix 2)
+        # Lane-specific dynamic max_tokens ceiling (Headroom buffered: 250 / 700 / 800)
         is_short_query = len(query.split()) <= 6 and any(
             w in query.lower() for w in ["what is", "define", "meaning", "who is", "cost", "price", "how much"]
         )
         if is_short_query:
-            effective_max_tokens = 220
+            effective_max_tokens = 250
         elif mode == "sales":
-            effective_max_tokens = 550
+            effective_max_tokens = 800
         else:
-            effective_max_tokens = 450
+            effective_max_tokens = 700
 
         used_model = self.model
         try:
@@ -557,6 +609,7 @@ class OpenAIGeneratorService:
 
         if generated_text:
             generated_text = strip_citation_markers(generated_text)
+            generated_text = clean_trailing_truncation(generated_text)
             generated_text = re.sub(r'\bscripted\s+script\b', 'script', generated_text, flags=re.I)
             generated_text = re.sub(r'(\n\s*[-*•]\s*)$', '', generated_text.rstrip())
 
@@ -719,16 +772,16 @@ class OpenAIGeneratorService:
                 messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content": user_prompt})
 
-        # Lane-specific dynamic max_tokens ceiling (Fix 2)
+        # Lane-specific dynamic max_tokens ceiling (Headroom buffered: 250 / 700 / 800)
         is_short_query = len(query.split()) <= 6 and any(
             w in query.lower() for w in ["what is", "define", "meaning", "who is", "cost", "price", "how much"]
         )
         if is_short_query:
-            effective_max_tokens = 220
+            effective_max_tokens = 250
         elif mode == "sales":
-            effective_max_tokens = 550
+            effective_max_tokens = 800
         else:
-            effective_max_tokens = 450
+            effective_max_tokens = 700
 
         # Try primary stream, fallback to secondary if connection fails
         stream_client = self.client
@@ -781,6 +834,9 @@ class OpenAIGeneratorService:
                 yield {"token": fallback_card, "done": False}
 
             final_ans = strip_citation_markers("".join(full_text))
+            final_ans = clean_trailing_truncation(final_ans)
+            final_ans = re.sub(r'\bscripted\s+script\b', 'script', final_ans, flags=re.I)
+            final_ans = re.sub(r'(\n\s*[-*•]\s*)$', '', final_ans.rstrip())
             # Layer 2 Deterministic Salutation Guardrail for streaming
             if not is_follow_up and not chat_history and not OFF_TOPIC_REGEX.search(query):
                 expected_salutation = f"Hi {greeting_name},"
