@@ -95,7 +95,9 @@ async def lifespan(app: FastAPI):
     if monitor.is_running():
         monitor.stop()
 
-IS_PROD = os.getenv("ENV", "production") == "production"
+ENVIRONMENT = os.getenv("ENVIRONMENT", os.getenv("ENV", "production")).strip().lower()
+IS_PROD = ENVIRONMENT in ("production", "prod")
+is_production = IS_PROD
 
 app = FastAPI(
     title="Doctor Sarah Hensley AI - Personalized RAG API",
@@ -114,7 +116,6 @@ app = FastAPI(
 # -----------------------------------------------------------------------------
 # CORS Middleware Configuration
 # -----------------------------------------------------------------------------
-is_production = os.getenv("ENVIRONMENT", "").strip().lower() in ("production", "prod")
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "").strip()
 
 trusted_production_origins = [
@@ -321,6 +322,7 @@ async def health_check():
     """
     Health check endpoint returning active statuses for FastAPI, Qdrant,
     Sentence-Transformers embeddings, Google Drive integration, and optional OpenAI.
+    In production, details are sanitized to prevent internal topology leakage.
     """
     qdrant = get_qdrant_service()
     generator = get_generator_service()
@@ -329,8 +331,40 @@ async def health_check():
     tracker = get_ingestion_tracker()
     docs = tracker.list_documents()
     ready_count = sum(1 for d in docs if d.get("status") == "READY")
-    mode = f"Cloud ({qdrant.url})" if qdrant.url else "Local In-Memory"
 
+    if IS_PROD:
+        return {
+            "status": "ok",
+            "fastapi": "ok",
+            "qdrant": {
+                "status": "ok",
+                "mode": "Dedicated Vector Store",
+                "collection_name": qdrant.collection_name
+            },
+            "embeddings": {
+                "status": "ok",
+                "model": "sentence-transformers/all-MiniLM-L6-v2",
+                "dimension": 384
+            },
+            "google_drive": {
+                "configured": drive_service.is_configured(),
+                "status": "connected" if drive_service.is_configured() else "unconfigured"
+            },
+            "llm": {
+                "configured": generator.is_configured(),
+                "status": "ready" if generator.is_configured() else "unconfigured"
+            },
+            "documents": {
+                "total": len(docs),
+                "ready": ready_count
+            },
+            "users_database": {
+                "status": "connected"
+            },
+            "message": "Personalized RAG service is running"
+        }
+
+    mode = f"Cloud ({qdrant.url})" if qdrant.url else "Local In-Memory"
     return {
         "status": "ok",
         "fastapi": "ok",
@@ -423,10 +457,11 @@ async def get_qdrant_status():
     })
 
 
-@app.get("/drive/status")
+@app.get("/drive/status", dependencies=[Depends(verify_api_key)])
 async def get_drive_status():
     """
     Returns current status of Google Drive integration and background polling monitor.
+    Protected endpoint requiring administrative API key authentication.
     """
     monitor = get_drive_monitor()
     return JSONResponse(content=monitor.get_status())
@@ -462,19 +497,21 @@ async def clear_system_caches():
     })
 
 
-@app.get("/documents")
+@app.get("/documents", dependencies=[Depends(verify_api_key)])
 async def list_documents():
     """
     Returns list of all uploaded/ingested documents and their persistent lifecycle statuses.
+    Protected endpoint requiring administrative API key authentication.
     """
     tracker = get_ingestion_tracker()
     return JSONResponse(content={"documents": tracker.list_documents()})
 
 
-@app.get("/documents/{document_id}")
+@app.get("/documents/{document_id}", dependencies=[Depends(verify_api_key)])
 async def get_document_status(document_id: str):
     """
     Returns detailed ingestion status and metadata for a specific document.
+    Protected endpoint requiring administrative API key authentication.
     """
     tracker = get_ingestion_tracker()
     doc = tracker.get_document(document_id)
@@ -1102,7 +1139,7 @@ async def chat_endpoint(
     if not is_admin:
         if token_sub and token_sub != "guest":
             uid = token_sub
-        elif not uid or uid == "admin":
+        else:
             uid = "guest"
     else:
         uid = uid or "admin"
@@ -1206,7 +1243,7 @@ async def chat_stream_endpoint(
     if not is_admin:
         if token_sub and token_sub != "guest":
             uid = token_sub
-        elif not uid or uid == "admin":
+        else:
             uid = "guest"
     else:
         uid = uid or "admin"
