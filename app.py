@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import uuid
 import hmac
 import hashlib
 import secrets
@@ -538,7 +539,12 @@ async def get_system_logs(log_type: str = "ingestion", limit: int = 50):
 
 
 @app.post("/upload", dependencies=[Depends(verify_api_key)])
-async def upload_document(file: UploadFile = File(...)):
+async def upload_document(
+    file: UploadFile = File(...),
+    category: Optional[str] = Query(None),
+    folder_name: Optional[str] = Query(None),
+    collection_name: Optional[str] = Query(None)
+):
     """
     Automatically executes the complete document ingestion pipeline:
     Validate -> Save & Register -> Extract -> Clean -> Chunk -> Embed -> Store in Qdrant -> Verify -> Mark READY.
@@ -556,7 +562,10 @@ async def upload_document(file: UploadFile = File(...)):
         result = await run_in_threadpool(
             ingest_pdf_document,
             file_source=contents,
-            filename=file.filename
+            filename=file.filename,
+            category=category,
+            folder_name=folder_name,
+            collection_name=collection_name
         )
         return JSONResponse(content=result)
     except ValueError as ve:
@@ -707,6 +716,10 @@ async def ask_api_v1(
 
     try:
         req_mode = request.mode or "generic"
+        sid = request.session_id or request.conversation_id
+        if (not sid or str(sid).strip() in ("", "default_conv")) and uid == "guest":
+            sid = f"sess_{uuid.uuid4().hex}"
+
         res = await run_in_threadpool(
             execute_rag_pipeline,
             query=request.question,
@@ -714,7 +727,7 @@ async def ask_api_v1(
             top_k=5,
             generate_answer=True,
             mode=req_mode,
-            conversation_id=request.conversation_id,
+            conversation_id=sid,
             folders=request.folders,
             user_profile=request.user_profile,
             chat_history=request.chat_history
@@ -728,8 +741,8 @@ async def ask_api_v1(
             "answer_html": res.get("answer_html"),
             "sources": res["sources"],
             "disambiguation_options": res.get("disambiguation_options", []),
-            "conversation_id": request.conversation_id,
-            "session_id": request.session_id
+            "conversation_id": res.get("conversation_id", sid),
+            "session_id": sid
         }
     except UserNotFoundError:
         return JSONResponse(
@@ -848,6 +861,10 @@ async def ask_api_v1_stream(
 
     clean_query = request.question.strip()
     req_mode = request.mode or "generic"
+    sid = request.session_id or request.conversation_id
+    if (not sid or str(sid).strip() in ("", "default_conv")) and uid == "guest":
+        sid = f"sess_{uuid.uuid4().hex}"
+
     user_db = get_user_db()
     cache = get_semantic_cache()
     conv_memory = get_conversation_memory()
@@ -962,7 +979,7 @@ async def ask_api_v1_stream(
     if request.chat_history is not None:
         chat_history = request.chat_history
     else:
-        chat_history = conv_memory.get_chat_history(user_id=uid, conversation_id=request.conversation_id, max_turns=3)
+        chat_history = conv_memory.get_chat_history(user_id=uid, conversation_id=sid, max_turns=3)
     generator = get_generator_service()
 
     def event_stream():
@@ -984,13 +1001,13 @@ async def ask_api_v1_stream(
                 "disambiguation_options": cached_result.get("disambiguation_options", []),
                 "cached": True,
                 "cache_similarity": cached_result.get("cache_similarity"),
-                "conversation_id": request.conversation_id,
-                "session_id": request.session_id
+                "conversation_id": sid,
+                "session_id": sid
             }
             if cached_ans and not cached_ans.startswith("Error"):
                 conv_memory.record_turn(
                     user_id=uid,
-                    conversation_id=request.conversation_id or request.session_id,
+                    conversation_id=sid,
                     user_query=clean_query,
                     assistant_answer=cached_ans,
                     retrieved_chunks=cached_result.get("sources", []),
@@ -1050,15 +1067,15 @@ async def ask_api_v1_stream(
                     "recommended_products": event.get("recommended_products", []),
                     "disambiguation_options": disambiguation_options if 'disambiguation_options' in locals() else [],
                     "sources": sources,
-                    "conversation_id": request.conversation_id,
-                    "session_id": request.session_id
+                    "conversation_id": sid,
+                    "session_id": sid
                 }
 
                 # Record turn in conversational memory
                 if full_answer and not full_answer.startswith("Error") and not full_answer.startswith("No relevant"):
                     conv_memory.record_turn(
                         user_id=uid,
-                        conversation_id=request.conversation_id,
+                        conversation_id=sid,
                         user_query=clean_query,
                         assistant_answer=full_answer,
                         retrieved_chunks=retrieved_chunks,
@@ -1144,7 +1161,7 @@ async def chat_endpoint(
     else:
         uid = uid or "admin"
 
-    sid = request.session_id or auth_claims.get("sid") or f"sess_{int(time.time())}"
+    sid = request.session_id or request.conversation_id or auth_claims.get("sid") or f"sess_{uuid.uuid4().hex}"
     if not is_admin and auth_claims.get("sid"):
         sid = auth_claims["sid"]
 
@@ -1174,19 +1191,23 @@ async def chat_endpoint(
             user_profile=safe_user_profile,
             chat_history=safe_chat_history
         )
-        return JSONResponse(status_code=200, content={
-            "success": True,
-            "session_id": sid,
-            "mode": req_mode,
-            "user_id": uid,
-            "question": rag_res["question"],
-            "answer": rag_res["answer"],
-            "answer_html": rag_res.get("answer_html"),
-            "recommended_products": rag_res.get("recommended_products", []),
-            "disambiguation_options": rag_res.get("disambiguation_options", []),
-            "ai_model": rag_res.get("ai_model"),
-            "duration_ms": rag_res.get("duration_ms")
-        })
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "session_id": sid,
+                "mode": req_mode,
+                "user_id": uid,
+                "question": rag_res["question"],
+                "answer": rag_res["answer"],
+                "answer_html": rag_res.get("answer_html"),
+                "recommended_products": rag_res.get("recommended_products", []),
+                "disambiguation_options": rag_res.get("disambiguation_options", []),
+                "ai_model": rag_res.get("ai_model"),
+                "duration_ms": rag_res.get("duration_ms")
+            },
+            headers={"X-Session-ID": sid}
+        )
     except UserNotFoundError:
         rag_res = await run_in_threadpool(
             execute_rag_pipeline,
@@ -1199,19 +1220,23 @@ async def chat_endpoint(
             user_profile=safe_user_profile,
             chat_history=safe_chat_history
         )
-        return JSONResponse(status_code=200, content={
-            "success": True,
-            "session_id": sid,
-            "mode": req_mode,
-            "user_id": "guest",
-            "question": rag_res["question"],
-            "answer": rag_res["answer"],
-            "answer_html": rag_res.get("answer_html"),
-            "recommended_products": rag_res.get("recommended_products", []),
-            "disambiguation_options": rag_res.get("disambiguation_options", []),
-            "ai_model": rag_res.get("ai_model"),
-            "duration_ms": rag_res.get("duration_ms")
-        })
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "session_id": sid,
+                "mode": req_mode,
+                "user_id": "guest",
+                "question": rag_res["question"],
+                "answer": rag_res["answer"],
+                "answer_html": rag_res.get("answer_html"),
+                "recommended_products": rag_res.get("recommended_products", []),
+                "disambiguation_options": rag_res.get("disambiguation_options", []),
+                "ai_model": rag_res.get("ai_model"),
+                "duration_ms": rag_res.get("duration_ms")
+            },
+            headers={"X-Session-ID": sid}
+        )
     except Exception as e:
         logger.error(f"[Chat Endpoint] Error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Chat generation failed: {str(e)}")
@@ -1248,7 +1273,7 @@ async def chat_stream_endpoint(
     else:
         uid = uid or "admin"
 
-    sid = request.session_id or auth_claims.get("sid") or f"sess_{int(time.time())}"
+    sid = request.session_id or request.conversation_id or auth_claims.get("sid") or f"sess_{uuid.uuid4().hex}"
     if not is_admin and auth_claims.get("sid"):
         sid = auth_claims["sid"]
 

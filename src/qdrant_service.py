@@ -249,15 +249,16 @@ class QdrantService:
             except Exception:
                 return True
 
-    def count_document_vectors(self, document_id: str) -> int:
+    def count_document_vectors(self, document_id: str, collection_name: Optional[str] = None) -> int:
         """Counts stored vectors matching document_id in collection."""
+        target_col = collection_name or self.collection_name
         collections = [col.name for col in self.client.get_collections().collections]
-        if self.collection_name not in collections:
+        if target_col not in collections:
             return 0
         try:
             from qdrant_client.models import Filter, FieldCondition, MatchValue
             count_res = self.client.count(
-                collection_name=self.collection_name,
+                collection_name=target_col,
                 count_filter=Filter(
                     must=[
                         FieldCondition(
@@ -271,15 +272,16 @@ class QdrantService:
         except Exception:
             return 0
 
-    def delete_document_vectors(self, document_id: str) -> bool:
+    def delete_document_vectors(self, document_id: str, collection_name: Optional[str] = None) -> bool:
         """Deletes all vector points associated with document_id for safe reprocessing."""
+        target_col = collection_name or self.collection_name
         collections = [col.name for col in self.client.get_collections().collections]
-        if self.collection_name not in collections:
+        if target_col not in collections:
             return True
         try:
             from qdrant_client.models import Filter, FieldCondition, MatchValue, FilterSelector
             self.client.delete(
-                collection_name=self.collection_name,
+                collection_name=target_col,
                 points_selector=FilterSelector(
                     filter=Filter(
                         must=[

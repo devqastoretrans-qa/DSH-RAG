@@ -168,6 +168,7 @@ class DriveMonitor:
                 try:
                     category = file_info.get("category")
                     folder_name = file_info.get("folder_name", "Unknown")
+                    folder_id = file_info.get("folder_id")
                     log_application("INFO", f"DriveMonitor: Processing '{file_name}' ({drive_id}) [Folder: {folder_name}, Category: {category}] - Reason: {reason}")
 
                     t_start = time.time()
@@ -176,12 +177,15 @@ class DriveMonitor:
                         file_source=file_bytes,
                         filename=file_name,
                         category=category,
+                        folder_name=folder_name,
+                        folder_id=folder_id,
                         drive_file_id=drive_id,
                         file_version=version,
                         modified_time=modified_time
                     )
                     elapsed = time.time() - t_start
                     is_ready = ingest_res.get("status") == "READY"
+                    target_collection = ingest_res.get("collection_name", "documents")
 
                     chunks_cnt = ingest_res.get("chunks_created") or ingest_res.get("chunk_count") or 0
                     vectors_cnt = ingest_res.get("vectors_stored") or ingest_res.get("vector_count") or 0
@@ -189,18 +193,19 @@ class DriveMonitor:
                     log_embedding_audit(
                         file_name=file_name,
                         folder_name=folder_name,
-                        category=category or "clinical",
+                        category=ingest_res.get("category", category or "clinical"),
                         embedded=is_ready,
                         chunks=chunks_cnt,
                         vectors=vectors_cnt,
                         duration_seconds=elapsed,
-                        details="Vectorized and upserted into Qdrant"
+                        details=f"Vectorized and upserted into Qdrant collection '{target_collection}'"
                     )
 
                     result["details"].append({
                         "file_name": file_name,
-                        "category": category,
+                        "category": ingest_res.get("category", category),
                         "folder_name": folder_name,
+                        "collection_name": target_collection,
                         "drive_file_id": drive_id,
                         "action": action,
                         "document_id": ingest_res.get("document_id"),

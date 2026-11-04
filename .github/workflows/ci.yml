@@ -59,7 +59,7 @@ jobs:
 
       - name: Run Automated Regression Test Suite
         run: |
-          python test_new_enhancements.py
+          python -m pytest tests/test_admin_auth.py tests/test_drive_ingestion_routing.py tests/test_guest_session_isolation.py
 
   # =========================================================================
   # STAGE 2: Continuous Deployment (Zero-Downtime AWS EC2 Rollout)

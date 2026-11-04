@@ -1,5 +1,6 @@
 import time
 import re
+import uuid
 import logging
 from typing import Dict, Any, List, Optional
 from src.search import search_similar_chunks, expand_query_semantics
@@ -141,6 +142,10 @@ def execute_rag_pipeline(
 
     clean_query = query.strip()
     effective_uid = str(user_id or (user_profile.get("user_id") if user_profile else "guest")).strip()
+    
+    # Enforce cryptographic guest session isolation (DEF-02)
+    if effective_uid == "guest" and (not conversation_id or str(conversation_id).strip() in ("", "default_conv")):
+        conversation_id = f"sess_{uuid.uuid4().hex}"
     
     # 0. Tier 0: Acute Crisis & Immediate Safety Guardrail (<1ms instant response)
     if CRISIS_REGEX.search(clean_query):

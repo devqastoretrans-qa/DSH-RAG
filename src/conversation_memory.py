@@ -12,6 +12,7 @@ Features:
 import os
 import time
 import re
+import uuid
 import sqlite3
 import threading
 from pathlib import Path
@@ -172,12 +173,23 @@ class ConversationMemoryManager:
             pass
 
     def _session_key(self, user_id: str, conversation_id: Optional[str]) -> str:
-        cid = conversation_id.strip() if conversation_id and conversation_id.strip() else "default_conv"
         uid = user_id.strip() if user_id and user_id.strip() else "guest"
+        # Security hardening (DEF-02): Prevent cross-visitor session history leakage
+        if uid == "guest":
+            if not conversation_id or conversation_id.strip() in ("", "default_conv"):
+                # Standalone ephemeral key - never shared across callers
+                return f"guest_ephemeral:{uuid.uuid4().hex}"
+            return f"guest:{conversation_id.strip()}"
+        cid = conversation_id.strip() if conversation_id and conversation_id.strip() else "default_conv"
         return f"{uid}:{cid}"
 
     def _get_or_load_session(self, user_id: str, conversation_id: Optional[str]) -> Optional[ConversationSession]:
         """Looks up session in memory, or loads from SQLite on worker restart/handoff."""
+        uid = user_id.strip() if user_id and user_id.strip() else "guest"
+        if uid == "guest" and (not conversation_id or conversation_id.strip() in ("", "default_conv")):
+            # Unauthenticated guest with no explicit session ID has zero prior history
+            return None
+
         key = self._session_key(user_id, conversation_id)
         if key in self._sessions:
             return self._sessions[key]
@@ -284,6 +296,9 @@ class ConversationMemoryManager:
             (rewritten_standalone_query, can_reuse_parent_chunks, cached_parent_chunks)
         """
         clean = query.strip()
+        uid = user_id.strip() if user_id and user_id.strip() else "guest"
+        if uid == "guest" and (not conversation_id or conversation_id.strip() in ("", "default_conv")):
+            return clean, False, None
         with self._lock:
             key = self._session_key(user_id, conversation_id)
             session = self._get_or_load_session(user_id, conversation_id)
@@ -341,11 +356,12 @@ class ConversationMemoryManager:
         """Stores the turn in memory and persists to SQLite, dropping older turns beyond limit."""
         with self._lock:
             self._cleanup_expired()
+            uid = user_id.strip() if user_id and user_id.strip() else "guest"
             key = self._session_key(user_id, conversation_id)
-            cid = conversation_id.strip() if conversation_id and conversation_id.strip() else "default_conv"
+            cid = conversation_id.strip() if conversation_id and conversation_id.strip() else key
 
             if key not in self._sessions:
-                self._sessions[key] = ConversationSession(conversation_id=cid, user_id=user_id)
+                self._sessions[key] = ConversationSession(conversation_id=cid, user_id=uid)
 
             self._sessions[key].add_turn(
                 user_query=user_query,
@@ -429,6 +445,10 @@ class ConversationMemoryManager:
         max_turns: int = CHAT_HISTORY_TURNS
     ) -> List[Dict[str, str]]:
         """Returns recent chat turns formatted for LLM completion context."""
+        uid = user_id.strip() if user_id and user_id.strip() else "guest"
+        if uid == "guest" and (not conversation_id or conversation_id.strip() in ("", "default_conv")):
+            return []
+
         with self._lock:
             session = self._get_or_load_session(user_id, conversation_id)
             if not session or not session.turns:

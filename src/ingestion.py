@@ -10,6 +10,7 @@ from src.document_loader import extract_text_from_pdf, extract_document_content
 from src.chunker import chunk_document_pages
 from src.embeddings import get_embedding_service
 from src.qdrant_service import get_qdrant_service
+from src.config import resolve_target_collection
 
 
 def ingest_pdf_document(
@@ -21,7 +22,12 @@ def ingest_pdf_document(
     file_version: Optional[str] = None,
     modified_time: Optional[str] = None,
     max_retries: Optional[int] = None,
-    category: Optional[str] = None
+    category: Optional[str] = None,
+    collection_name: Optional[str] = None,
+    collection_key: Optional[str] = None,
+    folder_display: Optional[str] = None,
+    folder_name: Optional[str] = None,
+    folder_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Automated Ingestion Pipeline with full lifecycle logging, persistent tracking,
@@ -211,6 +217,18 @@ def ingest_pdf_document(
                 drive_file_id=drive_file_id
             )
 
+            # Resolve target Qdrant collection to ensure proper separation between clinical knowledge and sales
+            resolved_target = resolve_target_collection(
+                folder_name=folder_name,
+                folder_id=folder_id,
+                category=category,
+                filename=filename
+            )
+            target_col_name = collection_name or resolved_target["collection_name"]
+            target_col_key = collection_key or resolved_target["collection_key"]
+            target_disp = folder_display or resolved_target["folder_display"]
+            eff_category = category or resolved_target["category"]
+
             embedder = get_embedding_service()
             chunks = chunk_document_pages(
                 pages=pages,
@@ -218,13 +236,17 @@ def ingest_pdf_document(
                 chunk_overlap=chunk_overlap,
                 document_id=document_id,
                 embedding_model=embedder.model_name,
-                category=category
+                category=eff_category
             )
 
-            # Enrich chunks with drive_file_id & status
+            # Enrich chunks with drive_file_id, status, and collection routing metadata
             for c in chunks:
                 c["drive_file_id"] = drive_file_id or "local"
                 c["status"] = IngestionStatus.READY
+                c["collection_name"] = target_col_name
+                c["collection_key"] = target_col_key
+                c["folder_display"] = target_disp
+                c["category"] = eff_category
 
             chunk_duration_ms = int((time.time() - chunk_start) * 1000)
             tracker.update_status(document_id, IngestionStatus.CHUNKED, chunk_count=len(chunks))
@@ -280,10 +302,18 @@ def ingest_pdf_document(
             )
 
             qdrant = get_qdrant_service()
+            # If reprocessing an existing drive file, purge previous points to prevent zombie/duplicate vectors
+            if drive_file_id:
+                try:
+                    qdrant.delete_drive_file_vectors(drive_file_id, collection_name=target_col_name)
+                except Exception as del_err:
+                    log_application("WARNING", f"Could not purge existing vectors for drive_file_id={drive_file_id}: {del_err}")
+
             stored_count = qdrant.store_vectors(
                 chunks=chunks,
                 vectors=vectors,
-                vector_size=embedder.dimension
+                vector_size=embedder.dimension,
+                collection_name=target_col_name
             )
             store_duration_ms = int((time.time() - store_start) * 1000)
 
@@ -309,7 +339,7 @@ def ingest_pdf_document(
                 expected_vectors=len(chunks)
             )
 
-            verified_count = qdrant.count_document_vectors(document_id)
+            verified_count = qdrant.count_document_vectors(document_id, collection_name=target_col_name)
             # Verify count matches expected chunks (or verify stored count > 0)
             if verified_count == 0 and stored_count > 0:
                 verified_count = stored_count
@@ -370,6 +400,10 @@ def ingest_pdf_document(
                 "status": IngestionStatus.READY,
                 "success": True,
                 "message": "Document ingested and ready for RAG search.",
+                "collection_name": target_col_name,
+                "collection_key": target_col_key,
+                "folder_display": target_disp,
+                "category": eff_category,
                 "pages_count": len(pages),
                 "chunks_created": len(chunks),
                 "vectors_stored": stored_count,

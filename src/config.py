@@ -40,16 +40,120 @@ FOLDER_NAME_TO_KEY: Dict[str, str] = {
     for key, cfg in CLINICAL_COLLECTIONS.items()
 }
 
+# Reverse lookup by folder ID
+FOLDER_ID_TO_KEY: Dict[str, str] = {
+    cfg["folder_id"]: key
+    for key, cfg in CLINICAL_COLLECTIONS.items()
+    if cfg.get("folder_id")
+}
+
 def get_collection_config(key_or_name: str) -> Optional[Dict[str, Any]]:
     """
-    Retrieves collection configuration by key ('journals') or folder name ('Journals').
+    Retrieves collection configuration by key ('journals'), folder name ('Journals'), or folder ID.
     """
-    clean = key_or_name.strip().lower()
+    if not key_or_name:
+        return None
+    clean = str(key_or_name).strip().lower()
     if clean in CLINICAL_COLLECTIONS:
         return CLINICAL_COLLECTIONS[clean]
     if clean in FOLDER_NAME_TO_KEY:
         return CLINICAL_COLLECTIONS[FOLDER_NAME_TO_KEY[clean]]
+    raw_str = str(key_or_name).strip()
+    if raw_str in FOLDER_ID_TO_KEY:
+        return CLINICAL_COLLECTIONS[FOLDER_ID_TO_KEY[raw_str]]
     return None
+
+def resolve_target_collection(
+    folder_name: Optional[str] = None,
+    folder_id: Optional[str] = None,
+    category: Optional[str] = None,
+    filename: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Resolves the destination Qdrant collection, collection_key, folder_display, and category
+    for an incoming document from Google Drive or manual upload.
+    Ensures clinical documents never leak into the default sales 'documents' collection.
+    """
+    default_sales_col = os.getenv("QDRANT_COLLECTION_NAME", "documents").strip() or "documents"
+
+    # 1. Explicit Sales Category Check
+    cat_clean = (category or "").strip().lower()
+    if cat_clean == "sales":
+        return {
+            "collection_name": default_sales_col,
+            "collection_key": "sales",
+            "folder_display": "Sales & Course Catalog",
+            "category": "sales"
+        }
+
+    # 2. Check Match by Folder ID
+    if folder_id and folder_id.strip() in FOLDER_ID_TO_KEY:
+        k = FOLDER_ID_TO_KEY[folder_id.strip()]
+        cfg = CLINICAL_COLLECTIONS[k]
+        return {
+            "collection_name": cfg["collection_name"],
+            "collection_key": k,
+            "folder_display": cfg["display_name"],
+            "category": "clinical"
+        }
+
+    # 3. Check Match by Folder Name
+    if folder_name:
+        cfg = get_collection_config(folder_name)
+        if cfg:
+            key = FOLDER_NAME_TO_KEY.get(folder_name.strip().lower(), "other")
+            return {
+                "collection_name": cfg["collection_name"],
+                "collection_key": key,
+                "folder_display": cfg["display_name"],
+                "category": "clinical"
+            }
+        f_low = folder_name.lower()
+        if "journal" in f_low:
+            c = CLINICAL_COLLECTIONS["journals"]
+            return {"collection_name": c["collection_name"], "collection_key": "journals", "folder_display": c["display_name"], "category": "clinical"}
+        if any(w in f_low for w in ("tool", "worksheet", "exercise", "handout")):
+            c = CLINICAL_COLLECTIONS["tools"]
+            return {"collection_name": c["collection_name"], "collection_key": "tools", "folder_display": c["display_name"], "category": "clinical"}
+        if "reflection" in f_low:
+            c = CLINICAL_COLLECTIONS["reflections"]
+            return {"collection_name": c["collection_name"], "collection_key": "reflections", "folder_display": c["display_name"], "category": "clinical"}
+        if any(w in f_low for w in ("sales", "pricing", "catalog", "checkout", "course", "masterclass")):
+            return {
+                "collection_name": default_sales_col,
+                "collection_key": "sales",
+                "folder_display": "Sales & Course Catalog",
+                "category": "sales"
+            }
+
+    # 4. Check Match by Filename heuristics
+    if filename:
+        fn_low = filename.lower()
+        if any(w in fn_low for w in ("pricing", "sales", "catalog", "checkout", "masterclass")):
+            return {
+                "collection_name": default_sales_col,
+                "collection_key": "sales",
+                "folder_display": "Sales & Course Catalog",
+                "category": "sales"
+            }
+        if "journal" in fn_low:
+            c = CLINICAL_COLLECTIONS["journals"]
+            return {"collection_name": c["collection_name"], "collection_key": "journals", "folder_display": c["display_name"], "category": "clinical"}
+        if any(w in fn_low for w in ("tool", "worksheet", "exercise", "handout")):
+            c = CLINICAL_COLLECTIONS["tools"]
+            return {"collection_name": c["collection_name"], "collection_key": "tools", "folder_display": c["display_name"], "category": "clinical"}
+        if "reflection" in fn_low:
+            c = CLINICAL_COLLECTIONS["reflections"]
+            return {"collection_name": c["collection_name"], "collection_key": "reflections", "folder_display": c["display_name"], "category": "clinical"}
+
+    # 5. Default Clinical Fallback: Always route clinical docs to clinical_knowledge_other so they are searchable
+    other_cfg = CLINICAL_COLLECTIONS["other"]
+    return {
+        "collection_name": other_cfg["collection_name"],
+        "collection_key": "other",
+        "folder_display": other_cfg["display_name"],
+        "category": "clinical"
+    }
 
 def get_all_clinical_collection_names() -> list[str]:
     """Returns list of all 4 Qdrant collection names."""
