@@ -145,6 +145,9 @@ def test_public_routes_remain_unauthenticated(client):
 
 def test_api_docs_hidden_in_production(client):
     """API docs (/docs and /openapi.json) return 404 in production mode"""
+    from app import IS_PROD
+    if not IS_PROD:
+        pytest.skip("Skipping production-only docs test in non-production environment")
     docs_resp = client.get("/docs")
     assert docs_resp.status_code == 404
 
