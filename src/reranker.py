@@ -46,8 +46,20 @@ class RerankerService:
 
         # Evaluate up to 16-20 candidates to ensure multi-tool and cross-subfolder queries find relevant documents
         max_pool = int(os.getenv("RERANK_MAX_CANDIDATES", "16"))
+        max_chars = int(os.getenv("RERANK_MAX_CHARS", "2048"))
         pruned_candidates = candidate_chunks[:max(top_k * 3, max_pool)]
-        pairs = [(query, chunk.get("text", "")[:600]) for chunk in pruned_candidates]
+
+        # Preserve full clinical chunk context without artificial 600-char truncation (DEF-05)
+        # ms-marco-MiniLM-L-6-v2 natively processes up to 512 subword tokens (~2,000+ chars)
+        pairs = [
+            (
+                query,
+                (chunk.get("text") or chunk.get("raw_text") or "")
+                if max_chars <= 0
+                else (chunk.get("text") or chunk.get("raw_text") or "")[:max_chars]
+            )
+            for chunk in pruned_candidates
+        ]
 
         try:
             import torch

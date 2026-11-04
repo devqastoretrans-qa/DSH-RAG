@@ -84,3 +84,54 @@ def test_qdrant_service_collection_override():
         qs.delete_document_vectors("doc_123", collection_name="clinical_knowledge_journals")
         assert mock_client.delete.call_args[1]["collection_name"] == "clinical_knowledge_journals"
 
+
+def test_reranker_preserves_chunks_beyond_600_characters():
+    """DEF-05: Ensure CrossEncoder receives full chunk context rather than truncating at 600 chars."""
+    from src.reranker import RerankerService
+    long_text = (
+        "[Document: Attachment Framework | Page 1]\n"
+        + "Step 1: Notice your body activation and emotional flooding. " * 5  # ~300 chars
+        + "Step 2: Core trigger identification and attachment defense deactivation. " * 5  # ~400 chars
+        + "Step 3: This crucial clinical step is located well past the 600 character mark and contains the actual resolution."
+    )
+    assert len(long_text) > 800
+
+    mock_model = MagicMock()
+    mock_model.predict.return_value = [2.5]  # logit score
+
+    with patch.object(RerankerService, '_model', mock_model):
+        service = RerankerService(model_name="test-model")
+        candidates = [{"id": "c1", "text": long_text, "score": 0.85}]
+
+        results = service.rerank(query="how to resolve trigger", candidate_chunks=candidates, top_k=1)
+
+        assert mock_model.predict.called
+        pairs_arg = mock_model.predict.call_args[0][0]
+        query_sent, text_sent = pairs_arg[0]
+
+        assert query_sent == "how to resolve trigger"
+        assert len(text_sent) > 600
+        assert "crucial clinical step is located well past the 600 character mark" in text_sent
+        assert len(results) == 1
+        assert results[0]["rerank_score"] > 0.9
+
+
+def test_reranker_respects_custom_max_chars_env_variable():
+    """Verify RERANK_MAX_CHARS environment variable controls input slice cleanly."""
+    import os
+    from src.reranker import RerankerService
+    custom_text = "A" * 1500
+    mock_model = MagicMock()
+    mock_model.predict.return_value = [1.0]
+
+    with patch.object(RerankerService, '_model', mock_model):
+        with patch.dict(os.environ, {"RERANK_MAX_CHARS": "1200"}):
+            service = RerankerService(model_name="test-model")
+            candidates = [{"id": "c2", "text": custom_text, "score": 0.7}]
+            service.rerank(query="test query", candidate_chunks=candidates, top_k=1)
+
+            pairs_arg = mock_model.predict.call_args[0][0]
+            _, text_sent = pairs_arg[0]
+            assert len(text_sent) == 1200
+
+
