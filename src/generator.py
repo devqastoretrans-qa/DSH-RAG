@@ -477,10 +477,19 @@ class OpenAIGeneratorService:
         # (Bypassed if this is a follow-up or chat history exists to avoid false rejection)
         max_vector_score = max((float(c.get("vector_score", c.get("score", 0.0))) for c in retrieved_chunks), default=0.0)
         max_rerank_score = max((float(c.get("rerank_score", c.get("score", 0.0))) for c in retrieved_chunks), default=0.0)
+        has_rerank_scores = any("rerank_score" in c for c in retrieved_chunks)
 
         has_sales_match = (mode == "sales" and bool(re.search(r"\b(course|program|class|masterclass|pricing|price|cost|buy|enroll|session|consult|workbook|book|recommend|help|anxious|avoidant|attachment|relationship|ex|breakup|dating|partner|spiral|text)\b", query, re.I)))
 
-        if not is_follow_up and not chat_history and not has_sales_match and max_vector_score < 0.25 and max_rerank_score < 0.02:
+        # DEF-06: Calibrated thresholds prevent off-topic prompts from leaking into LLM synthesis
+        min_vector_threshold = float(os.getenv("RAG_MIN_VECTOR_SCORE", "0.35"))
+        min_rerank_threshold = float(os.getenv("RAG_MIN_RERANK_SCORE", "0.20"))
+        strict_rerank_floor = float(os.getenv("RAG_STRICT_RERANK_FLOOR", "0.05"))
+
+        is_low_confidence = (max_vector_score < min_vector_threshold and max_rerank_score < min_rerank_threshold)
+        is_hard_irrelevant = (has_rerank_scores and max_rerank_score < strict_rerank_floor and max_vector_score < 0.50)
+
+        if not is_follow_up and not chat_history and not has_sales_match and (is_low_confidence or is_hard_irrelevant):
             chit_chat = self._get_chit_chat_reply(query, user_context=user_context, mode=mode)
             if chit_chat:
                 return {
@@ -690,6 +699,7 @@ class OpenAIGeneratorService:
         # Pre-LLM Relevance Gate (bypassed if follow-up or chat history exists)
         max_vector_score = max((float(c.get("vector_score", c.get("score", 0.0))) for c in retrieved_chunks), default=0.0)
         max_rerank_score = max((float(c.get("rerank_score", c.get("score", 0.0))) for c in retrieved_chunks), default=0.0)
+        has_rerank_scores = any("rerank_score" in c for c in retrieved_chunks)
 
         greeting_name = self._extract_greeting_name(user_context)
         user_salutation = f"Hi {greeting_name},\n\n" if greeting_name != "there" else ""
@@ -706,7 +716,15 @@ class OpenAIGeneratorService:
 
         has_sales_match = (mode == "sales" and bool(re.search(r"\b(course|program|class|masterclass|pricing|price|cost|buy|enroll|session|consult|workbook|book|recommend|help|anxious|avoidant|attachment|relationship|ex|breakup|dating|partner|spiral|text)\b", query, re.I)))
 
-        if not is_follow_up and not chat_history and not has_sales_match and max_vector_score < 0.25 and max_rerank_score < 0.02:
+        # DEF-06: Calibrated thresholds prevent off-topic prompts from leaking into LLM synthesis
+        min_vector_threshold = float(os.getenv("RAG_MIN_VECTOR_SCORE", "0.35"))
+        min_rerank_threshold = float(os.getenv("RAG_MIN_RERANK_SCORE", "0.20"))
+        strict_rerank_floor = float(os.getenv("RAG_STRICT_RERANK_FLOOR", "0.05"))
+
+        is_low_confidence = (max_vector_score < min_vector_threshold and max_rerank_score < min_rerank_threshold)
+        is_hard_irrelevant = (has_rerank_scores and max_rerank_score < strict_rerank_floor and max_vector_score < 0.50)
+
+        if not is_follow_up and not chat_history and not has_sales_match and (is_low_confidence or is_hard_irrelevant):
             chit_chat = self._get_chit_chat_reply(query, user_context=user_context, mode=mode)
             if chit_chat:
                 yield {"token": chit_chat, "done": False}

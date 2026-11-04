@@ -135,3 +135,62 @@ def test_reranker_respects_custom_max_chars_env_variable():
             assert len(text_sent) == 1200
 
 
+def test_relevance_gate_triggers_refusal_for_out_of_domain_query():
+    """DEF-06: Ensure pre-LLM relevance gate intercepts off-topic queries with low confidence chunks."""
+    from src.generator import OpenAIGeneratorService
+    gen = OpenAIGeneratorService()
+
+    # Off-topic question with noisy, low-confidence retrieved chunks
+    low_chunks = [
+        {
+            "id": "c1",
+            "text": "General relationship notes without specific relevance.",
+            "vector_score": 0.28,
+            "rerank_score": 0.01,
+            "score": 0.01
+        }
+    ]
+
+    res = gen.generate_answer(
+        query="Explain quantum computing qubits and superposition",
+        retrieved_chunks=low_chunks,
+        mode="generic"
+    )
+
+    assert res["out_of_domain"] is True
+    assert "outside the scope of our verified knowledge base" in res["answer"]
+
+
+def test_relevance_gate_bypasses_for_follow_up_and_chat_history():
+    """DEF-06: Ensure follow-ups and active conversations do not trigger false refusal."""
+    from src.generator import OpenAIGeneratorService
+    gen = OpenAIGeneratorService()
+
+    low_chunks = [
+        {
+            "id": "c1",
+            "text": "General relationship notes.",
+            "vector_score": 0.28,
+            "rerank_score": 0.01,
+            "score": 0.01
+        }
+    ]
+
+    mock_client = MagicMock()
+    mock_choice = MagicMock()
+    mock_choice.message.content = "Active follow-up response"
+    mock_client.chat.completions.create.return_value.choices = [mock_choice]
+
+    with patch.object(OpenAIGeneratorService, 'client', mock_client):
+        res = gen.generate_answer(
+            query="tell me more about that",
+            retrieved_chunks=low_chunks,
+            mode="generic",
+            is_follow_up=True
+        )
+
+        assert res.get("out_of_domain") is not True
+        assert "Active follow-up response" in res["answer"]
+
+
+
