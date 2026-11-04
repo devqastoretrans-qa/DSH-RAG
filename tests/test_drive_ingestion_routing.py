@@ -138,7 +138,7 @@ def test_reranker_respects_custom_max_chars_env_variable():
 def test_relevance_gate_triggers_refusal_for_out_of_domain_query():
     """DEF-06: Ensure pre-LLM relevance gate intercepts off-topic queries with low confidence chunks."""
     from src.generator import OpenAIGeneratorService
-    gen = OpenAIGeneratorService()
+    gen = OpenAIGeneratorService(api_key="mock-test-key")
 
     # Off-topic question with noisy, low-confidence retrieved chunks
     low_chunks = [
@@ -164,7 +164,7 @@ def test_relevance_gate_triggers_refusal_for_out_of_domain_query():
 def test_relevance_gate_bypasses_for_follow_up_and_chat_history():
     """DEF-06: Ensure follow-ups and active conversations do not trigger false refusal."""
     from src.generator import OpenAIGeneratorService
-    gen = OpenAIGeneratorService()
+    gen = OpenAIGeneratorService(api_key="mock-test-key")
 
     low_chunks = [
         {
