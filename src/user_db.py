@@ -336,7 +336,7 @@ class UserDatabaseManager:
 
             for o in orders:
                 created = o.get("date_created", "")[:10]
-                status = (o.get("status") or "").lower()
+                status = str(o.get("status") or "").strip().lower()
                 oid = o.get("id")
                 is_active = status in ACTIVE_ORDER_STATUSES
                 for item in o.get("line_items", []):
@@ -431,14 +431,14 @@ class UserDatabaseManager:
             # Seed John
             cursor.execute("SELECT id FROM users WHERE id = 'john'")
             if not cursor.fetchone():
-                cursor.execute("INSERT INTO users (id, name, email) VALUES ('john', 'John', 'john@example.com')")
+                cursor.execute("INSERT OR IGNORE INTO users (id, name, email) VALUES ('john', 'John', 'john@example.com')")
                 cursor.execute("INSERT INTO purchases (user_id, item_type, item_title) VALUES ('john', 'session', '55-minute ADHD session')")
                 cursor.execute("INSERT INTO purchases (user_id, item_type, item_title) VALUES ('john', 'book', 'How to Be Calm When Having ADHD')")
 
             # Seed Sarah
             cursor.execute("SELECT id FROM users WHERE id = 'sarah'")
             if not cursor.fetchone():
-                cursor.execute("INSERT INTO users (id, name, email) VALUES ('sarah', 'Sarah', 'sarah@example.com')")
+                cursor.execute("INSERT OR IGNORE INTO users (id, name, email) VALUES ('sarah', 'Sarah', 'sarah@example.com')")
                 cursor.execute("INSERT INTO purchases (user_id, item_type, item_title) VALUES ('sarah', 'course', 'Mindfulness and Deep Focus Workshop')")
                 cursor.execute("INSERT INTO purchases (user_id, item_type, item_title) VALUES ('sarah', 'book', 'Atomic Habits for Neurodiverse Minds')")
                 cursor.execute("INSERT INTO past_records (user_id, interaction_type, summary_notes) VALUES ('sarah', 'Coaching Session', 'Discussed developing an energizing morning routine to reduce sensory overload and afternoon focus slump.')")
@@ -446,7 +446,7 @@ class UserDatabaseManager:
             # Seed Guest
             cursor.execute("SELECT id FROM users WHERE id = 'guest'")
             if not cursor.fetchone():
-                cursor.execute("INSERT INTO users (id, name, email) VALUES ('guest', 'Guest User', 'guest@example.com')")
+                cursor.execute("INSERT OR IGNORE INTO users (id, name, email) VALUES ('guest', 'Guest User', 'guest@example.com')")
 
             conn.commit()
 
@@ -731,7 +731,8 @@ class UserDatabaseManager:
 
         order_id = order_data.get("id")
         created = order_data.get("date_created", "")[:10]
-        status = str(order_data.get("status", "completed")).strip().lower()
+        raw_status = order_data.get("status") if "status" in order_data else "completed"
+        status = str(raw_status or "").strip().lower()
         customer_id = str(order_data.get("customer_id") or "")
         billing = order_data.get("billing", {}) or {}
 

@@ -291,5 +291,22 @@ def test_wc_order_webhook_refund_revokes_active_purchase():
     assert "Refunded 'Attachment Styles Masterclass'" in record_texts or "Refund" in record_texts
 
 
+from tests.test_wc_order_status_filtering import (
+    test_completed_order_active_ownership,
+    test_processing_order_active_ownership,
+    test_status_case_insensitivity_and_whitespace,
+    test_refunded_order_rejected_from_active_ownership,
+    test_cancelled_and_failed_orders_blocked_from_ownership,
+    test_inactive_orders_recorded_in_past_records_audit_trail,
+    test_active_to_refunded_transition_revokes_db_and_cache,
+    test_active_to_cancelled_transition_revokes_db_and_cache,
+    test_refunded_course_is_unlocked_for_sales_recommendations,
+    test_completed_course_remains_blocked_by_anti_collision_guardrail,
+    test_missing_or_malformed_status_payload,
+    test_duplicate_order_sync_idempotency
+)
+
+
+
 
 
