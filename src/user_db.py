@@ -332,19 +332,25 @@ class UserDatabaseManager:
                 name = identifier.split('@')[0].title() if '@' in identifier else "Customer"
                 email = identifier
 
+            ACTIVE_ORDER_STATUSES = {"completed", "processing"}
+
             for o in orders:
                 created = o.get("date_created", "")[:10]
-                status = o.get("status")
+                status = (o.get("status") or "").lower()
                 oid = o.get("id")
+                is_active = status in ACTIVE_ORDER_STATUSES
                 for item in o.get("line_items", []):
                     item_name = item.get("name", "")
+                    if not item_name:
+                        continue
                     lower = item_name.lower()
-                    if "book" in lower or "science of" in lower:
-                        books.append(item_name)
-                    elif "session" in lower or "coaching" in lower or "minute" in lower:
-                        sessions.append(item_name)
-                    else:
-                        courses.append(item_name)
+                    if is_active:
+                        if "book" in lower or "science of" in lower:
+                            books.append(item_name)
+                        elif "session" in lower or "coaching" in lower or "minute" in lower:
+                            sessions.append(item_name)
+                        else:
+                            courses.append(item_name)
                     records.append(f"Order #{oid}: Purchased '{item_name}' on {created} (Status: {status})")
 
             full_name = name
@@ -725,7 +731,7 @@ class UserDatabaseManager:
 
         order_id = order_data.get("id")
         created = order_data.get("date_created", "")[:10]
-        status = order_data.get("status", "completed")
+        status = str(order_data.get("status", "completed")).strip().lower()
         customer_id = str(order_data.get("customer_id") or "")
         billing = order_data.get("billing", {}) or {}
 
@@ -736,22 +742,36 @@ class UserDatabaseManager:
 
         user_id = customer_id if customer_id and customer_id != "0" else (email or f"order_user_{order_id}")
 
-        courses = []
-        books = []
-        sessions = []
-        records = []
+        ACTIVE_ORDER_STATUSES = {"completed", "processing"}
+        REVOKE_ORDER_STATUSES = {"refunded", "cancelled", "failed"}
+        is_active = status in ACTIVE_ORDER_STATUSES
+        is_revoked = status in REVOKE_ORDER_STATUSES
 
         line_items = order_data.get("line_items", []) or []
+        courses_to_add = []
+        books_to_add = []
+        sessions_to_add = []
+        order_items = []
+        records = []
+
         for item in line_items:
             item_name = item.get("name", "")
+            if not item_name:
+                continue
+            order_items.append(item_name)
             lower = item_name.lower()
-            if "book" in lower or "science of" in lower:
-                books.append(item_name)
-            elif "session" in lower or "coaching" in lower or "minute" in lower:
-                sessions.append(item_name)
+            if is_active:
+                if "book" in lower or "science of" in lower:
+                    books_to_add.append(item_name)
+                elif "session" in lower or "coaching" in lower or "minute" in lower:
+                    sessions_to_add.append(item_name)
+                else:
+                    courses_to_add.append(item_name)
+                records.append(f"Order #{order_id}: Purchased '{item_name}' on {created} (Status: {status})")
+            elif is_revoked:
+                records.append(f"Order #{order_id}: {status.title()} '{item_name}' on {created}")
             else:
-                courses.append(item_name)
-            records.append(f"Order #{order_id}: Purchased '{item_name}' on {created} (Status: {status})")
+                records.append(f"Order #{order_id}: Order '{item_name}' on {created} (Status: {status})")
 
         # Update MySQL storage if available
         if getattr(self, "has_mysql", False):
@@ -767,18 +787,24 @@ class UserDatabaseManager:
                                 "INSERT INTO users (id, name, email) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE name=VALUES(name)",
                                 (email, name, email)
                             )
-                        for c in (courses + sessions):
-                            cur.execute("SELECT id FROM purchases WHERE user_id = %s AND item_title = %s LIMIT 1", (user_id, c))
-                            if not cur.fetchone():
-                                cur.execute("INSERT INTO purchases (user_id, item_type, item_title) VALUES (%s, 'course', %s)", (user_id, c))
-                        for b in books:
-                            cur.execute("SELECT id FROM purchases WHERE user_id = %s AND item_title = %s LIMIT 1", (user_id, b))
-                            if not cur.fetchone():
-                                cur.execute("INSERT INTO purchases (user_id, item_type, item_title) VALUES (%s, 'book', %s)", (user_id, b))
+                        if is_active:
+                            for c in (courses_to_add + sessions_to_add):
+                                cur.execute("SELECT id FROM purchases WHERE user_id = %s AND item_title = %s LIMIT 1", (user_id, c))
+                                if not cur.fetchone():
+                                    cur.execute("INSERT INTO purchases (user_id, item_type, item_title) VALUES (%s, 'course', %s)", (user_id, c))
+                            for b in books_to_add:
+                                cur.execute("SELECT id FROM purchases WHERE user_id = %s AND item_title = %s LIMIT 1", (user_id, b))
+                                if not cur.fetchone():
+                                    cur.execute("INSERT INTO purchases (user_id, item_type, item_title) VALUES (%s, 'book', %s)", (user_id, b))
+                        elif is_revoked:
+                            for itm in order_items:
+                                cur.execute("DELETE FROM purchases WHERE (user_id = %s OR user_id = %s) AND item_title = %s", (user_id, email or user_id, itm))
+
                         for r in records:
+                            rec_type = "Refund" if is_revoked else "Order"
                             cur.execute("SELECT id FROM past_records WHERE user_id = %s AND summary_notes = %s LIMIT 1", (user_id, r))
                             if not cur.fetchone():
-                                cur.execute("INSERT INTO past_records (user_id, interaction_type, summary_notes) VALUES (%s, 'Order', %s)", (user_id, r))
+                                cur.execute("INSERT INTO past_records (user_id, interaction_type, summary_notes) VALUES (%s, %s, %s)", (user_id, rec_type, r))
             except Exception as e_mysql:
                 print(f"[UserDB Webhook] MySQL order write error: {e_mysql}")
 
@@ -789,27 +815,51 @@ class UserDatabaseManager:
                     "INSERT OR REPLACE INTO users (id, name, email) VALUES (?, ?, ?)",
                     (user_id, name, email or f"{user_id}@example.com")
                 )
-                for c in (courses + sessions):
-                    cur_chk = conn.execute("SELECT id FROM purchases WHERE user_id = ? AND item_title = ? LIMIT 1", (user_id, c)).fetchone()
-                    if not cur_chk:
-                        conn.execute(
-                            "INSERT INTO purchases (user_id, item_type, item_title) VALUES (?, 'course', ?)",
-                            (user_id, c)
-                        )
-                for b in books:
-                    cur_chk = conn.execute("SELECT id FROM purchases WHERE user_id = ? AND item_title = ? LIMIT 1", (user_id, b)).fetchone()
-                    if not cur_chk:
-                        conn.execute(
-                            "INSERT INTO purchases (user_id, item_type, item_title) VALUES (?, 'book', ?)",
-                            (user_id, b)
-                        )
+                if is_active:
+                    for c in (courses_to_add + sessions_to_add):
+                        cur_chk = conn.execute("SELECT id FROM purchases WHERE user_id = ? AND item_title = ? LIMIT 1", (user_id, c)).fetchone()
+                        if not cur_chk:
+                            conn.execute(
+                                "INSERT INTO purchases (user_id, item_type, item_title) VALUES (?, 'course', ?)",
+                                (user_id, c)
+                            )
+                    for b in books_to_add:
+                        cur_chk = conn.execute("SELECT id FROM purchases WHERE user_id = ? AND item_title = ? LIMIT 1", (user_id, b)).fetchone()
+                        if not cur_chk:
+                            conn.execute(
+                                "INSERT INTO purchases (user_id, item_type, item_title) VALUES (?, 'book', ?)",
+                                (user_id, b)
+                            )
+                elif is_revoked:
+                    for itm in order_items:
+                        conn.execute("DELETE FROM purchases WHERE (user_id = ? OR user_id = ?) AND item_title = ?", (user_id, email or user_id, itm))
+
                 for r in records:
+                    rec_type = "Refund" if is_revoked else "Order"
                     cur_chk = conn.execute("SELECT id FROM past_records WHERE user_id = ? AND summary_notes = ? LIMIT 1", (user_id, r)).fetchone()
                     if not cur_chk:
                         conn.execute(
-                            "INSERT INTO past_records (user_id, interaction_type, summary_notes) VALUES (?, 'Order', ?)",
-                            (user_id, r)
+                            "INSERT INTO past_records (user_id, interaction_type, summary_notes) VALUES (?, ?, ?)",
+                            (user_id, rec_type, r)
                         )
+
+                # Fetch authoritative active purchases and history from local storage
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT item_type, item_title FROM purchases WHERE user_id = ? OR user_id = ?",
+                    (user_id, email or user_id)
+                )
+                active_rows = cur.fetchall()
+                cur.execute(
+                    "SELECT interaction_type, summary_notes FROM past_records WHERE user_id = ? OR user_id = ? ORDER BY id DESC LIMIT 20",
+                    (user_id, email or user_id)
+                )
+                hist_rows = cur.fetchall()
+
+        active_courses = [r[1] for r in active_rows if r[0] in ("course", "session")]
+        active_books = [r[1] for r in active_rows if r[0] == "book"]
+        active_all = [r[1] for r in active_rows]
+        all_past_records = [r[1] for r in hist_rows] if hist_rows else records
 
         # Build full profile
         profile = {
@@ -819,13 +869,13 @@ class UserDatabaseManager:
             "display_name": name,
             "email": email,
             "attachment_style": "Relationship Student",
-            "courses_purchased": list(dict.fromkeys(courses + sessions)),
-            "books_purchased": list(dict.fromkeys(books)),
-            "all_purchases": list(dict.fromkeys(courses + sessions + books)),
-            "purchases_detail": [{"item_type": "product", "item_title": it} for it in (courses + sessions + books)],
-            "past_records": records,
-            "records_detail": [{"interaction_type": "Order", "summary_notes": r} for r in records],
-            "has_history": bool(courses or books or sessions or records),
+            "courses_purchased": list(dict.fromkeys(active_courses)),
+            "books_purchased": list(dict.fromkeys(active_books)),
+            "all_purchases": list(dict.fromkeys(active_all)),
+            "purchases_detail": [{"item_type": "product", "item_title": it} for it in active_all],
+            "past_records": all_past_records,
+            "records_detail": [{"interaction_type": r[0], "summary_notes": r[1]} for r in hist_rows] if hist_rows else [{"interaction_type": "Order", "summary_notes": r} for r in records],
+            "has_history": bool(active_all or all_past_records),
             "backend": "WooCommerce Webhook (Instant Cache)"
         }
 
@@ -838,7 +888,7 @@ class UserDatabaseManager:
             if customer_id and customer_id != "0":
                 self._cache[customer_id] = cache_entry
 
-        print(f"[UserDB Webhook] Synced customer {name} ({email or user_id}) - {len(courses + sessions + books)} item(s) cached.")
+        print(f"[UserDB Webhook] Synced customer {name} ({email or user_id}) - {len(active_all)} item(s) active.")
         return profile
 
     def ingest_woocommerce_customer_webhook(self, customer_data: Dict[str, Any]) -> Dict[str, Any]:

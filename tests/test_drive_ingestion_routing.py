@@ -193,4 +193,103 @@ def test_relevance_gate_bypasses_for_follow_up_and_chat_history():
         assert "Active follow-up response" in res["answer"]
 
 
+def test_wc_rest_api_sync_ignores_refunded_and_cancelled_orders():
+    """DEF-07A: Verify _get_profile_from_woocommerce only grants ownership for active orders."""
+    from src.user_db import UserDatabaseManager
+    udb = UserDatabaseManager()
+    udb.wp_url = "https://mock-wp.example.com"
+    udb.wc_consumer_key = "ck_test"
+    udb.wc_consumer_secret = "cs_test"
+
+    mock_orders = [
+        {
+            "id": 101,
+            "date_created": "2026-10-01T12:00:00",
+            "status": "completed",
+            "line_items": [{"name": "Healing Anxious Attachment Masterclass"}]
+        },
+        {
+            "id": 102,
+            "date_created": "2026-10-05T12:00:00",
+            "status": "refunded",
+            "line_items": [{"name": "Avoidant Attachment Masterclass"}]
+        },
+        {
+            "id": 103,
+            "date_created": "2026-10-08T12:00:00",
+            "status": "cancelled",
+            "line_items": [{"name": "Relationship Communication Toolkit"}]
+        }
+    ]
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = mock_orders
+
+    with patch("requests.get", return_value=mock_resp):
+        profile = udb._get_profile_from_woocommerce("student_123")
+
+        assert profile is not None
+        # Only completed order should be in courses_purchased / all_purchases
+        assert "Healing Anxious Attachment Masterclass" in profile["courses_purchased"]
+        assert "Avoidant Attachment Masterclass" not in profile["courses_purchased"]
+        assert "Relationship Communication Toolkit" not in profile["courses_purchased"]
+        assert "Avoidant Attachment Masterclass" not in profile["all_purchases"]
+
+        # But all orders should be preserved in past_records for clinical context
+        record_texts = " ".join(profile["past_records"])
+        assert "Healing Anxious Attachment Masterclass" in record_texts
+        assert "Avoidant Attachment Masterclass" in record_texts
+        assert "Status: refunded" in record_texts
+
+
+def test_wc_order_webhook_refund_revokes_active_purchase():
+    """DEF-07B: Verify ingest_woocommerce_order_webhook revokes refunded items in real-time."""
+    from src.user_db import UserDatabaseManager
+    udb = UserDatabaseManager()
+    test_uid = "test_user_refund_lifecycle"
+
+    # Step 1: User purchases course and workbook via completed order
+    order_create_payload = {
+        "id": 9901,
+        "date_created": "2026-11-01T10:00:00",
+        "status": "completed",
+        "customer_id": test_uid,
+        "billing": {"first_name": "Test", "last_name": "User", "email": "test@example.com"},
+        "line_items": [
+            {"name": "Attachment Styles Masterclass"},
+            {"name": "Science of Attachment Book"}
+        ]
+    }
+
+    profile_after_purchase = udb.ingest_woocommerce_order_webhook(order_create_payload)
+    assert "Attachment Styles Masterclass" in profile_after_purchase["courses_purchased"]
+    assert "Science of Attachment Book" in profile_after_purchase["books_purchased"]
+    assert len(profile_after_purchase["all_purchases"]) == 2
+
+    # Step 2: Order is refunded in WooCommerce
+    order_refund_payload = {
+        "id": 9901,
+        "date_created": "2026-11-01T10:00:00",
+        "status": "refunded",
+        "customer_id": test_uid,
+        "billing": {"first_name": "Test", "last_name": "User", "email": "test@example.com"},
+        "line_items": [
+            {"name": "Attachment Styles Masterclass"}
+        ]
+    }
+
+    profile_after_refund = udb.ingest_woocommerce_order_webhook(order_refund_payload)
+    # Masterclass must be removed from active purchases
+    assert "Attachment Styles Masterclass" not in profile_after_refund["courses_purchased"]
+    assert "Attachment Styles Masterclass" not in profile_after_refund["all_purchases"]
+    # The non-refunded book must remain owned
+    assert "Science of Attachment Book" in profile_after_refund["books_purchased"]
+
+    # History must record the refund event
+    record_texts = " ".join(profile_after_refund["past_records"])
+    assert "Refunded 'Attachment Styles Masterclass'" in record_texts or "Refund" in record_texts
+
+
+
 
