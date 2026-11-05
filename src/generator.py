@@ -52,7 +52,7 @@ def clean_trailing_truncation(text: str) -> str:
     """
     Layer 3 Truncation Safety Net:
     Gracefully cleans up dangling incomplete fragments, unclosed markdown tags,
-    incomplete URLs, or severed bullet points if LLM output was cut short.
+    incomplete URLs, severed bullet points, or orphan section headings if LLM output was cut short.
     """
     if not text or not isinstance(text, str):
         return text
@@ -63,7 +63,7 @@ def clean_trailing_truncation(text: str) -> str:
     cleaned = re.sub(r'\[([^\]]*)\]\([^)\n]*$', '', cleaned).rstrip()
     cleaned = re.sub(r'\[[^\]\n]*$', '', cleaned).rstrip()
 
-    # 2. Iterate backwards through lines to clean dangling fragments
+    # 2. Iterate backwards through lines to clean dangling fragments and orphan headers
     lines = cleaned.split('\n')
     while lines:
         last_line = lines[-1].strip()
@@ -71,18 +71,25 @@ def clean_trailing_truncation(text: str) -> str:
             lines.pop()
             continue
 
-        # Check if line ends cleanly with terminal punctuation or closing markdown quote/paren/bold
-        has_terminal_punct = bool(re.search(r'[\.\!\?\"\”\’\)\`]$', last_line)) or last_line.endswith(('**', '***'))
+        # Check if line ends cleanly with terminal punctuation or closing quote/paren
+        has_terminal_punct = bool(re.search(r'[\.\!\?\"\”\’\)\`]$', last_line))
 
-        # If it has an unclosed markdown header or bolding prefix without closing: e.g. **Practical
-        is_unclosed_header = bool(re.match(r'^(#+|\*{1,3}|-\s*|\d+\.\s*\*?)[^*#\n]*$', last_line)) and not last_line.endswith(('**', '***'))
+        # Check for empty markdown markers (e.g. bare "-", "#", "*", "1.")
+        is_empty_marker = bool(re.match(r'^(#+|-|\*|\d+\.)\s*$', last_line))
 
-        if is_unclosed_header:
-            lines.pop()
-            continue
+        # Check for unclosed bold prefix (e.g. "**Word" without closing "**")
+        is_unclosed_bold = bool(last_line.startswith(('**', '***')) and not last_line.endswith(('**', '***')))
 
-        if not has_terminal_punct:
-            # Last line is cut off mid-sentence (e.g. '4. **Seek a Clinician** - A psychologist or')
+        # Check for orphan headers/labels (e.g. "Quick takeaways", "Key Takeaways:", unpopulated "# Heading", or standalone bold labels)
+        is_orphan_header = (
+            bool(re.match(r'^(#+\s*|\*{2})?(quick takeaways|takeaways|key takeaways|next steps|summary|how this supports|recommended next step|note|remember)\b', last_line, re.IGNORECASE))
+            or last_line.endswith(':')
+            or bool(re.match(r'^#+\s+[^\n]+$', last_line))
+            or (last_line.startswith('**') and last_line.endswith('**') and len(last_line) < 40)
+        )
+
+        if not has_terminal_punct or is_orphan_header or is_empty_marker or is_unclosed_bold:
+            # If line is an orphan heading or severed mid-sentence, pop it
             if len(lines) > 1:
                 lines.pop()
                 continue
@@ -578,16 +585,17 @@ class OpenAIGeneratorService:
                 messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content": user_prompt})
 
-        # Lane-specific dynamic max_tokens ceiling (Headroom buffered: 250 / 700 / 800)
+        # DEF-08: Lane-specific dynamic max_tokens ceiling (Expanded headroom: 400 / 1200 / 1200)
         is_short_query = len(query.split()) <= 6 and any(
             w in query.lower() for w in ["what is", "define", "meaning", "who is", "cost", "price", "how much"]
         )
+        default_ceiling = int(os.getenv("MAX_OUTPUT_TOKENS", "1200"))
         if is_short_query:
-            effective_max_tokens = 250
+            effective_max_tokens = min(400, default_ceiling)
         elif mode == "sales":
-            effective_max_tokens = 800
+            effective_max_tokens = max(1200, default_ceiling)
         else:
-            effective_max_tokens = 700
+            effective_max_tokens = max(1200, default_ceiling)
 
         used_model = self.model
         try:
@@ -802,16 +810,17 @@ class OpenAIGeneratorService:
                 messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content": user_prompt})
 
-        # Lane-specific dynamic max_tokens ceiling (Headroom buffered: 250 / 700 / 800)
+        # DEF-08: Lane-specific dynamic max_tokens ceiling (Expanded headroom: 400 / 1200 / 1200)
         is_short_query = len(query.split()) <= 6 and any(
             w in query.lower() for w in ["what is", "define", "meaning", "who is", "cost", "price", "how much"]
         )
+        default_ceiling = int(os.getenv("MAX_OUTPUT_TOKENS", "1200"))
         if is_short_query:
-            effective_max_tokens = 250
+            effective_max_tokens = min(400, default_ceiling)
         elif mode == "sales":
-            effective_max_tokens = 800
+            effective_max_tokens = max(1200, default_ceiling)
         else:
-            effective_max_tokens = 700
+            effective_max_tokens = max(1200, default_ceiling)
 
         # Try primary stream, fallback to secondary if connection fails
         stream_client = self.client
