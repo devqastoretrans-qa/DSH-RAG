@@ -7,6 +7,7 @@ import hashlib
 import secrets
 import base64
 import logging
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -48,6 +49,7 @@ from src.session_auth import (
 )
 
 logger = logging.getLogger("rag_app")
+_drive_scan_lock = threading.Lock()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -1543,19 +1545,20 @@ async def woocommerce_webhook(request: Request):
     raw_body = await request.body()
     secret = os.getenv("WC_WEBHOOK_SECRET", "").strip()
 
-    # 1. Cryptographic HMAC-SHA256 Signature Verification
-    signature = request.headers.get("x-wc-webhook-signature", "").strip()
-    if secret:
-        if not signature:
-            logger.warning("[WooCommerce Webhook] Unauthorized: Missing x-wc-webhook-signature header.")
-            raise HTTPException(status_code=401, detail="Missing webhook signature header")
+    # 1. Cryptographic HMAC-SHA256 Signature Verification (Fail-Closed)
+    if not secret:
+        logger.error("[WooCommerce Webhook] Server Configuration Error: WC_WEBHOOK_SECRET is not configured. Webhook rejected.")
+        raise HTTPException(status_code=500, detail="Server webhook secret is not configured")
 
-        expected_sig = base64.b64encode(hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).digest()).decode("utf-8")
-        if not hmac.compare_digest(signature, expected_sig):
-            logger.warning(f"[WooCommerce Webhook] Unauthorized: Invalid HMAC signature. Received='{signature}'")
-            raise HTTPException(status_code=401, detail="Invalid webhook signature")
-    else:
-        logger.warning("[WooCommerce Webhook] WC_WEBHOOK_SECRET is not configured. Webhook signature validation skipped.")
+    signature = request.headers.get("x-wc-webhook-signature", "").strip()
+    if not signature:
+        logger.warning("[WooCommerce Webhook] Unauthorized: Missing x-wc-webhook-signature header.")
+        raise HTTPException(status_code=401, detail="Missing webhook signature header")
+
+    expected_sig = base64.b64encode(hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).digest()).decode("utf-8")
+    if not hmac.compare_digest(signature, expected_sig):
+        logger.warning(f"[WooCommerce Webhook] Unauthorized: Invalid HMAC signature. Received='{signature}'")
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
     # 2. Parse Payload & Headers
     topic = request.headers.get("x-wc-webhook-topic", "").strip().lower()
@@ -1645,12 +1648,31 @@ async def google_drive_webhook(request: Request):
     Receives instant push notifications from Google Drive Watch API.
     When a file is uploaded, modified, or deleted in the target Drive folder,
     Google sends a webhook notification here, triggering instant ingestion.
+    Enforces channel token verification and atomic execution lock against DoS.
     """
-    import threading
     headers = dict(request.headers)
     resource_state = headers.get("x-goog-resource-state", "unknown")
     channel_id = headers.get("x-goog-channel-id", "")
     message_number = headers.get("x-goog-message-number", "")
+
+    # 1. Channel Secret Token Verification
+    expected_token = os.getenv("DRIVE_WEBHOOK_TOKEN", os.getenv("GOOGLE_DRIVE_WEBHOOK_TOKEN", "")).strip()
+    received_token = headers.get("x-goog-channel-token", "").strip()
+
+    if expected_token:
+        if not received_token:
+            logger.warning("[Google Drive Webhook] Unauthorized: Missing X-Goog-Channel-Token header.")
+            raise HTTPException(status_code=401, detail="Missing X-Goog-Channel-Token header")
+        if not hmac.compare_digest(received_token, expected_token):
+            logger.warning("[Google Drive Webhook] Unauthorized: Invalid X-Goog-Channel-Token.")
+            raise HTTPException(status_code=401, detail="Invalid channel token")
+    else:
+        is_prod = os.getenv("ENVIRONMENT", os.getenv("ENV", "")).strip().lower() in ("production", "prod")
+        if is_prod:
+            logger.error("[Google Drive Webhook] Server Configuration Error: DRIVE_WEBHOOK_TOKEN is not configured in production.")
+            raise HTTPException(status_code=500, detail="Server webhook channel token is not configured")
+        else:
+            logger.warning("[Google Drive Webhook] DRIVE_WEBHOOK_TOKEN is not configured. Webhook channel token validation skipped in non-prod.")
 
     logger.info(
         f"[Google Drive Webhook] Notification received: state='{resource_state}', channel='{channel_id}', msg='{message_number}'"
@@ -1659,8 +1681,31 @@ async def google_drive_webhook(request: Request):
     if resource_state.lower() == "sync":
         return JSONResponse(status_code=200, content={"status": "sync_acknowledged"})
 
-    monitor = get_drive_monitor()
-    threading.Thread(target=monitor.scan_and_process, name="DriveWebhookIngestion", daemon=True).start()
+    # 2. Non-blocking Atomic Execution Lock (Prevents DoS thread exhaustion)
+    acquired = _drive_scan_lock.acquire(blocking=False)
+    if not acquired:
+        logger.info(
+            f"[Google Drive Webhook] Active scan in progress. Debouncing duplicate notification (msg='{message_number}')."
+        )
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "scan_already_in_progress",
+                "message": "A document ingestion scan is already actively executing. Request debounced.",
+                "state": resource_state
+            }
+        )
+
+    def _run_scan_with_lock():
+        try:
+            monitor = get_drive_monitor()
+            monitor.scan_and_process()
+        except Exception as e:
+            logger.error(f"[Google Drive Webhook] Background ingestion scan error: {e}", exc_info=True)
+        finally:
+            _drive_scan_lock.release()
+
+    threading.Thread(target=_run_scan_with_lock, name="DriveWebhookIngestion", daemon=True).start()
 
     return JSONResponse(status_code=200, content={"status": "ingestion_triggered", "state": resource_state})
 

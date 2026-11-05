@@ -306,6 +306,18 @@ from tests.test_wc_order_status_filtering import (
     test_duplicate_order_sync_idempotency
 )
 
+from tests.test_webhook_security import (
+    test_wc_webhook_missing_secret_returns_500_fail_closed,
+    test_wc_webhook_missing_signature_returns_401,
+    test_wc_webhook_invalid_signature_returns_401,
+    test_wc_webhook_valid_signature_ping_returns_200,
+    test_wc_webhook_valid_signature_order_event_returns_200,
+    test_drive_webhook_missing_token_returns_401,
+    test_drive_webhook_invalid_token_returns_401,
+    test_drive_webhook_sync_handshake_returns_200,
+    test_drive_webhook_atomic_lock_debounces_concurrent_scans
+)
+
 
 
 
