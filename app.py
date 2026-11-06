@@ -1540,6 +1540,56 @@ async def chat_reset_endpoint(
 
 
 @app.get(
+    "/api/chat/sessions",
+    tags=["Chat API"],
+    summary="List Recent Chat Sessions for ChatGPT-Style Sidebar"
+)
+async def list_chat_sessions_endpoint(
+    user_id: Optional[str] = None,
+    limit: int = 50,
+    auth_claims: Dict[str, Any] = Depends(verify_chat_access)
+):
+    """
+    Returns recent conversation sessions for the ChatGPT-style left sidebar drawer.
+    Includes session_id, title (derived from first user query), last updated timestamp, and turn count.
+    """
+    conv_memory = get_conversation_memory()
+    is_admin = bool(auth_claims.get("is_admin"))
+    if not is_admin and auth_claims.get("sub") and auth_claims.get("sub") != "guest":
+        effective_uid = auth_claims.get("sub")
+    else:
+        effective_uid = user_id
+
+    sessions = conv_memory.get_recent_sessions(user_id=effective_uid, limit=limit)
+    return JSONResponse(status_code=200, content={
+        "success": True,
+        "count": len(sessions),
+        "sessions": sessions
+    })
+
+
+@app.delete(
+    "/api/chat/sessions/{session_id}",
+    tags=["Chat API"],
+    summary="Delete a Specific Chat Session"
+)
+async def delete_chat_session_endpoint(
+    session_id: str,
+    auth_claims: Dict[str, Any] = Depends(verify_chat_access)
+):
+    """
+    Deletes a specific chat session and all its persistent turns from memory and SQLite.
+    """
+    conv_memory = get_conversation_memory()
+    conv_memory.clear_session(session_id=session_id)
+    return JSONResponse(status_code=200, content={
+        "success": True,
+        "message": f"Session '{session_id}' deleted successfully.",
+        "session_id": session_id
+    })
+
+
+@app.get(
     "/api/chat/history",
     tags=["Chat API"],
     summary="Get conversation history for session"
@@ -1568,7 +1618,12 @@ async def get_chat_history_endpoint(
     else:
         effective_uid = user_id or "guest"
 
-    history = conv_memory.get_chat_history(user_id=effective_uid, conversation_id=session_id, max_turns=10)
+    history = conv_memory.get_chat_history(user_id=effective_uid, conversation_id=session_id, max_turns=30)
+    if not history:
+        # Fallback to persistent SQLite turns for past reloaded sessions
+        persistent_turns = conv_memory.get_session_turns(conversation_id=session_id, limit=60)
+        history = [{"role": t["role"], "content": t["content"]} for t in persistent_turns]
+
     return JSONResponse(status_code=200, content={
         "session_id": session_id,
         "user_id": effective_uid,

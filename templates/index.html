@@ -260,18 +260,182 @@
         }
 
         /* =========================================================================
-           THREE-COLUMN MAIN WORKSPACE
+           FOUR-COLUMN MAIN WORKSPACE (CHATGPT-STYLE LAYOUT)
            ========================================================================= */
         .workspace {
             display: grid;
-            grid-template-columns: 310px 1fr 340px;
+            grid-template-columns: 260px 290px 1fr 340px;
             height: calc(100dvh - 64px);
             overflow: hidden;
-            transition: grid-template-columns 0.3s ease;
+            transition: grid-template-columns 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .workspace.history-collapsed {
+            grid-template-columns: 0px 290px 1fr 340px;
         }
 
         .workspace.inspector-collapsed {
-            grid-template-columns: 310px 1fr 0px;
+            grid-template-columns: 260px 290px 1fr 0px;
+        }
+
+        .workspace.history-collapsed.inspector-collapsed {
+            grid-template-columns: 0px 290px 1fr 0px;
+        }
+
+        /* =========================================================================
+           FAR-LEFT PANEL: CHATGPT-STYLE CONVERSATION HISTORY DRAWER
+           ========================================================================= */
+        .panel-history {
+            background: #090E17;
+            border-right: 1px solid var(--border-subtle);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            width: 260px;
+            min-width: 0;
+            transition: opacity 0.2s ease, width 0.3s ease;
+        }
+
+        .workspace.history-collapsed .panel-history {
+            width: 0px;
+            opacity: 0;
+            pointer-events: none;
+            border-right: none;
+        }
+
+        .history-top-bar {
+            padding: 0.85rem 0.75rem 0.5rem 0.75rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .btn-new-chat {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 0.65rem;
+            width: 100%;
+            background: var(--bg-surface-elevated);
+            color: var(--text-main);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 0.65rem 0.85rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-new-chat:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--brand-gold);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn-new-chat svg {
+            color: var(--brand-gold);
+            flex-shrink: 0;
+        }
+
+        .history-section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 0.85rem 0.35rem 0.85rem;
+            font-size: 0.7rem;
+            font-family: var(--font-mono);
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        .history-sessions-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.4rem 0.5rem 0.75rem 0.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .history-session-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.55rem 0.7rem;
+            border-radius: var(--radius-sm);
+            color: var(--text-secondary);
+            font-size: 0.82rem;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.15s ease;
+            position: relative;
+            user-select: none;
+        }
+
+        .history-session-item:hover {
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text-main);
+        }
+
+        .history-session-item.active {
+            background: rgba(197, 168, 128, 0.12);
+            color: var(--brand-gold-bright);
+            border-left: 3px solid var(--brand-gold);
+            font-weight: 500;
+        }
+
+        .history-session-info {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .history-session-icon {
+            font-size: 0.85rem;
+            flex-shrink: 0;
+            opacity: 0.8;
+        }
+
+        .history-session-title {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 0.8rem;
+        }
+
+        .history-session-delete {
+            opacity: 0;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 0.2rem 0.3rem;
+            border-radius: 4px;
+            transition: all 0.15s ease;
+            font-size: 0.75rem;
+        }
+
+        .history-session-item:hover .history-session-delete {
+            opacity: 1;
+        }
+
+        .history-session-delete:hover {
+            color: var(--brand-coral);
+            background: rgba(244, 63, 94, 0.15);
+        }
+
+        .history-empty-hint {
+            padding: 2rem 1rem;
+            text-align: center;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            line-height: 1.5;
         }
 
         /* =========================================================================
@@ -1654,9 +1818,21 @@
         }
 
         /* Responsive Layout Overrides */
+        @media (max-width: 1280px) {
+            .workspace {
+                grid-template-columns: 260px 280px 1fr 0px;
+            }
+            .panel-inspector {
+                display: none;
+            }
+        }
+
         @media (max-width: 1024px) {
             .workspace {
-                grid-template-columns: 280px 1fr 0px;
+                grid-template-columns: 240px 1fr 0px;
+            }
+            .panel-customer {
+                display: none;
             }
             .panel-inspector {
                 display: none;
@@ -1666,6 +1842,9 @@
         @media (max-width: 768px) {
             .workspace {
                 grid-template-columns: 1fr;
+            }
+            .panel-history {
+                display: none;
             }
             .panel-customer {
                 display: none;
@@ -1717,10 +1896,13 @@
 
             <!-- Header Actions -->
             <div class="header-actions">
+                <button class="btn-action-icon" id="btnToggleHistory" onclick="toggleHistorySidebar()" title="Toggle Past Chats Sidebar">
+                    📑 Past Chats
+                </button>
                 <button class="btn-action-icon db-btn" onclick="openDatabaseViewer()" title="View Live MySQL Database Tables in Visual Format">
                     🗄️ Database Tables
                 </button>
-                <button class="btn-action-icon" onclick="resetActiveSession()" title="Start New Chat & Clear Session Turns">
+                <button class="btn-action-icon" onclick="startNewChat()" title="Start New Chat & Clear Session Turns">
                     🔄 New Chat
                 </button>
                 <button class="btn-action-icon" id="btnToggleInspector" onclick="toggleInspector()" title="Toggle Telemetry & Inspection Drawer">
@@ -1733,9 +1915,31 @@
         </header>
 
         <!-- ===================================================================
-             MAIN 3-COLUMN WORKSPACE
+             MAIN WORKSPACE (CHATGPT-STYLE LAYOUT)
              =================================================================== -->
         <main class="workspace" id="workspaceContainer">
+            <!-- ===============================================================
+                 FAR-LEFT PANEL: CHATGPT-STYLE CONVERSATION HISTORY DRAWER
+                 =============================================================== -->
+            <aside class="panel-history" id="panelHistory">
+                <div class="history-top-bar">
+                    <button class="btn-new-chat" id="btnSidebarNewChat" onclick="startNewChat()">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        <span>New chat</span>
+                    </button>
+                </div>
+                <div class="history-section-header">
+                    <span>Recent Chats</span>
+                    <button onclick="loadChatSessions()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.75rem;" title="Refresh Chat History">🔄</button>
+                </div>
+                <div class="history-sessions-list" id="historySessionsList">
+                    <div class="history-empty-hint">Loading past conversations...</div>
+                </div>
+            </aside>
+
             <!-- ===============================================================
                  LEFT PANEL: CUSTOMER & PERSONA CONTROL CENTER
                  =============================================================== -->
@@ -2336,6 +2540,7 @@
         document.addEventListener('DOMContentLoaded', async () => {
             await fetchUsersList();
             await fetchSystemStats();
+            await loadChatSessions();
             onCustomerSelect('1836');
             updateChannelHeader();
         });
@@ -2710,6 +2915,7 @@
                 // Persist current active channel state
                 activeChannel.hasMessages = true;
                 activeChannel.chatHtml = chatContainer.innerHTML;
+                loadChatSessions();
             }
         }
 
@@ -2737,6 +2943,7 @@
                 await refreshMemoryTurns();
                 activeChannel.hasMessages = true;
                 activeChannel.chatHtml = chatContainer.innerHTML;
+                loadChatSessions();
             } catch (err) {
                 botBubble.innerHTML = `<span style="color:var(--brand-coral);">Connection error. Please try again.</span>`;
             }
@@ -2911,6 +3118,146 @@
             renderSourcesInspector([]);
             await refreshMemoryTurns();
         }
+
+        // =====================================================================
+        // CHATGPT-STYLE CONVERSATION HISTORY DRAWER LOGIC
+        // =====================================================================
+        function toggleHistorySidebar() {
+            const container = document.getElementById('workspaceContainer');
+            container.classList.toggle('history-collapsed');
+        }
+
+        async function startNewChat() {
+            if (isGenerating) return;
+            await resetActiveSession();
+            await loadChatSessions();
+            if (chatInput) {
+                chatInput.focus();
+            }
+        }
+
+        async function loadChatSessions() {
+            const listEl = document.getElementById('historySessionsList');
+            if (!listEl) return;
+
+            try {
+                const res = await fetch('/api/chat/sessions?limit=50');
+                if (!res.ok) throw new Error('Failed to fetch sessions');
+                const data = await res.json();
+                const sessions = data.sessions || [];
+
+                if (sessions.length === 0) {
+                    listEl.innerHTML = '<div class="history-empty-hint">No past conversations yet.<br><br>Type a question and send to start saving your chat history!</div>';
+                    return;
+                }
+
+                const activeSid = botChannels[currentMode] ? botChannels[currentMode].sessionId : '';
+
+                listEl.innerHTML = sessions.map(s => {
+                    const isActive = (s.session_id === activeSid) ? 'active' : '';
+                    const titleText = escapeHtml(s.title || 'Conversation');
+                    
+                    let icon = '💬';
+                    if (s.mode === 'sales') icon = '💼';
+                    else if (s.mode === 'platform') icon = '🌐';
+                    else if (s.mode === 'owner') icon = '👑';
+                    else if (s.mode === 'learning') icon = '📚';
+                    else if (s.mode === 'coaching') icon = '🤝';
+                    else icon = '🩺';
+
+                    const safeSid = escapeHtml(s.session_id);
+                    const safeMode = escapeHtml(s.mode || 'generic');
+
+                    return `
+                        <div class="history-session-item ${isActive}" id="hist_item_${safeSid}" onclick="loadPastSession('${safeSid}', '${safeMode}')" title="${titleText}">
+                            <div class="history-session-info">
+                                <span class="history-session-icon">${icon}</span>
+                                <span class="history-session-title">${titleText}</span>
+                            </div>
+                            <button class="history-session-delete" onclick="deleteSession('${safeSid}', event)" title="Delete Conversation">
+                                🗑️
+                            </button>
+                        </div>
+                    `;
+                }).join('');
+            } catch (err) {
+                console.warn('Failed to load chat sessions:', err);
+                listEl.innerHTML = '<div class="history-empty-hint" style="color:var(--text-muted);">Could not load past chats.</div>';
+            }
+        }
+
+        async function loadPastSession(sessionId, mode) {
+            if (isGenerating) return;
+
+            if (mode && botChannels[mode] && mode !== currentMode) {
+                switchStudioMode(mode);
+            }
+
+            const activeChannel = botChannels[currentMode];
+            activeChannel.sessionId = sessionId;
+            updateChannelHeader();
+
+            // Highlight active in sidebar
+            document.querySelectorAll('.history-session-item').forEach(el => el.classList.remove('active'));
+            const activeEl = document.getElementById(`hist_item_${sessionId}`);
+            if (activeEl) activeEl.classList.add('active');
+
+            // Fetch turns from API
+            try {
+                chatContainer.innerHTML = '<div style="text-align:center;padding:2.5rem;color:var(--text-muted);font-size:0.85rem;"><span class="typing-cursor"></span> Loading conversation history...</div>';
+                const res = await fetch(`/api/chat/history?session_id=${encodeURIComponent(sessionId)}&user_id=${encodeURIComponent(currentUserId)}`);
+                if (!res.ok) throw new Error('Failed to load history');
+                const data = await res.json();
+                const turns = data.turns || [];
+
+                chatContainer.innerHTML = '';
+                if (turns.length === 0) {
+                    renderWelcomeHeroForMode(currentMode, true);
+                    activeChannel.hasMessages = false;
+                    return;
+                }
+
+                activeChannel.hasMessages = true;
+                for (const t of turns) {
+                    if (t.role === 'user') {
+                        renderUserMessage(t.content);
+                    } else {
+                        const row = document.createElement('div');
+                        row.className = 'message-row bot-row';
+                        row.innerHTML = `
+                            <div class="bubble bot-bubble">
+                                ${safeRenderMarkdown(t.content)}
+                            </div>
+                        `;
+                        chatContainer.appendChild(row);
+                    }
+                }
+                scrollToBottom();
+                activeChannel.chatHtml = chatContainer.innerHTML;
+                await refreshMemoryTurns();
+            } catch (err) {
+                console.error('Failed to load past session:', err);
+                chatContainer.innerHTML = '<div style="text-align:center;padding:2.5rem;color:var(--brand-coral);">Could not load past conversation.</div>';
+            }
+        }
+
+        async function deleteSession(sessionId, e) {
+            if (e) e.stopPropagation();
+            if (!confirm('Are you sure you want to delete this conversation?')) return;
+
+            try {
+                await fetch(`/api/chat/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+                const activeChannel = botChannels[currentMode];
+                if (activeChannel && activeChannel.sessionId === sessionId) {
+                    await startNewChat();
+                } else {
+                    await loadChatSessions();
+                }
+            } catch (err) {
+                console.error('Failed to delete session:', err);
+            }
+        }
+
 
         // 10. Switch Inspector Tabs
         function switchInspectorTab(tabId) {

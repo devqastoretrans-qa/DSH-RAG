@@ -513,6 +513,95 @@ class ConversationMemoryManager:
         """Explicitly resets conversation history for a given session_id in both memory and SQLite."""
         self.clear(user_id=user_id, conversation_id=session_id, mode=mode)
 
+    def get_recent_sessions(
+        self,
+        user_id: Optional[str] = None,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """
+        Returns a list of recent conversation sessions for the ChatGPT-style history sidebar.
+        Includes session_id, user_id, title (derived from first user query), last updated timestamp, and turn count.
+        """
+        sessions = []
+        try:
+            with self._get_sqlite_conn() as conn:
+                cur = conn.cursor()
+                if user_id and user_id.strip() and user_id.strip() != "all":
+                    sql = """
+                        SELECT 
+                            conversation_id,
+                            user_id,
+                            mode,
+                            MAX(created_at) as updated_at,
+                            COUNT(*) as message_count,
+                            (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.role = 'user' ORDER BY ct2.id ASC LIMIT 1) as title
+                        FROM conversation_turns ct
+                        WHERE user_id = ?
+                        GROUP BY conversation_id
+                        ORDER BY updated_at DESC
+                        LIMIT ?
+                    """
+                    cur.execute(sql, (user_id.strip(), limit))
+                else:
+                    sql = """
+                        SELECT 
+                            conversation_id,
+                            user_id,
+                            mode,
+                            MAX(created_at) as updated_at,
+                            COUNT(*) as message_count,
+                            (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.role = 'user' ORDER BY ct2.id ASC LIMIT 1) as title
+                        FROM conversation_turns ct
+                        GROUP BY conversation_id
+                        ORDER BY updated_at DESC
+                        LIMIT ?
+                    """
+                    cur.execute(sql, (limit,))
+
+                for row in cur.fetchall():
+                    cid, uid, mode, updated_at, count, raw_title = row
+                    title = (raw_title or "New Conversation").strip()
+                    if len(title) > 42:
+                        title = title[:39] + "..."
+                    sessions.append({
+                        "session_id": cid,
+                        "user_id": uid,
+                        "mode": mode or "generic",
+                        "title": title,
+                        "message_count": count,
+                        "updated_at": updated_at
+                    })
+        except Exception as e:
+            logger.error(f"[ConversationMemory] Error querying recent sessions: {e}", exc_info=True)
+        return sessions
+
+    def get_session_turns(self, conversation_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Retrieves all persistent message turns for a given conversation_id from SQLite.
+        Used to render past chat sessions when clicked in the ChatGPT-style history sidebar.
+        """
+        turns = []
+        try:
+            with self._get_sqlite_conn() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT role, content, mode, created_at
+                    FROM conversation_turns
+                    WHERE conversation_id = ?
+                    ORDER BY created_at ASC, id ASC
+                    LIMIT ?
+                """, (conversation_id, limit))
+                for r in cur.fetchall():
+                    turns.append({
+                        "role": r[0],
+                        "content": r[1],
+                        "mode": r[2] or "generic",
+                        "created_at": r[3]
+                    })
+        except Exception as e:
+            logger.error(f"[ConversationMemory] Error loading session turns: {e}", exc_info=True)
+        return turns
+
 
 # Global Singleton
 _conv_memory_instance: Optional[ConversationMemoryManager] = None
