@@ -835,6 +835,170 @@ async def ask_sales_api_v1(
         )
 
 
+# -----------------------------------------------------------------------------
+# REST API v1 Specialized Agent Endpoints (Track 4: The AI Dependency Web)
+# -----------------------------------------------------------------------------
+class AgentChatRequest(BaseModel):
+    message: Optional[str] = Field(default=None, description="User question or statement", json_schema_extra={"example": "Where do I find my account settings?"})
+    question: Optional[str] = Field(default=None, description="Alternative field for user question")
+    user_id: Optional[str] = Field(default="guest", description="User identifier (e.g. 'guest', 'john')")
+    session_id: Optional[str] = Field(default=None, description="Unique session ID for conversation tracking", json_schema_extra={"example": "sess_agent_123"})
+    conversation_id: Optional[str] = Field(default=None, description="Alternative session identifier")
+    user_profile: Optional[Dict[str, Any]] = Field(default=None, description="Direct customer profile passed from frontend")
+    chat_history: Optional[List[Dict[str, str]]] = Field(default=None, description="Optional conversation turns passed from frontend")
+
+
+class AgentChatResponse(BaseModel):
+    success: bool = True
+    agent: str
+    agent_name: str
+    session_id: str
+    user_id: str
+    question: str
+    answer: str
+    answer_html: Optional[str] = None
+    sources: List[Dict[str, Any]] = []
+    ai_model: Optional[str] = None
+    duration_ms: Optional[float] = None
+
+
+async def _handle_agent_chat_endpoint(
+    request: AgentChatRequest,
+    mode: str,
+    agent_name: str,
+    auth_claims: Optional[Dict[str, Any]] = None
+):
+    clean_query = (request.message or request.question or "").strip()
+    if not clean_query:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"success": False, "error": "message or question is required"}
+        )
+
+    is_admin = bool(auth_claims.get("is_admin")) if auth_claims else False
+    token_sub = auth_claims.get("sub") if auth_claims else None
+    if not is_admin:
+        uid = token_sub if token_sub and token_sub != "guest" else (request.user_id or "guest")
+    else:
+        uid = request.user_id or "admin"
+
+    sid = request.session_id or request.conversation_id or (auth_claims.get("sid") if auth_claims else None) or f"sess_{mode}_{uuid.uuid4().hex[:12]}"
+
+    try:
+        res = await run_in_threadpool(
+            execute_rag_pipeline,
+            query=clean_query,
+            user_id=uid,
+            top_k=5,
+            generate_answer=True,
+            mode=mode,
+            conversation_id=sid,
+            user_profile=request.user_profile if is_admin else None,
+            chat_history=request.chat_history if is_admin else None
+        )
+        return {
+            "success": True,
+            "agent": mode,
+            "agent_name": agent_name,
+            "session_id": sid,
+            "user_id": res.get("user_id", uid),
+            "question": clean_query,
+            "answer": res.get("answer"),
+            "answer_html": res.get("answer_html"),
+            "sources": res.get("sources", []),
+            "ai_model": res.get("ai_model"),
+            "duration_ms": res.get("duration_ms")
+        }
+    except UserNotFoundError:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"success": False, "error": "User not found"}
+        )
+    except Exception as e:
+        logger.error(f"[Agent API v1] Agent '{mode}' failed: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"Agent '{mode}' unable to generate an answer"}
+        )
+
+
+@app.post(
+    "/api/v1/agents/platform",
+    tags=["Agent Suite"],
+    summary="Platform Agent (Navigation & Site Guidance)"
+)
+async def platform_agent_endpoint(
+    request: AgentChatRequest,
+    auth_claims: Dict[str, Any] = Depends(verify_chat_access)
+):
+    """
+    Platform Navigation Agent:
+    - Provides step-by-step instructions on locating website features, courses, and account settings.
+    - Guides users through password resets, dashboard navigation, and helpdesk resources.
+    """
+    return await _handle_agent_chat_endpoint(
+        request, mode="platform", agent_name="Platform Agent (Navigation)", auth_claims=auth_claims
+    )
+
+
+@app.post(
+    "/api/v1/agents/owner",
+    tags=["Agent Suite"],
+    summary="Owner Agent (Dr. Sarah Hensley Founder Voice)"
+)
+async def owner_agent_endpoint(
+    request: AgentChatRequest,
+    auth_claims: Dict[str, Any] = Depends(verify_chat_access)
+):
+    """
+    Owner Agent (Founder Voice):
+    - Speaks authentically in Dr. Sarah Hensley's natural 1st-person clinical voice.
+    - Answers relationship, attachment, and developmental psychology questions.
+    """
+    return await _handle_agent_chat_endpoint(
+        request, mode="owner", agent_name="Owner Agent (Founder Voice)", auth_claims=auth_claims
+    )
+
+
+@app.post(
+    "/api/v1/agents/learning",
+    tags=["Agent Suite"],
+    summary="Learning Agent (Course Homework & Curriculum Support)"
+)
+async def learning_agent_endpoint(
+    request: AgentChatRequest,
+    auth_claims: Dict[str, Any] = Depends(verify_chat_access)
+):
+    """
+    Learning Agent (Course Tutor):
+    - Acts as a Socratic study tutor for students enrolled in Dr. Hensley's courses.
+    - Provides module citations and guidance hints; strictly never solves homework directly.
+    """
+    return await _handle_agent_chat_endpoint(
+        request, mode="learning", agent_name="Learning Agent (Course Support)", auth_claims=auth_claims
+    )
+
+
+@app.post(
+    "/api/v1/agents/coaching",
+    tags=["Agent Suite"],
+    summary="Coaching Agent (Guided Conflict & Attachment Reflection)"
+)
+async def coaching_agent_endpoint(
+    request: AgentChatRequest,
+    auth_claims: Dict[str, Any] = Depends(verify_chat_access)
+):
+    """
+    Coaching Agent (Guided Support):
+    - Interactively walks users through conflict de-escalation, the SOLACE framework, and boundary setting.
+    - Asks one focused question at a time and maintains strict crisis boundaries.
+    """
+    return await _handle_agent_chat_endpoint(
+        request, mode="coaching", agent_name="Coaching Agent (Guided Support)", auth_claims=auth_claims
+    )
+
+
+
 @app.post(
     "/api/v1/ask/stream",
     tags=["RAG API"],

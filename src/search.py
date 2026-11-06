@@ -265,8 +265,8 @@ def search_similar_chunks(
     except Exception:
         pass
 
-    # 2b. Lane Isolation Defense-in-Depth: Clinical mode must NEVER retrieve sales catalogs or pricing files
-    if mode == "generic":
+    # 2b. Lane Isolation Defense-in-Depth: Clinical and Agent modes must NEVER retrieve sales catalogs or pricing files
+    if mode in ("generic", "platform", "owner", "learning", "coaching"):
         clinical_candidates = [
             c for c in candidates
             if c.get("category") != "sales" and not any(k in (c.get("document_name") or c.get("filename") or "").lower() for k in ("sales", "catalog", "pricing", "checkout"))
