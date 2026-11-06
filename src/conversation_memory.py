@@ -15,8 +15,11 @@ import re
 import uuid
 import sqlite3
 import threading
+import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
+
+logger = logging.getLogger("conversation_memory")
 
 CHAT_HISTORY_TURNS = int(os.getenv("CHAT_HISTORY_TURNS", "5"))
 CHAT_HISTORY_TTL_SECONDS = int(os.getenv("CHAT_HISTORY_TTL_SECONDS", "7200"))  # 2 hours idle TTL
@@ -521,85 +524,161 @@ class ConversationMemoryManager:
         """
         Returns a list of recent conversation sessions for the ChatGPT-style history sidebar.
         Includes session_id, user_id, title (derived from first user query), last updated timestamp, and turn count.
+        Queries MySQL if available, otherwise queries SQLite.
         """
         sessions = []
-        try:
-            with self._get_sqlite_conn() as conn:
-                cur = conn.cursor()
-                if user_id and user_id.strip() and user_id.strip() != "all":
-                    sql = """
-                        SELECT 
-                            conversation_id,
-                            user_id,
-                            mode,
-                            MAX(created_at) as updated_at,
-                            COUNT(*) as message_count,
-                            (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.role = 'user' ORDER BY ct2.id ASC LIMIT 1) as title
-                        FROM conversation_turns ct
-                        WHERE user_id = ?
-                        GROUP BY conversation_id
-                        ORDER BY updated_at DESC
-                        LIMIT ?
-                    """
-                    cur.execute(sql, (user_id.strip(), limit))
-                else:
-                    sql = """
-                        SELECT 
-                            conversation_id,
-                            user_id,
-                            mode,
-                            MAX(created_at) as updated_at,
-                            COUNT(*) as message_count,
-                            (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.role = 'user' ORDER BY ct2.id ASC LIMIT 1) as title
-                        FROM conversation_turns ct
-                        GROUP BY conversation_id
-                        ORDER BY updated_at DESC
-                        LIMIT ?
-                    """
-                    cur.execute(sql, (limit,))
+        rows = []
+        
+        # 1. Attempt MySQL query if enabled
+        if self.has_mysql:
+            try:
+                with self._get_mysql_conn() as conn:
+                    with conn.cursor() as cur:
+                        if user_id and user_id.strip() and user_id.strip() != "all":
+                            sql = """
+                                SELECT 
+                                    conversation_id,
+                                    user_id,
+                                    mode,
+                                    MAX(created_at) as updated_at,
+                                    COUNT(*) as message_count,
+                                    (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.role = 'user' ORDER BY ct2.id ASC LIMIT 1) as title
+                                FROM conversation_turns ct
+                                WHERE user_id = %s
+                                GROUP BY conversation_id, user_id, mode
+                                ORDER BY updated_at DESC
+                                LIMIT %s
+                            """
+                            cur.execute(sql, (user_id.strip(), limit))
+                        else:
+                            sql = """
+                                SELECT 
+                                    conversation_id,
+                                    user_id,
+                                    mode,
+                                    MAX(created_at) as updated_at,
+                                    COUNT(*) as message_count,
+                                    (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.role = 'user' ORDER BY ct2.id ASC LIMIT 1) as title
+                                FROM conversation_turns ct
+                                GROUP BY conversation_id, user_id, mode
+                                ORDER BY updated_at DESC
+                                LIMIT %s
+                            """
+                            cur.execute(sql, (limit,))
+                        rows = cur.fetchall()
+            except Exception as e:
+                logger.warning(f"[ConversationMemory] MySQL recent sessions lookup failed, falling back to SQLite: {e}")
+                rows = []
 
-                for row in cur.fetchall():
-                    cid, uid, mode, updated_at, count, raw_title = row
-                    title = (raw_title or "New Conversation").strip()
-                    if len(title) > 42:
-                        title = title[:39] + "..."
-                    sessions.append({
-                        "session_id": cid,
-                        "user_id": uid,
-                        "mode": mode or "generic",
-                        "title": title,
-                        "message_count": count,
-                        "updated_at": updated_at
-                    })
-        except Exception as e:
-            logger.error(f"[ConversationMemory] Error querying recent sessions: {e}", exc_info=True)
+        # 2. Fallback to SQLite
+        if not rows:
+            try:
+                with self._get_sqlite_conn() as conn:
+                    cur = conn.cursor()
+                    if user_id and user_id.strip() and user_id.strip() != "all":
+                        sql = """
+                            SELECT 
+                                conversation_id,
+                                user_id,
+                                mode,
+                                MAX(created_at) as updated_at,
+                                COUNT(*) as message_count,
+                                (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.role = 'user' ORDER BY ct2.id ASC LIMIT 1) as title
+                            FROM conversation_turns ct
+                            WHERE user_id = ?
+                            GROUP BY conversation_id
+                            ORDER BY updated_at DESC
+                            LIMIT ?
+                        """
+                        cur.execute(sql, (user_id.strip(), limit))
+                    else:
+                        sql = """
+                            SELECT 
+                                conversation_id,
+                                user_id,
+                                mode,
+                                MAX(created_at) as updated_at,
+                                COUNT(*) as message_count,
+                                (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.role = 'user' ORDER BY ct2.id ASC LIMIT 1) as title
+                            FROM conversation_turns ct
+                            GROUP BY conversation_id
+                            ORDER BY updated_at DESC
+                            LIMIT ?
+                        """
+                        cur.execute(sql, (limit,))
+                    rows = cur.fetchall()
+            except Exception as e:
+                logger.error(f"[ConversationMemory] Error querying recent sessions from SQLite: {e}", exc_info=True)
+                rows = []
+
+        for row in rows:
+            cid, uid, mode, updated_at, count, raw_title = row
+            raw_title_str = (raw_title or "").strip()
+            if raw_title_str:
+                title = raw_title_str.split("\n")[0].strip()
+            else:
+                title = "New Conversation"
+            if len(title) > 42:
+                title = title[:39] + "..."
+            sessions.append({
+                "session_id": cid,
+                "user_id": uid,
+                "mode": mode or "generic",
+                "title": title,
+                "message_count": count,
+                "updated_at": updated_at
+            })
+
         return sessions
 
     def get_session_turns(self, conversation_id: str, limit: int = 50) -> List[Dict[str, Any]]:
         """
-        Retrieves all persistent message turns for a given conversation_id from SQLite.
+        Retrieves all persistent message turns for a given conversation_id from MySQL or SQLite.
         Used to render past chat sessions when clicked in the ChatGPT-style history sidebar.
         """
         turns = []
-        try:
-            with self._get_sqlite_conn() as conn:
-                cur = conn.cursor()
-                cur.execute("""
-                    SELECT role, content, mode, created_at
-                    FROM conversation_turns
-                    WHERE conversation_id = ?
-                    ORDER BY created_at ASC, id ASC
-                    LIMIT ?
-                """, (conversation_id, limit))
-                for r in cur.fetchall():
-                    turns.append({
-                        "role": r[0],
-                        "content": r[1],
-                        "mode": r[2] or "generic",
-                        "created_at": r[3]
-                    })
-        except Exception as e:
-            logger.error(f"[ConversationMemory] Error loading session turns: {e}", exc_info=True)
+        rows = []
+
+        if self.has_mysql:
+            try:
+                with self._get_mysql_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            SELECT role, content, mode, created_at
+                            FROM conversation_turns
+                            WHERE conversation_id = %s
+                            ORDER BY created_at ASC, id ASC
+                            LIMIT %s
+                        """, (conversation_id, limit))
+                        rows = cur.fetchall()
+            except Exception as e:
+                logger.warning(f"[ConversationMemory] MySQL session turns lookup failed, falling back to SQLite: {e}")
+                rows = []
+
+        if not rows:
+            try:
+                with self._get_sqlite_conn() as conn:
+                    cur = conn.cursor()
+                    cur.execute("""
+                        SELECT role, content, mode, created_at
+                        FROM conversation_turns
+                        WHERE conversation_id = ?
+                        ORDER BY created_at ASC, id ASC
+                        LIMIT ?
+                    """, (conversation_id, limit))
+                    rows = cur.fetchall()
+            except Exception as e:
+                logger.error(f"[ConversationMemory] Error loading session turns from SQLite: {e}", exc_info=True)
+                rows = []
+
+        for r in rows:
+            turns.append({
+                "role": r[0],
+                "content": r[1],
+                "mode": r[2] or "generic",
+                "created_at": r[3]
+            })
+
         return turns
 
 

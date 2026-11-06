@@ -2656,6 +2656,7 @@
 
             // Cleanly reset both bot chat sessions for the newly selected customer
             resetAllChannels();
+            loadChatSessions();
         }
 
         // Reset Both Channels (used when customer changes)
@@ -3090,24 +3091,11 @@
             submitMessage();
         }
 
-        // 9. Reset Session (Resets only the ACTIVE bot's chat)
-        async function resetActiveSession() {
+        // 9. Start New Chat Session (ChatGPT-style: initializes fresh session without wiping past sessions)
+        async function startNewChat() {
             if (isGenerating) return;
             const activeChannel = botChannels[currentMode];
-            const oldSessionId = activeChannel.sessionId;
-
-            try {
-                await fetch('/chat/reset', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        session_id: oldSessionId,
-                        user_id: currentUserId,
-                        mode: currentMode
-                    })
-                });
-            } catch (e) {}
-
+            // Assign a fresh unique session ID for the new conversation, preserving past chats in history!
             activeChannel.sessionId = `sess_${currentMode}_` + Math.random().toString(36).substring(2, 10);
             activeChannel.chatHtml = null;
             activeChannel.sources = [];
@@ -3117,6 +3105,15 @@
             updateChannelHeader();
             renderSourcesInspector([]);
             await refreshMemoryTurns();
+            await loadChatSessions();
+            if (chatInput) {
+                chatInput.focus();
+            }
+        }
+
+        // Backward compatibility alias: start new chat instead of destroying history
+        async function resetActiveSession() {
+            return await startNewChat();
         }
 
         // =====================================================================
@@ -3125,15 +3122,6 @@
         function toggleHistorySidebar() {
             const container = document.getElementById('workspaceContainer');
             container.classList.toggle('history-collapsed');
-        }
-
-        async function startNewChat() {
-            if (isGenerating) return;
-            await resetActiveSession();
-            await loadChatSessions();
-            if (chatInput) {
-                chatInput.focus();
-            }
         }
 
         async function loadChatSessions() {

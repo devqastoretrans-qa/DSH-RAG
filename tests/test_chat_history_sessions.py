@@ -46,3 +46,4 @@ def test_chat_sessions_endpoints():
     # 5. Verify it's gone from /api/chat/sessions
     res_after = client.get("/api/chat/sessions")
     assert not any(s["session_id"] == test_sid for s in res_after.json()["sessions"])
+
