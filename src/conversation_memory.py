@@ -140,7 +140,11 @@ class ConversationMemoryManager:
                             topic VARCHAR(255),
                             mode VARCHAR(50),
                             created_at DOUBLE NOT NULL,
-                            INDEX idx_conv_session (session_key, created_at)
+                            is_orphaned INT NOT NULL DEFAULT 0,
+                            owner_status VARCHAR(20) NOT NULL DEFAULT 'verified',
+                            INDEX idx_conv_session (session_key, created_at),
+                            INDEX idx_conv_user_created (user_id, created_at),
+                            INDEX idx_conv_user_session (user_id, conversation_id)
                         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
                     """)
         except Exception:
@@ -167,10 +171,14 @@ class ConversationMemoryManager:
                         content TEXT NOT NULL,
                         topic TEXT,
                         mode TEXT,
-                        created_at REAL NOT NULL
+                        created_at REAL NOT NULL,
+                        is_orphaned INTEGER NOT NULL DEFAULT 0,
+                        owner_status TEXT NOT NULL DEFAULT 'verified'
                     )
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_session ON conversation_turns (session_key, created_at)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_user_created ON conversation_turns (user_id, created_at)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_user_session ON conversation_turns (user_id, conversation_id)")
                 conn.commit()
         except Exception:
             pass
@@ -382,12 +390,12 @@ class ConversationMemoryManager:
                     with self._get_mysql_conn() as conn:
                         with conn.cursor() as cur:
                             cur.execute("""
-                                INSERT INTO conversation_turns (session_key, user_id, conversation_id, role, content, topic, mode, created_at)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                INSERT INTO conversation_turns (session_key, user_id, conversation_id, role, content, topic, mode, created_at, is_orphaned, owner_status)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0, 'verified')
                             """, (key, user_id, cid, "user", user_query, topic, mode, now))
                             cur.execute("""
-                                INSERT INTO conversation_turns (session_key, user_id, conversation_id, role, content, topic, mode, created_at)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                INSERT INTO conversation_turns (session_key, user_id, conversation_id, role, content, topic, mode, created_at, is_orphaned, owner_status)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0, 'verified')
                             """, (key, user_id, cid, "assistant", assistant_answer, topic, mode, now))
                 except Exception:
                     pass
@@ -398,12 +406,12 @@ class ConversationMemoryManager:
                 topic = self._sessions[key].last_topic
                 with self._get_sqlite_conn() as conn:
                     conn.execute("""
-                        INSERT INTO conversation_turns (session_key, user_id, conversation_id, role, content, topic, mode, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO conversation_turns (session_key, user_id, conversation_id, role, content, topic, mode, created_at, is_orphaned, owner_status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'verified')
                     """, (key, user_id, cid, "user", user_query, topic, mode, now))
                     conn.execute("""
-                        INSERT INTO conversation_turns (session_key, user_id, conversation_id, role, content, topic, mode, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO conversation_turns (session_key, user_id, conversation_id, role, content, topic, mode, created_at, is_orphaned, owner_status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'verified')
                     """, (key, user_id, cid, "assistant", assistant_answer, topic, mode, now))
 
                     # Prune turns older than the sliding window (max_turns * 2 messages)
@@ -512,59 +520,98 @@ class ConversationMemoryManager:
                 except Exception:
                     pass
 
-    def clear_session(self, session_id: str, user_id: Optional[str] = None, mode: Optional[str] = None) -> None:
-        """Explicitly resets conversation history for a given session_id in both memory and SQLite."""
+    def clear_session(self, session_id: str, user_id: str, mode: Optional[str] = None) -> None:
+        """Explicitly resets conversation history for a given session_id owned by user_id in both memory and SQLite."""
+        if not user_id or str(user_id).strip().lower() in ("", "guest", "none", "null"):
+            return
         self.clear(user_id=user_id, conversation_id=session_id, mode=mode)
+
+    def delete_session(self, user_id: str, conversation_id: str) -> bool:
+        """
+        Securely deletes a session belonging strictly to user_id.
+        Returns True if deleted, False if session not found or owned by another user.
+        """
+        if not user_id or not conversation_id:
+            return False
+        
+        uid = str(user_id).strip()
+        cid = str(conversation_id).strip()
+        if uid.lower() in ("", "guest", "none", "null"):
+            return False
+
+        found = False
+
+        # 1. Check & Delete in MySQL if active
+        if self.has_mysql:
+            try:
+                with self._get_mysql_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT id FROM conversation_turns WHERE user_id = %s AND conversation_id = %s LIMIT 1", (uid, cid))
+                        if cur.fetchone():
+                            found = True
+                        cur.execute("DELETE FROM conversation_turns WHERE user_id = %s AND conversation_id = %s", (uid, cid))
+            except Exception as e:
+                logger.warning(f"[ConversationMemory] MySQL delete session failed: {e}")
+
+        # 2. Check & Delete in SQLite
+        try:
+            with self._get_sqlite_conn() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT id FROM conversation_turns WHERE user_id = ? AND conversation_id = ? LIMIT 1", (uid, cid))
+                if cur.fetchone():
+                    found = True
+                cur.execute("DELETE FROM conversation_turns WHERE user_id = ? AND conversation_id = ?", (uid, cid))
+                conn.commit()
+        except Exception as e:
+            logger.error(f"[ConversationMemory] SQLite delete session error: {e}")
+
+        # 3. Clean memory
+        key = self._session_key(uid, cid)
+        with self._lock:
+            if key in self._sessions:
+                found = True
+                self._sessions.pop(key, None)
+
+        return found
 
     def get_recent_sessions(
         self,
-        user_id: Optional[str] = None,
+        user_id: str,
         limit: int = 50
     ) -> List[Dict[str, Any]]:
         """
-        Returns a list of recent conversation sessions for the ChatGPT-style history sidebar.
+        Returns a list of recent conversation sessions strictly for the authenticated user_id.
+        Excludes orphaned/unowned records and never leaks another user's sessions.
         Includes session_id, user_id, title (derived from first user query), last updated timestamp, and turn count.
-        Queries MySQL if available, otherwise queries SQLite.
         """
         sessions = []
         rows = []
         
+        if not user_id or str(user_id).strip().lower() in ("", "guest", "none", "null"):
+            return []
+
+        clean_uid = str(user_id).strip()
+
         # 1. Attempt MySQL query if enabled
         if self.has_mysql:
             try:
                 with self._get_mysql_conn() as conn:
                     with conn.cursor() as cur:
-                        if user_id and user_id.strip() and user_id.strip() != "all":
-                            sql = """
-                                SELECT 
-                                    conversation_id,
-                                    user_id,
-                                    mode,
-                                    MAX(created_at) as updated_at,
-                                    COUNT(*) as message_count,
-                                    (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.role = 'user' ORDER BY ct2.id ASC LIMIT 1) as title
-                                FROM conversation_turns ct
-                                WHERE user_id = %s
-                                GROUP BY conversation_id, user_id, mode
-                                ORDER BY updated_at DESC
-                                LIMIT %s
-                            """
-                            cur.execute(sql, (user_id.strip(), limit))
-                        else:
-                            sql = """
-                                SELECT 
-                                    conversation_id,
-                                    user_id,
-                                    mode,
-                                    MAX(created_at) as updated_at,
-                                    COUNT(*) as message_count,
-                                    (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.role = 'user' ORDER BY ct2.id ASC LIMIT 1) as title
-                                FROM conversation_turns ct
-                                GROUP BY conversation_id, user_id, mode
-                                ORDER BY updated_at DESC
-                                LIMIT %s
-                            """
-                            cur.execute(sql, (limit,))
+                        sql = """
+                            SELECT 
+                                conversation_id,
+                                user_id,
+                                mode,
+                                MAX(created_at) as updated_at,
+                                COUNT(*) as message_count,
+                                (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.user_id = ct.user_id AND ct2.role = 'user' AND ct2.is_orphaned = 0 ORDER BY ct2.id ASC LIMIT 1) as title
+                            FROM conversation_turns ct
+                            WHERE user_id = %s AND is_orphaned = 0
+                            GROUP BY conversation_id, user_id, mode
+                            ORDER BY updated_at DESC
+                            LIMIT %s
+                        """
+                        cur.execute(sql, (clean_uid, limit))
                         rows = cur.fetchall()
             except Exception as e:
                 logger.warning(f"[ConversationMemory] MySQL recent sessions lookup failed, falling back to SQLite: {e}")
@@ -575,37 +622,21 @@ class ConversationMemoryManager:
             try:
                 with self._get_sqlite_conn() as conn:
                     cur = conn.cursor()
-                    if user_id and user_id.strip() and user_id.strip() != "all":
-                        sql = """
-                            SELECT 
-                                conversation_id,
-                                user_id,
-                                mode,
-                                MAX(created_at) as updated_at,
-                                COUNT(*) as message_count,
-                                (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.role = 'user' ORDER BY ct2.id ASC LIMIT 1) as title
-                            FROM conversation_turns ct
-                            WHERE user_id = ?
-                            GROUP BY conversation_id
-                            ORDER BY updated_at DESC
-                            LIMIT ?
-                        """
-                        cur.execute(sql, (user_id.strip(), limit))
-                    else:
-                        sql = """
-                            SELECT 
-                                conversation_id,
-                                user_id,
-                                mode,
-                                MAX(created_at) as updated_at,
-                                COUNT(*) as message_count,
-                                (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.role = 'user' ORDER BY ct2.id ASC LIMIT 1) as title
-                            FROM conversation_turns ct
-                            GROUP BY conversation_id
-                            ORDER BY updated_at DESC
-                            LIMIT ?
-                        """
-                        cur.execute(sql, (limit,))
+                    sql = """
+                        SELECT 
+                            conversation_id,
+                            user_id,
+                            mode,
+                            MAX(created_at) as updated_at,
+                            COUNT(*) as message_count,
+                            (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.user_id = ct.user_id AND ct2.role = 'user' AND ct2.is_orphaned = 0 ORDER BY ct2.id ASC LIMIT 1) as title
+                        FROM conversation_turns ct
+                        WHERE user_id = ? AND is_orphaned = 0
+                        GROUP BY conversation_id, user_id, mode
+                        ORDER BY updated_at DESC
+                        LIMIT ?
+                    """
+                    cur.execute(sql, (clean_uid, limit))
                     rows = cur.fetchall()
             except Exception as e:
                 logger.error(f"[ConversationMemory] Error querying recent sessions from SQLite: {e}", exc_info=True)
@@ -631,13 +662,19 @@ class ConversationMemoryManager:
 
         return sessions
 
-    def get_session_turns(self, conversation_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+    def get_session_turns(self, user_id: str, conversation_id: str, limit: int = 50) -> List[Dict[str, Any]]:
         """
-        Retrieves all persistent message turns for a given conversation_id from MySQL or SQLite.
-        Used to render past chat sessions when clicked in the ChatGPT-style history sidebar.
+        Retrieves all persistent message turns for a given (user_id, conversation_id) from MySQL or SQLite.
+        Strictly scopes lookup to the authenticated user and ignores orphaned records.
         """
         turns = []
         rows = []
+
+        if not user_id or not conversation_id or str(user_id).strip().lower() in ("", "guest", "none", "null"):
+            return []
+
+        clean_uid = str(user_id).strip()
+        clean_cid = str(conversation_id).strip()
 
         if self.has_mysql:
             try:
@@ -646,10 +683,10 @@ class ConversationMemoryManager:
                         cur.execute("""
                             SELECT role, content, mode, created_at
                             FROM conversation_turns
-                            WHERE conversation_id = %s
+                            WHERE user_id = %s AND conversation_id = %s AND is_orphaned = 0
                             ORDER BY created_at ASC, id ASC
                             LIMIT %s
-                        """, (conversation_id, limit))
+                        """, (clean_uid, clean_cid, limit))
                         rows = cur.fetchall()
             except Exception as e:
                 logger.warning(f"[ConversationMemory] MySQL session turns lookup failed, falling back to SQLite: {e}")
@@ -662,10 +699,10 @@ class ConversationMemoryManager:
                     cur.execute("""
                         SELECT role, content, mode, created_at
                         FROM conversation_turns
-                        WHERE conversation_id = ?
+                        WHERE user_id = ? AND conversation_id = ? AND is_orphaned = 0
                         ORDER BY created_at ASC, id ASC
                         LIMIT ?
-                    """, (conversation_id, limit))
+                    """, (clean_uid, clean_cid, limit))
                     rows = cur.fetchall()
             except Exception as e:
                 logger.error(f"[ConversationMemory] Error loading session turns from SQLite: {e}", exc_info=True)

@@ -2,6 +2,7 @@ import pytest
 import time
 from fastapi.testclient import TestClient
 from app import app
+from src.session_auth import create_session_token
 from src.conversation_memory import get_conversation_memory
 
 client = TestClient(app)
@@ -9,10 +10,14 @@ client = TestClient(app)
 def test_chat_sessions_endpoints():
     conv_memory = get_conversation_memory()
     test_sid = f"test_hist_{int(time.time())}"
+    uid = "test_user_hist"
+    
+    token = create_session_token(user_id=uid)["token"]
+    headers = {"Authorization": f"Bearer {token}"}
     
     # 1. Record a turn to create a session
     conv_memory.record_turn(
-        user_id="test_user_hist",
+        user_id=uid,
         conversation_id=test_sid,
         user_query="What is the science of secure attachment?",
         assistant_answer="Secure attachment is characterized by emotional safety and trust.",
@@ -21,7 +26,7 @@ def test_chat_sessions_endpoints():
     )
 
     # 2. Test GET /api/chat/sessions
-    res = client.get("/api/chat/sessions")
+    res = client.get("/api/chat/sessions", headers=headers)
     assert res.status_code == 200
     data = res.json()
     assert data["success"] is True
@@ -32,18 +37,18 @@ def test_chat_sessions_endpoints():
     assert "science of secure attachment" in matching_session["title"].lower()
 
     # 3. Test GET /api/chat/history
-    res_hist = client.get(f"/api/chat/history?session_id={test_sid}&user_id=test_user_hist")
+    res_hist = client.get(f"/api/chat/history?session_id={test_sid}", headers=headers)
     assert res_hist.status_code == 200
     hist_data = res_hist.json()
     assert len(hist_data["turns"]) >= 2
     assert hist_data["turns"][0]["content"] == "What is the science of secure attachment?"
 
     # 4. Test DELETE /api/chat/sessions/{session_id}
-    res_del = client.delete(f"/api/chat/sessions/{test_sid}")
+    res_del = client.delete(f"/api/chat/sessions/{test_sid}", headers=headers)
     assert res_del.status_code == 200
     assert res_del.json()["success"] is True
 
     # 5. Verify it's gone from /api/chat/sessions
-    res_after = client.get("/api/chat/sessions")
+    res_after = client.get("/api/chat/sessions", headers=headers)
     assert not any(s["session_id"] == test_sid for s in res_after.json()["sessions"])
 

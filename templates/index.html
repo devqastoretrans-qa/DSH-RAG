@@ -2530,6 +2530,36 @@
         let currentUserId = '1836';
         let isGenerating = false;
         let usersCatalog = [];
+        let studioSessionToken = '';
+
+        // Authentication & Session Token Management
+        async function authenticateStudioUser(userId) {
+            try {
+                const res = await fetch('/api/auth/token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId })
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    studioSessionToken = data.token;
+                    sessionStorage.setItem('studio_chat_token', studioSessionToken);
+                    sessionStorage.setItem('studio_active_user', userId);
+                    return studioSessionToken;
+                }
+            } catch (e) {
+                console.warn('Failed to obtain studio session token:', e);
+            }
+            return '';
+        }
+
+        function getAuthHeaders(extraHeaders = {}) {
+            const headers = { ...extraHeaders };
+            if (studioSessionToken) {
+                headers['Authorization'] = 'Bearer ' + studioSessionToken;
+            }
+            return headers;
+        }
 
         // DOM elements
         const chatContainer = document.getElementById('chatMessageContainer');
@@ -2540,8 +2570,7 @@
         document.addEventListener('DOMContentLoaded', async () => {
             await fetchUsersList();
             await fetchSystemStats();
-            await loadChatSessions();
-            onCustomerSelect('1836');
+            await onCustomerSelect('1836');
             updateChannelHeader();
         });
 
@@ -2605,9 +2634,21 @@
             }
         }
 
-        // 3. Customer Selection Handler
-        function onCustomerSelect(userId) {
+        // 3. Customer Selection Handler with Strict Isolation
+        async function onCustomerSelect(userId) {
             currentUserId = userId;
+            
+            // Cleanly purge all previous user chat state and DOM
+            sessionStorage.clear();
+            botChannels['generic'].chatHtml = null;
+            botChannels['generic'].hasMessages = false;
+            botChannels['sales'].chatHtml = null;
+            botChannels['sales'].hasMessages = false;
+            chatContainer.innerHTML = '';
+
+            // Authenticate and obtain verified session token for this user
+            await authenticateStudioUser(userId);
+
             const user = usersCatalog.find(u => String(u.user_id) === String(userId));
             
             const avatarEl = document.getElementById('customerAvatar');
@@ -2656,7 +2697,7 @@
 
             // Cleanly reset both bot chat sessions for the newly selected customer
             resetAllChannels();
-            loadChatSessions();
+            await loadChatSessions();
         }
 
         // Reset Both Channels (used when customer changes)
@@ -2843,10 +2884,9 @@
             try {
                 const response = await fetch('/chat/stream', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
                     body: JSON.stringify({
                         session_id: activeChannel.sessionId,
-                        user_id: currentUserId,
                         message: text,
                         mode: currentMode
                     })
@@ -2926,10 +2966,9 @@
             try {
                 const res = await fetch('/chat', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
                     body: JSON.stringify({
                         session_id: activeChannel.sessionId,
-                        user_id: currentUserId,
                         message: text,
                         mode: currentMode
                     })
@@ -3129,7 +3168,9 @@
             if (!listEl) return;
 
             try {
-                const res = await fetch('/api/chat/sessions?limit=50');
+                const res = await fetch('/api/chat/sessions?limit=50', {
+                    headers: getAuthHeaders()
+                });
                 if (!res.ok) throw new Error('Failed to fetch sessions');
                 const data = await res.json();
                 const sessions = data.sessions || [];
@@ -3193,7 +3234,9 @@
             // Fetch turns from API
             try {
                 chatContainer.innerHTML = '<div style="text-align:center;padding:2.5rem;color:var(--text-muted);font-size:0.85rem;"><span class="typing-cursor"></span> Loading conversation history...</div>';
-                const res = await fetch(`/api/chat/history?session_id=${encodeURIComponent(sessionId)}&user_id=${encodeURIComponent(currentUserId)}`);
+                const res = await fetch(`/api/chat/history?session_id=${encodeURIComponent(sessionId)}`, {
+                    headers: getAuthHeaders()
+                });
                 if (!res.ok) throw new Error('Failed to load history');
                 const data = await res.json();
                 const turns = data.turns || [];
@@ -3234,7 +3277,10 @@
             if (!confirm('Are you sure you want to delete this conversation?')) return;
 
             try {
-                await fetch(`/api/chat/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+                await fetch(`/api/chat/sessions/${encodeURIComponent(sessionId)}`, {
+                    method: 'DELETE',
+                    headers: getAuthHeaders()
+                });
                 const activeChannel = botChannels[currentMode];
                 if (activeChannel && activeChannel.sessionId === sessionId) {
                     await startNewChat();

@@ -875,14 +875,21 @@ async def _handle_agent_chat_endpoint(
             content={"success": False, "error": "message or question is required"}
         )
 
+    # Derive user_id strictly from verified server auth token
+    current_uid = (auth_claims.get("user_id") or auth_claims.get("sub") or "").strip() if auth_claims else ""
     is_admin = bool(auth_claims.get("is_admin")) if auth_claims else False
-    token_sub = auth_claims.get("sub") if auth_claims else None
-    if not is_admin:
-        uid = token_sub if token_sub and token_sub != "guest" else (request.user_id or "guest")
+    if is_admin and request.user_id:
+        uid = request.user_id.strip()
+    elif current_uid:
+        uid = current_uid
     else:
-        uid = request.user_id or "admin"
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized: Valid authentication token required.",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
 
-    sid = request.session_id or request.conversation_id or (auth_claims.get("sid") if auth_claims else None) or f"sess_{mode}_{uuid.uuid4().hex[:12]}"
+    sid = request.session_id or request.conversation_id or f"sess_{mode}_{uuid.uuid4().hex[:12]}"
 
     try:
         res = await run_in_threadpool(
@@ -1293,6 +1300,37 @@ async def create_chat_token_endpoint(
     return JSONResponse(status_code=200, content=token_data)
 
 
+class StudioAuthTokenRequest(BaseModel):
+    user_id: str
+    mode: Optional[str] = "generic"
+    ttl_seconds: Optional[int] = 7200
+
+
+@app.post(
+    "/api/auth/token",
+    tags=["Session Auth"],
+    summary="Generate User Session Token for Web Studio UI"
+)
+async def generate_user_session_token_endpoint(req: StudioAuthTokenRequest):
+    """
+    Issues a cryptographically signed HMAC-SHA256 session token for the web studio user.
+    Strictly forbids anonymous/guest token generation so every chat is bound to an owner.
+    """
+    clean_uid = req.user_id.strip()
+    if not clean_uid or clean_uid.lower() in ("guest", "none", "null"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A valid non-guest user_id is required to authenticate."
+        )
+
+    token_data = create_session_token(
+        user_id=clean_uid,
+        mode=req.mode or "generic",
+        ttl_seconds=req.ttl_seconds or 7200
+    )
+    return JSONResponse(status_code=200, content=token_data)
+
+
 # -----------------------------------------------------------------------------
 # Dedicated Chat UI Endpoints (with Session ID & Multi-Turn Memory)
 # -----------------------------------------------------------------------------
@@ -1309,6 +1347,7 @@ async def chat_endpoint(
     Primary endpoint for the chat interface. Handles session_id and keeps last 5 exchanges in SQLite/MySQL.
     Protected by HMAC-SHA256 session token or master API key.
     T10 Enforced: Ignores client-supplied user_profile and chat_history for public callers.
+    Derives user_id strictly from the verified authentication token.
     """
     clean_msg = request.message.strip()
     if not clean_msg:
@@ -1316,21 +1355,9 @@ async def chat_endpoint(
 
     is_admin = bool(auth_claims.get("is_admin"))
 
-    # T10: Identity & Session binding
-    uid = request.user_id
-    token_sub = auth_claims.get("sub")
-    if not is_admin:
-        if token_sub and token_sub != "guest":
-            uid = token_sub
-        else:
-            uid = "guest"
-    else:
-        uid = uid or "admin"
-
-    sid = request.session_id or request.conversation_id or auth_claims.get("sid") or f"sess_{uuid.uuid4().hex}"
-    if not is_admin and auth_claims.get("sid"):
-        sid = auth_claims["sid"]
-
+    # Derive user_id ONLY from authenticated token
+    uid = auth_claims["user_id"]
+    sid = request.session_id or request.conversation_id or f"sess_{uuid.uuid4().hex}"
     req_mode = request.mode or auth_claims.get("mode") or "generic"
 
     # T10: Enforce Server-Side Truth for user_profile and chat_history
@@ -1378,7 +1405,7 @@ async def chat_endpoint(
         rag_res = await run_in_threadpool(
             execute_rag_pipeline,
             query=clean_msg,
-            user_id="guest",
+            user_id=uid,
             top_k=5,
             generate_answer=True,
             mode=req_mode,
@@ -1392,7 +1419,7 @@ async def chat_endpoint(
                 "success": True,
                 "session_id": sid,
                 "mode": req_mode,
-                "user_id": "guest",
+                "user_id": uid,
                 "question": rag_res["question"],
                 "answer": rag_res["answer"],
                 "answer_html": rag_res.get("answer_html"),
@@ -1420,7 +1447,7 @@ async def chat_stream_endpoint(
     """
     Streaming chat endpoint for the UI. Streams tokens live and records turn under session_id.
     Protected by HMAC-SHA256 session token or master API key.
-    T10 Enforced: Ignores client-supplied user_profile and chat_history for public callers.
+    Derives user_id strictly from the verified authentication token.
     """
     clean_msg = request.message.strip()
     if not clean_msg:
@@ -1428,21 +1455,9 @@ async def chat_stream_endpoint(
 
     is_admin = bool(auth_claims.get("is_admin"))
 
-    # T10: Identity & Session binding
-    uid = request.user_id
-    token_sub = auth_claims.get("sub")
-    if not is_admin:
-        if token_sub and token_sub != "guest":
-            uid = token_sub
-        else:
-            uid = "guest"
-    else:
-        uid = uid or "admin"
-
-    sid = request.session_id or request.conversation_id or auth_claims.get("sid") or f"sess_{uuid.uuid4().hex}"
-    if not is_admin and auth_claims.get("sid"):
-        sid = auth_claims["sid"]
-
+    # Derive user_id strictly from verified server auth token
+    uid = auth_claims["user_id"]
+    sid = request.session_id or request.conversation_id or f"sess_{uuid.uuid4().hex}"
     req_mode = request.mode or auth_claims.get("mode") or "generic"
 
     # T10: Enforce Server-Side Truth for user_profile and chat_history
@@ -1484,83 +1499,56 @@ async def chat_reset_endpoint(
     auth_claims: Dict[str, Any] = Depends(verify_chat_access)
 ):
     """
-    Clears memory and SQLite turns for the session.
-    Accepts JSON body: {"session_id": "..."} or query parameter ?session_id=...
-    Protected by HMAC-SHA256 session token or master API key.
-    T10 Enforced: Scoped strictly to caller's authenticated session.
+    Clears memory and database turns for the session.
+    Strictly scoped to the authenticated caller's own chat session.
+    Returns 404 if the session belongs to another user or does not exist.
     """
+    current_uid = auth_claims["user_id"]
     sid = None
-    uid = None
-    req_mode = None
     try:
         body = await request.json()
         if isinstance(body, dict):
             sid = body.get("session_id")
-            uid = body.get("user_id")
-            req_mode = body.get("mode")
     except Exception:
         pass
 
     if not sid:
         sid = request.query_params.get("session_id")
-    if not uid:
-        uid = request.query_params.get("user_id")
-    if not req_mode:
-        req_mode = request.query_params.get("mode")
-
-    is_admin = bool(auth_claims.get("is_admin"))
-    if not is_admin:
-        token_sid = auth_claims.get("sid")
-        if token_sid and sid and sid != token_sid:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Forbidden: Cannot reset a chat session other than your authenticated token."
-            )
-        if token_sid:
-            sid = token_sid
-        if auth_claims.get("sub"):
-            uid = auth_claims["sub"]
-
-    if not sid:
-        sid = auth_claims.get("sid")
-    if not uid:
-        uid = auth_claims.get("sub")
 
     if not sid:
         raise HTTPException(status_code=400, detail="session_id is required to reset chat session.")
 
     conv_memory = get_conversation_memory()
-    conv_memory.clear_session(session_id=sid, user_id=uid, mode=req_mode)
+    deleted = conv_memory.delete_session(user_id=current_uid, conversation_id=sid)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Chat session '{sid}' not found."
+        )
+
     return JSONResponse(status_code=200, content={
         "success": True,
         "message": f"Chat session '{sid}' reset successfully.",
-        "session_id": sid,
-        "mode": req_mode
+        "session_id": sid
     })
 
 
 @app.get(
     "/api/chat/sessions",
     tags=["Chat API"],
-    summary="List Recent Chat Sessions for ChatGPT-Style Sidebar"
+    summary="List Recent Chat Sessions for Current Authenticated User"
 )
 async def list_chat_sessions_endpoint(
-    user_id: Optional[str] = None,
     limit: int = 50,
     auth_claims: Dict[str, Any] = Depends(verify_chat_access)
 ):
     """
-    Returns recent conversation sessions for the ChatGPT-style left sidebar drawer.
-    Includes session_id, title (derived from first user query), last updated timestamp, and turn count.
+    Returns recent conversation sessions strictly for the authenticated user_id.
+    Derives user_id solely from the verified token; ignores client query parameters.
     """
+    current_uid = auth_claims["user_id"]
     conv_memory = get_conversation_memory()
-    is_admin = bool(auth_claims.get("is_admin"))
-    if not is_admin and auth_claims.get("sub") and auth_claims.get("sub") != "guest":
-        effective_uid = auth_claims.get("sub")
-    else:
-        effective_uid = user_id
-
-    sessions = conv_memory.get_recent_sessions(user_id=effective_uid, limit=limit)
+    sessions = conv_memory.get_recent_sessions(user_id=current_uid, limit=limit)
     return JSONResponse(status_code=200, content={
         "success": True,
         "count": len(sessions),
@@ -1571,17 +1559,25 @@ async def list_chat_sessions_endpoint(
 @app.delete(
     "/api/chat/sessions/{session_id}",
     tags=["Chat API"],
-    summary="Delete a Specific Chat Session"
+    summary="Delete a Specific Chat Session for Current User"
 )
 async def delete_chat_session_endpoint(
     session_id: str,
     auth_claims: Dict[str, Any] = Depends(verify_chat_access)
 ):
     """
-    Deletes a specific chat session and all its persistent turns from memory and SQLite.
+    Deletes a specific chat session belonging to the authenticated caller.
+    Returns 404 (Not Found) if session belongs to another user or doesn't exist.
     """
+    current_uid = auth_claims["user_id"]
     conv_memory = get_conversation_memory()
-    conv_memory.clear_session(session_id=session_id)
+    deleted = conv_memory.delete_session(user_id=current_uid, conversation_id=session_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Chat session '{session_id}' not found."
+        )
+
     return JSONResponse(status_code=200, content={
         "success": True,
         "message": f"Session '{session_id}' deleted successfully.",
@@ -1596,38 +1592,31 @@ async def delete_chat_session_endpoint(
 )
 async def get_chat_history_endpoint(
     session_id: str,
-    user_id: Optional[str] = "guest",
     auth_claims: Dict[str, Any] = Depends(verify_chat_access)
 ):
     """
     Returns recent multi-turn conversation turns for the active session.
-    Protected by HMAC-SHA256 session token or master API key.
-    T10 Enforced: Non-admin callers can only view their own authenticated session history.
+    Strictly verifies ownership: Returns 404 if session belongs to another user or does not exist.
     """
+    current_uid = auth_claims["user_id"]
     conv_memory = get_conversation_memory()
-    is_admin = bool(auth_claims.get("is_admin"))
 
-    if not is_admin:
-        token_sid = auth_claims.get("sid")
-        if token_sid and session_id != token_sid:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Forbidden: Cannot access chat history for a session other than your authenticated token."
-            )
-        effective_uid = auth_claims.get("sub") or "guest"
-    else:
-        effective_uid = user_id or "guest"
+    turns = conv_memory.get_session_turns(user_id=current_uid, conversation_id=session_id, limit=60)
+    if not turns:
+        history = conv_memory.get_chat_history(user_id=current_uid, conversation_id=session_id, max_turns=30)
+        if history:
+            turns = history
 
-    history = conv_memory.get_chat_history(user_id=effective_uid, conversation_id=session_id, max_turns=30)
-    if not history:
-        # Fallback to persistent SQLite turns for past reloaded sessions
-        persistent_turns = conv_memory.get_session_turns(conversation_id=session_id, limit=60)
-        history = [{"role": t["role"], "content": t["content"]} for t in persistent_turns]
+    if not turns:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Chat session '{session_id}' not found."
+        )
 
     return JSONResponse(status_code=200, content={
         "session_id": session_id,
-        "user_id": effective_uid,
-        "turns": history
+        "user_id": current_uid,
+        "turns": turns
     })
 
 

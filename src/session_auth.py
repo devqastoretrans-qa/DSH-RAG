@@ -223,45 +223,20 @@ async def verify_chat_access(request: Request) -> Dict[str, Any]:
         except Exception:
             pass
 
-    enforce_auth = os.getenv("ENFORCE_CHAT_AUTH", "false").strip().lower() in ("true", "1", "yes")
-
+    # Reject unauthenticated requests with 401 Unauthorized
     if not candidate_token:
-        if not enforce_auth:
-            # Permissive transition mode: allows existing WordPress frontend without breaking changes
-            # Still strictly enforces IP rate-limiting to prevent bot spam
-            client_ip = (
-                request.headers.get("x-forwarded-for", "").split(",")[0].strip() or
-                request.headers.get("x-real-ip", "").strip() or
-                (request.client.host if request.client else "unknown_ip")
-            )
-            rate_key = f"legacy:{client_ip}"
-            is_limited, retry_after = chat_rate_limiter.is_limited(rate_key)
-            if is_limited:
-                logger.warning(f"[Session Auth - Legacy] Rate limit exceeded for {rate_key}. Retry-After: {retry_after}s")
-                raise HTTPException(
-                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail="Rate limit exceeded. Maximum 15 messages per minute allowed.",
-                    headers={"Retry-After": str(retry_after)}
-                )
-            return {
-                "auth_type": "legacy_permissive",
-                "user_id": "guest",
-                "session_id": None,
-                "mode": "generic",
-                "is_admin": False
-            }
-
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unauthorized: Valid session token or API key required.",
+            detail="Unauthorized: Valid authentication token or API key required.",
             headers={"WWW-Authenticate": "Bearer"}
         )
 
     # A. Check Master API Key (Admin bypass)
     if master_key and secrets.compare_digest(candidate_token.encode("utf-8"), master_key.encode("utf-8")):
+        target_uid = request.headers.get("x-target-user-id", "").strip() or "admin"
         return {
             "auth_type": "api_key",
-            "user_id": "admin",
+            "user_id": target_uid,
             "session_id": None,
             "mode": "generic",
             "is_admin": True
@@ -280,8 +255,16 @@ async def verify_chat_access(request: Request) -> Dict[str, Any]:
             headers={"WWW-Authenticate": "Bearer"}
         )
 
+    sub = claims.get("sub")
+    if not sub or str(sub).strip().lower() in ("", "guest", "none", "null"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized: Anonymous/guest sessions are not permitted. Please log in.",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    claims["user_id"] = str(sub).strip()
+
     # C. Apply In-App Rate Limiting for Session Tokens
-    # Key based on client IP or user session ID
     client_ip = (
         request.headers.get("x-forwarded-for", "").split(",")[0].strip() or
         request.headers.get("x-real-ip", "").strip() or
