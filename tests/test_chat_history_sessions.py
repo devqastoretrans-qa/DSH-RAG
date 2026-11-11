@@ -188,4 +188,52 @@ def test_sequential_numbering_and_clear_all_sessions():
         client.delete("/api/chat/sessions", headers=other_headers)
 
 
+def test_rename_chat_session_isolation():
+    conv_memory = get_conversation_memory()
+    ts = int(time.time() * 1000)
+    uid = f"test_user_ren_{ts}"
+    other_uid = f"test_other_ren_{ts}"
+    sid = f"test_ren_{ts}"
+
+    headers = {"Authorization": f"Bearer {create_session_token(user_id=uid)['token']}"}
+    other_headers = {"Authorization": f"Bearer {create_session_token(user_id=other_uid)['token']}"}
+
+    conv_memory.record_turn(uid, sid, "Initial message title", "Response", [], mode="generic")
+    try:
+        # 1. Unauthenticated rename returns 401
+        assert client.patch(f"/api/chat/sessions/{sid}", json={"title": "Hacked"}).status_code == 401
+
+        # 2. Other user attempting rename returns 404
+        res_other = client.patch(
+            f"/api/chat/sessions/{sid}",
+            json={"title": "Stolen"},
+            headers=other_headers
+        )
+        assert res_other.status_code == 404
+
+        # 3. Owner renames successfully and list reflects custom title
+        res_ok = client.patch(
+            f"/api/chat/sessions/{sid}",
+            json={"title": "Renamed Clinical Topic"},
+            headers=headers
+        )
+        assert res_ok.status_code == 200
+        assert res_ok.json()["title"] == "Renamed Clinical Topic"
+
+        sessions = client.get("/api/chat/sessions?mode=generic", headers=headers).json()["sessions"]
+        matched = next(s for s in sessions if s["session_id"] == sid)
+        assert matched["title"] == "Renamed Clinical Topic"
+    finally:
+        client.delete("/api/chat/sessions", headers=headers)
+
+
+def test_react_ui_served():
+    res = client.get("/")
+    assert res.status_code == 200
+    assert '<div id="root"></div>' in res.text
+    assert "/assets/" in res.text
+
+
+
+
 

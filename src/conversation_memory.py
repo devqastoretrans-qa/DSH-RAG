@@ -147,6 +147,15 @@ class ConversationMemoryManager:
                             INDEX idx_conv_user_session (user_id, conversation_id)
                         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
                     """)
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS conversation_metadata (
+                            user_id VARCHAR(100) NOT NULL,
+                            conversation_id VARCHAR(100) NOT NULL,
+                            custom_title VARCHAR(255) NOT NULL,
+                            updated_at DOUBLE NOT NULL,
+                            PRIMARY KEY (user_id, conversation_id)
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                    """)
         except Exception:
             pass
 
@@ -179,6 +188,15 @@ class ConversationMemoryManager:
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_session ON conversation_turns (session_key, created_at)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_user_created ON conversation_turns (user_id, created_at)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_user_session ON conversation_turns (user_id, conversation_id)")
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS conversation_metadata (
+                        user_id TEXT NOT NULL,
+                        conversation_id TEXT NOT NULL,
+                        custom_title TEXT NOT NULL,
+                        updated_at REAL NOT NULL,
+                        PRIMARY KEY (user_id, conversation_id)
+                    )
+                """)
                 conn.commit()
         except Exception:
             pass
@@ -550,6 +568,7 @@ class ConversationMemoryManager:
                         if cur.fetchone():
                             found = True
                         cur.execute("DELETE FROM conversation_turns WHERE user_id = %s AND conversation_id = %s", (uid, cid))
+                        cur.execute("DELETE FROM conversation_metadata WHERE user_id = %s AND conversation_id = %s", (uid, cid))
             except Exception as e:
                 logger.warning(f"[ConversationMemory] MySQL delete session failed: {e}")
 
@@ -561,6 +580,7 @@ class ConversationMemoryManager:
                 if cur.fetchone():
                     found = True
                 cur.execute("DELETE FROM conversation_turns WHERE user_id = ? AND conversation_id = ?", (uid, cid))
+                cur.execute("DELETE FROM conversation_metadata WHERE user_id = ? AND conversation_id = ?", (uid, cid))
                 conn.commit()
         except Exception as e:
             logger.error(f"[ConversationMemory] SQLite delete session error: {e}")
@@ -594,10 +614,18 @@ class ConversationMemoryManager:
                     with conn.cursor() as cur:
                         if clean_mode:
                             cur.execute(
+                                "DELETE FROM conversation_metadata WHERE user_id = %s AND conversation_id IN (SELECT DISTINCT conversation_id FROM conversation_turns WHERE user_id = %s AND mode = %s)",
+                                (uid, uid, clean_mode)
+                            )
+                            cur.execute(
                                 "DELETE FROM conversation_turns WHERE user_id = %s AND mode = %s",
                                 (uid, clean_mode)
                             )
                         else:
+                            cur.execute(
+                                "DELETE FROM conversation_metadata WHERE user_id = %s",
+                                (uid,)
+                            )
                             cur.execute(
                                 "DELETE FROM conversation_turns WHERE user_id = %s",
                                 (uid,)
@@ -611,10 +639,18 @@ class ConversationMemoryManager:
                 cur = conn.cursor()
                 if clean_mode:
                     cur.execute(
+                        "DELETE FROM conversation_metadata WHERE user_id = ? AND conversation_id IN (SELECT DISTINCT conversation_id FROM conversation_turns WHERE user_id = ? AND mode = ?)",
+                        (uid, uid, clean_mode)
+                    )
+                    cur.execute(
                         "DELETE FROM conversation_turns WHERE user_id = ? AND mode = ?",
                         (uid, clean_mode)
                     )
                 else:
+                    cur.execute(
+                        "DELETE FROM conversation_metadata WHERE user_id = ?",
+                        (uid,)
+                    )
                     cur.execute(
                         "DELETE FROM conversation_turns WHERE user_id = ?",
                         (uid,)
@@ -624,15 +660,17 @@ class ConversationMemoryManager:
         except Exception as e:
             logger.error(f"[ConversationMemory] SQLite delete_all_sessions error: {e}")
 
-        prefix = f"{uid}::"
+        prefix = f"{uid}:"
         with self._lock:
             to_remove = []
-            for k, history in self._sessions.items():
+            for k, session_obj in self._sessions.items():
                 if not k.startswith(prefix):
                     continue
                 if clean_mode:
-                    has_mode = any(t.get("mode") == clean_mode for t in history)
-                    if not has_mode and history:
+                    has_mode = (getattr(session_obj, "last_mode", None) == clean_mode) or any(
+                        t.get("mode") == clean_mode for t in getattr(session_obj, "turns", [])
+                    )
+                    if not has_mode and getattr(session_obj, "turns", []):
                         continue
                 to_remove.append(k)
             for k in to_remove:
@@ -640,6 +678,62 @@ class ConversationMemoryManager:
                 deleted = max(deleted, 1)
 
         return deleted
+
+    def rename_session(self, user_id: str, conversation_id: str, title: str) -> Optional[str]:
+        """
+        Securely renames a conversation owned strictly by user_id.
+        Returns the saved title, or None if the session does not exist / belongs to another user.
+        """
+        if not user_id or not conversation_id or not title:
+            return None
+        uid = str(user_id).strip()
+        cid = str(conversation_id).strip()
+        clean_title = " ".join(str(title).strip().split())[:120]
+        if uid.lower() in ("", "guest", "none", "null") or not cid or not clean_title:
+            return None
+
+        owned = False
+        now = time.time()
+
+        if self.has_mysql:
+            try:
+                with self._get_mysql_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "SELECT id FROM conversation_turns WHERE user_id = %s AND conversation_id = %s AND is_orphaned = 0 LIMIT 1",
+                            (uid, cid)
+                        )
+                        if cur.fetchone():
+                            owned = True
+                            cur.execute("""
+                                INSERT INTO conversation_metadata (user_id, conversation_id, custom_title, updated_at)
+                                VALUES (%s, %s, %s, %s)
+                                ON DUPLICATE KEY UPDATE custom_title = VALUES(custom_title), updated_at = VALUES(updated_at)
+                            """, (uid, cid, clean_title, now))
+            except Exception as e:
+                logger.warning(f"[ConversationMemory] MySQL rename_session failed: {e}")
+
+        try:
+            with self._get_sqlite_conn() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT id FROM conversation_turns WHERE user_id = ? AND conversation_id = ? AND is_orphaned = 0 LIMIT 1",
+                    (uid, cid)
+                )
+                if cur.fetchone():
+                    owned = True
+                    cur.execute("""
+                        INSERT INTO conversation_metadata (user_id, conversation_id, custom_title, updated_at)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(user_id, conversation_id) DO UPDATE SET
+                            custom_title = excluded.custom_title,
+                            updated_at = excluded.updated_at
+                    """, (uid, cid, clean_title, now))
+                    conn.commit()
+        except Exception as e:
+            logger.error(f"[ConversationMemory] SQLite rename_session error: {e}")
+
+        return clean_title if owned else None
 
     def get_recent_sessions(
         self,
@@ -681,7 +775,10 @@ class ConversationMemoryManager:
                                 MIN(created_at) as created_at,
                                 MAX(created_at) as updated_at,
                                 COUNT(*) as message_count,
-                                (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.user_id = ct.user_id AND ct2.role = 'user' AND ct2.is_orphaned = 0 ORDER BY ct2.id ASC LIMIT 1) as title
+                                COALESCE(
+                                    NULLIF((SELECT custom_title FROM conversation_metadata cm WHERE cm.user_id = ct.user_id AND cm.conversation_id = ct.conversation_id LIMIT 1), ''),
+                                    (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.user_id = ct.user_id AND ct2.role = 'user' AND ct2.is_orphaned = 0 ORDER BY ct2.id ASC LIMIT 1)
+                                ) as title
                             FROM conversation_turns ct
                             {where_clause}
                             GROUP BY conversation_id, user_id, mode
@@ -713,7 +810,10 @@ class ConversationMemoryManager:
                             MIN(created_at) as created_at,
                             MAX(created_at) as updated_at,
                             COUNT(*) as message_count,
-                            (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.user_id = ct.user_id AND ct2.role = 'user' AND ct2.is_orphaned = 0 ORDER BY ct2.id ASC LIMIT 1) as title
+                            COALESCE(
+                                NULLIF((SELECT custom_title FROM conversation_metadata cm WHERE cm.user_id = ct.user_id AND cm.conversation_id = ct.conversation_id LIMIT 1), ''),
+                                (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.user_id = ct.user_id AND ct2.role = 'user' AND ct2.is_orphaned = 0 ORDER BY ct2.id ASC LIMIT 1)
+                            ) as title
                         FROM conversation_turns ct
                         {where_clause}
                         GROUP BY conversation_id, user_id, mode
@@ -730,11 +830,9 @@ class ConversationMemoryManager:
             cid, uid, mode, created_at, updated_at, count, raw_title = row
             raw_title_str = (raw_title or "").strip()
             if raw_title_str:
-                title = raw_title_str.split("\n")[0].strip()
+                title = raw_title_str.split("\n")[0].strip()[:120]
             else:
                 title = "New Conversation"
-            if len(title) > 42:
-                title = title[:39] + "..."
             sessions.append({
                 "session_id": cid,
                 "user_id": uid,

@@ -68,3 +68,6 @@ Thumbs.db
 *.sublime-project
 *.sublime-workspace
 *.session.sql
+
+# Frontend Dependencies (build artifacts in static/dist are tracked for Python-only deploys)
+frontend/node_modules/

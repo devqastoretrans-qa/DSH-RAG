@@ -14,10 +14,11 @@ from typing import Optional, List, Dict, Any
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Depends, Security, status, Header, Query
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, FileResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
@@ -214,14 +215,21 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+REACT_DIST_DIR = BASE_DIR / "static" / "dist"
+if (REACT_DIST_DIR / "assets").is_dir():
+    app.mount("/assets", StaticFiles(directory=str(REACT_DIST_DIR / "assets")), name="react_assets")
+
 
 @app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse, include_in_schema=False)
 @app.api_route("/dsh-rag", methods=["GET", "HEAD"], response_class=HTMLResponse, include_in_schema=False)
 @app.api_route("/dsh-rag/", methods=["GET", "HEAD"], response_class=HTMLResponse, include_in_schema=False)
 async def serve_ui(request: Request):
     """
-    Renders the web UI interface for document ingestion and semantic search.
+    Renders the modern React/Tailwind Chat Studio UI (or falls back to Jinja template).
     """
+    dist_index = REACT_DIST_DIR / "index.html"
+    if dist_index.is_file():
+        return FileResponse(str(dist_index), media_type="text/html")
     return templates.TemplateResponse(
         request=request,
         name="index.html",
@@ -1555,6 +1563,49 @@ async def list_chat_sessions_endpoint(
         "success": True,
         "count": len(sessions),
         "sessions": sessions
+    })
+
+
+class RenameSessionRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=120, description="New conversation thread title")
+
+
+@app.patch(
+    "/api/chat/sessions/{session_id}",
+    tags=["Chat API"],
+    summary="Rename a Specific Chat Session for Current User"
+)
+@app.put(
+    "/api/chat/sessions/{session_id}",
+    tags=["Chat API"],
+    summary="Rename a Specific Chat Session for Current User"
+)
+async def rename_chat_session_endpoint(
+    session_id: str,
+    body: RenameSessionRequest,
+    auth_claims: Dict[str, Any] = Depends(verify_chat_access)
+):
+    """
+    Renames a specific chat session owned strictly by the authenticated caller.
+    Returns 404 if the session belongs to another user or does not exist.
+    """
+    current_uid = auth_claims["user_id"]
+    conv_memory = get_conversation_memory()
+    updated_title = conv_memory.rename_session(
+        user_id=current_uid,
+        conversation_id=session_id,
+        title=body.title
+    )
+    if not updated_title:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Chat session '{session_id}' not found."
+        )
+
+    return JSONResponse(status_code=200, content={
+        "success": True,
+        "session_id": session_id,
+        "title": updated_title
     })
 
 
