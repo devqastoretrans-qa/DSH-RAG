@@ -26,15 +26,16 @@ CHAT_HISTORY_TTL_SECONDS = int(os.getenv("CHAT_HISTORY_TTL_SECONDS", "7200"))  #
 
 FOLLOW_UP_PATTERNS = [
     re.compile(r"^\s*(tell|say|explain|elaborate|clarify|give|show|break\s+down)\s+(me\s+)?(more|further|details?|an?\s+example|simply|more\s+simply|easier)\b", re.I),
+    re.compile(r"^\s*(can\s+you\s+)?(give|show|share|suggest|tell)\s+(me\s+)?(an?|one|\d+)?\s*(?:\w+\s+){0,2}(example|step|steps|exercise|practice|tip|tips|tool|strategy|advice|action)\b", re.I),
     re.compile(r"\b(tell\s+more|more\s+about\s+(it|this|that)|what\s+about\s+(it|this|that|the\s+price|pricing|cost))\b", re.I),
-    re.compile(r"^\s*(why\s+so|how\s+so|what\s+else|and\s+then|what\s+next|what\s+should\s+i\s+do)\b", re.I),
+    re.compile(r"^\s*(why\s+so|how\s+so|what\s+else|and\s+then|what\s+next|what\s+should\s+i\s+do|where\s+do\s+i\s+start)\b", re.I),
     re.compile(r"^\s*(can\s+you\s+)?(explain|elaborate\s+on|simplify|summarize|clarify)\s+(it|this|that|further|more\s+simply|simply)\b", re.I),
     re.compile(r"^\s*(give|show)\s+(me\s+)?(an?\s+)?example\b", re.I),
     re.compile(r"^\s*(how\s+much\s+(is|does)\s+(it|that|this))\b", re.I),
     re.compile(r"^\s*(what\s+does\s+(that|this|it)\s+mean)\b", re.I),
 ]
 
-PRONOUNS_SHORT_QUERY = re.compile(r"\b(it|this|that|them|these|those|steps?|tool|protocol|price|cost)\b", re.I)
+PRONOUNS_SHORT_QUERY = re.compile(r"\b(it|this|that|them|these|those|steps?|tool|protocol|price|cost|practice|exercise|action|tip|tips|advice|homework|strategy)\b", re.I)
 
 
 class ConversationSession:
@@ -362,8 +363,8 @@ class ConversationMemoryManager:
                         is_direct_elaboration = True
                     break
 
-            # Check short query with pronoun
-            if not is_follow_up and len(words) <= 7 and PRONOUNS_SHORT_QUERY.search(clean):
+            # Check short follow-up query with contextual reference or action request
+            if not is_follow_up and len(words) <= 12 and PRONOUNS_SHORT_QUERY.search(clean):
                 is_follow_up = True
 
             if is_follow_up and session.last_topic:

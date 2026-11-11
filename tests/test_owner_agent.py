@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 from src.config import get_owner_collection_name, resolve_target_collection
+from src.conversation_memory import ConversationMemoryManager
 from src.drive_service import GoogleDriveService
 from src.generator import OpenAIGeneratorService
 from src.search import search_similar_chunks
@@ -163,10 +164,43 @@ def test_owner_domain_matching_and_prompts():
     assert "Dr. Sarah Hensley" in prompt
     assert "Founder, CEO, Social Psychologist" in prompt
     assert "Do NOT include bracketed citations" in prompt
+    assert "EVERGREEN COHORT & SCHEDULING PHRASING" in prompt
 
     oos = OpenAIGeneratorService._build_out_of_scope_reply("Hello there!\n\n", mode="owner", reason="out_of_scope")
     assert "Digital Twin and Owner Agent" in oos
     assert "Hensley Change Model" in oos
+
+
+def test_owner_multi_turn_follow_up_action_step_vs_off_topic():
+    mem = ConversationMemoryManager()
+    uid = "test_owner_followup_user"
+    cid = "sess_owner_followup_test"
+    mem.clear_session(session_id=cid, user_id=uid, mode="owner")
+
+    mem.record_turn(
+        user_id=uid,
+        conversation_id=cid,
+        user_query="Explain fearful avoidant push-pull dynamics in your own words",
+        assistant_answer="Fearful avoidant attachment involves an inner conflict between craving closeness and fearing hurt.",
+        retrieved_chunks=[{"document_name": "DSH_OWNER_VOICE_GUIDE.pdf", "text": "Hensley Change Model"}],
+        mode="owner",
+    )
+
+    rewritten_step, _, _ = mem.resolve_follow_up(
+        user_id=uid,
+        conversation_id=cid,
+        query="Give me one practical step I can practice tonight."
+    )
+    assert rewritten_step != "Give me one practical step I can practice tonight."
+    assert "fearful avoidant push-pull dynamics" in rewritten_step.lower()
+
+    rewritten_off, _, _ = mem.resolve_follow_up(
+        user_id=uid,
+        conversation_id=cid,
+        query="Who is Virat Kohli?"
+    )
+    assert rewritten_off == "Who is Virat Kohli?"
+    mem.clear_session(session_id=cid, user_id=uid, mode="owner")
 
 
 def test_drive_service_mock_and_env_owner_folder(monkeypatch):
