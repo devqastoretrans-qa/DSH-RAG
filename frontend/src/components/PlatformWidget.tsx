@@ -2,6 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { HelpCircle, RotateCcw, Send, X } from 'lucide-react';
 
+interface SuggestedAction {
+  label: string;
+  prompt: string;
+}
+
 interface WidgetMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -11,15 +16,25 @@ interface WidgetMessage {
 
 export interface PlatformWidgetProps {
   authToken?: string;
+  userId?: string;
 }
 
 const STORAGE_SID_KEY = 'dsh_platform_widget_sid';
 
-const QUICK_QUESTIONS = [
-  'How do I log into my account?',
-  'How do I reset a forgotten password?',
-  'Where do I find my course dashboard and download workbooks?',
-  'How do I view billing receipts or contact support?',
+const DEFAULT_ACTIONS: SuggestedAction[] = [
+  { label: 'How do I log in?', prompt: 'How do I log into my account?' },
+  {
+    label: 'Forgot password',
+    prompt: 'How do I reset a forgotten password?',
+  },
+  {
+    label: 'Find courses & workbooks',
+    prompt: 'Where do I find my course dashboard and download workbooks?',
+  },
+  {
+    label: 'Billing & support',
+    prompt: 'How do I check my billing receipts or contact support?',
+  },
 ];
 
 function createWidgetSessionId(): string {
@@ -42,16 +57,32 @@ function getOrCreateWidgetSessionId(): string {
   }
 }
 
-export const PlatformWidget: React.FC<PlatformWidgetProps> = ({ authToken }) => {
+function getCurrentPagePath(): string {
+  if (typeof window === 'undefined') return '/';
+  return `${window.location.pathname || '/'}${window.location.search || ''}`;
+}
+
+function buildWelcomeText(firstName: string): string {
+  const greeting = firstName ? `Hello ${firstName}!` : 'Hi there!';
+  return `${greeting}\n\nI'm the dedicated Platform Help Assistant. Ask me how to sign in, reset your password, find your course dashboard or workbooks, update billing, or contact support.`;
+}
+
+export const PlatformWidget: React.FC<PlatformWidgetProps> = ({
+  authToken,
+  userId,
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const [sessionId, setSessionId] = useState<string>(() =>
     getOrCreateWidgetSessionId()
   );
+  const [userFirstName, setUserFirstName] = useState('');
+  const [suggestedActions, setSuggestedActions] =
+    useState<SuggestedAction[]>(DEFAULT_ACTIONS);
   const [messages, setMessages] = useState<WidgetMessage[]>([
     {
       id: 'welcome',
       role: 'assistant',
-      text: "Welcome! I'm the dedicated **Platform Help Assistant**.\n\nAsk me how to sign in, reset your password, find your course dashboard or workbooks, update billing, or contact support.",
+      text: buildWelcomeText(''),
     },
   ]);
   const [draft, setDraft] = useState('');
@@ -59,6 +90,49 @@ export const PlatformWidget: React.FC<PlatformWidgetProps> = ({ authToken }) => 
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Dynamically fetch the logged-in user's name and current_page quick-reply chips via API
+  useEffect(() => {
+    let cancelled = false;
+    const fetchContext = async () => {
+      try {
+        const headers: Record<string, string> = {};
+        if (authToken) {
+          headers.Authorization = `Bearer ${authToken}`;
+        }
+        const currentPage = getCurrentPagePath();
+        const res = await fetch(
+          `/api/platform-widget/context?current_page=${encodeURIComponent(
+            currentPage
+          )}`,
+          { headers }
+        );
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as {
+          user_first_name?: string;
+          suggested_actions?: SuggestedAction[];
+        };
+        if (cancelled) return;
+        const cleanName = (data.user_first_name || '').trim();
+        setUserFirstName(cleanName);
+        if (Array.isArray(data.suggested_actions) && data.suggested_actions.length > 0) {
+          setSuggestedActions(data.suggested_actions);
+        }
+        setMessages((prev) => {
+          if (prev.length === 1 && prev[0].id.startsWith('welcome')) {
+            return [{ ...prev[0], text: buildWelcomeText(cleanName) }];
+          }
+          return prev;
+        });
+      } catch {
+        // Keep graceful fallback greeting when offline/unauthenticated
+      }
+    };
+    void fetchContext();
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken, userId]);
 
   useEffect(() => {
     if (listRef.current) {
@@ -86,7 +160,7 @@ export const PlatformWidget: React.FC<PlatformWidgetProps> = ({ authToken }) => 
       {
         id: `welcome_${Date.now()}`,
         role: 'assistant',
-        text: "Started a fresh Platform Help session. What can I help you find on the website or learning portal?",
+        text: buildWelcomeText(userFirstName),
       },
     ]);
   };
@@ -118,12 +192,15 @@ export const PlatformWidget: React.FC<PlatformWidgetProps> = ({ authToken }) => 
         body: JSON.stringify({
           session_id: sessionId,
           message: clean,
+          current_page: getCurrentPagePath(),
         }),
       });
 
       const data = (await res.json().catch(() => ({}))) as {
         success?: boolean;
         session_id?: string;
+        user_first_name?: string;
+        suggested_actions?: SuggestedAction[];
         answer?: string;
         answer_html?: string;
         error?: string;
@@ -143,6 +220,12 @@ export const PlatformWidget: React.FC<PlatformWidgetProps> = ({ authToken }) => 
         } catch {
           // ignore
         }
+      }
+      if (typeof data.user_first_name === 'string' && data.user_first_name.trim()) {
+        setUserFirstName(data.user_first_name.trim());
+      }
+      if (Array.isArray(data.suggested_actions) && data.suggested_actions.length > 0) {
+        setSuggestedActions(data.suggested_actions);
       }
 
       const sanitizedHtml = data.answer_html
@@ -179,12 +262,13 @@ export const PlatformWidget: React.FC<PlatformWidgetProps> = ({ authToken }) => 
       ]);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unable to connect';
+      const fallbackGreeting = userFirstName ? `Hello ${userFirstName}!` : 'Hi there!';
       setMessages((prev) => [
         ...prev,
         {
           id: `err_${Date.now()}`,
           role: 'assistant',
-          text: `Sorry, I couldn't reach the Platform Help service (${msg}).`,
+          text: `${fallbackGreeting}\n\nSorry, I couldn't reach the Platform Help service (${msg}).`,
         },
       ]);
     } finally {
@@ -202,7 +286,7 @@ export const PlatformWidget: React.FC<PlatformWidgetProps> = ({ authToken }) => 
       {isOpen && (
         <section
           aria-label="Platform Help Assistant"
-          className="flex h-[510px] max-h-[calc(100vh-120px)] w-[370px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700/80 dark:bg-[#0B1120]"
+          className="flex h-[520px] max-h-[calc(100vh-120px)] w-[375px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700/80 dark:bg-[#0B1120]"
         >
           {/* Header */}
           <div className="flex items-center justify-between border-b border-emerald-500/20 bg-gradient-to-r from-slate-900 to-emerald-950 px-4 py-3 text-white">
@@ -215,7 +299,9 @@ export const PlatformWidget: React.FC<PlatformWidgetProps> = ({ authToken }) => 
                   Platform Help Bot
                 </div>
                 <div className="text-[11px] text-emerald-200/80">
-                  Website, Login, Portal & Billing
+                  {userFirstName
+                    ? `Signed in as ${userFirstName}`
+                    : 'Website, Login, Portal & Billing'}
                 </div>
               </div>
             </div>
@@ -276,18 +362,18 @@ export const PlatformWidget: React.FC<PlatformWidgetProps> = ({ authToken }) => 
             )}
           </div>
 
-          {/* Starter Quick Prompts */}
-          {messages.length <= 1 && (
+          {/* Dynamic Proactive Quick-Reply Action Chips (mapped to current_page) */}
+          {suggestedActions.length > 0 && (
             <div className="flex flex-wrap gap-1.5 border-t border-slate-200/70 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-[#0B1120]">
-              {QUICK_QUESTIONS.map((q) => (
+              {suggestedActions.slice(0, 4).map((act) => (
                 <button
-                  key={q}
+                  key={act.label}
                   type="button"
                   disabled={isSending}
-                  onClick={() => void sendQuestion(q)}
+                  onClick={() => void sendQuestion(act.prompt)}
                   className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-700 transition-colors hover:bg-emerald-500/20 disabled:opacity-50 dark:text-emerald-300"
                 >
-                  {q}
+                  {act.label}
                 </button>
               ))}
             </div>
@@ -334,4 +420,3 @@ export const PlatformWidget: React.FC<PlatformWidgetProps> = ({ authToken }) => 
     </div>
   );
 };
-

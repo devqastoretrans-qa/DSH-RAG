@@ -197,8 +197,9 @@ class OpenAIGeneratorService:
         """Returns True if an LLM API key (Groq or OpenAI) is present."""
         return bool(self.api_key and self.api_key.strip())
 
-    @staticmethod
+    @classmethod
     def _get_chit_chat_reply(
+        cls,
         query: str,
         user_context: Optional[Dict[str, Any]] = None,
         mode: str = "generic"
@@ -223,15 +224,8 @@ class OpenAIGeneratorService:
         if not is_greeting:
             return None
 
-        first_name = None
-        if user_context:
-            raw_first = user_context.get("first_name") or user_context.get("name") or user_context.get("display_name")
-            if raw_first and " " in str(raw_first).strip():
-                first_name = str(raw_first).strip().split()[0]
-            elif raw_first:
-                first_name = str(raw_first).strip()
-
-        salutation = f"Hi {first_name}!" if first_name else "Hello!"
+        greeting_name = cls._extract_greeting_name(user_context)
+        salutation = f"Hello {greeting_name}!" if greeting_name != "there" else "Hi there!"
 
         courses = (user_context or {}).get("courses_purchased") or (user_context or {}).get("all_purchases") or []
         attachment = (user_context or {}).get("attachment_style")
@@ -303,11 +297,81 @@ class OpenAIGeneratorService:
         if not raw_first or str(raw_first).strip() == "":
             return "there"
         raw_str = str(raw_first).strip()
+        if raw_str.lower() in ("there", "guest", "website visitor", "visitor", "none", "null", "anonymous", "unauthenticated") or raw_str.lower().startswith("plat_visitor_"):
+            return "there"
         if "@" in raw_str:
             raw_str = raw_str.split("@")[0].replace(".", " ").replace("_", " ").title()
         if " " in raw_str:
             return raw_str.split()[0]
         return raw_str
+
+    @staticmethod
+    def _format_salutation_prefix(greeting_name: str, mode: str) -> str:
+        """Build the 1-line opening salutation prefix for guardrails and fallback messages."""
+        if mode == "platform":
+            return f"Hello {greeting_name}!\n\n" if greeting_name != "there" else "Hi there!\n\n"
+        return f"Hi {greeting_name},\n\n" if greeting_name != "there" else ""
+
+    @staticmethod
+    def _apply_salutation_guardrail(
+        text: str,
+        greeting_name: str,
+        mode: str,
+        is_follow_up: bool,
+        chat_history: Optional[List[Dict[str, str]]],
+        query: str,
+    ) -> str:
+        """Enforce opening greeting rules on Turn 1 and strip repetitive greeting fluff on rapid follow-ups."""
+        if not text or OFF_TOPIC_REGEX.search(query):
+            return text
+
+        if not is_follow_up and not chat_history:
+            if mode == "platform":
+                first_line = text.lstrip().splitlines()[0].strip() if text.lstrip() else ""
+                if greeting_name != "there":
+                    has_named_greeting = bool(
+                        re.match(
+                            rf"^(hello|hi|hey|greetings)\b[^\n]*\b{re.escape(greeting_name)}\b",
+                            first_line,
+                            flags=re.I,
+                        )
+                    )
+                    if has_named_greeting:
+                        return text
+                    cleaned_body = re.sub(
+                        r"^(Hi|Hello|Hey|Greetings|Good\s+(morning|afternoon|evening))\b[^\n,!:]*[,!:]?\s*",
+                        "",
+                        text,
+                        flags=re.I,
+                    )
+                    return f"Hello {greeting_name}!\n\n{cleaned_body.lstrip()}"
+
+                has_generic_greeting = bool(
+                    re.match(r"^(hello|hi(\s+there)?|greetings)[!,.\s]*$", first_line, flags=re.I)
+                    or re.match(r"^(hello|hi\s+there|greetings)[!,.]", first_line, flags=re.I)
+                )
+                if has_generic_greeting:
+                    return text
+                cleaned_body = re.sub(
+                    r"^(Hi|Hello|Hey|Greetings|Good\s+(morning|afternoon|evening))\b[^\n,!:]*[,!:]?\s*",
+                    "",
+                    text,
+                    flags=re.I,
+                )
+                return f"Hi there!\n\n{cleaned_body.lstrip()}"
+
+            expected_salutation = f"Hi {greeting_name},"
+            if not text.startswith(expected_salutation):
+                cleaned_body = re.sub(
+                    r"^(Hi|Hello|Hey|Greetings|Good\s+(morning|afternoon|evening))\b[^\n,]*[,!:]?\s*",
+                    "",
+                    text,
+                    flags=re.I,
+                )
+                return f"{expected_salutation}\n\n{cleaned_body.lstrip()}"
+            return text
+
+        return re.sub(r"^(Hi|Hello|Hey|Greetings)\b[^\n,!:]*[,!:]?\s*", "", text, flags=re.I).lstrip()
 
     @staticmethod
     def _build_out_of_scope_reply(user_salutation: str, mode: str, reason: str = "generic") -> str:
@@ -358,10 +422,27 @@ class OpenAIGeneratorService:
         )
         return has_sales_match or bool(CLINICAL_DOMAIN_REGEX.search(query))
 
-    @staticmethod
-    def _build_personalized_profile_section(user_context: Optional[Dict[str, Any]]) -> str:
+    @classmethod
+    def _build_personalized_profile_section(
+        cls,
+        user_context: Optional[Dict[str, Any]],
+        mode: str = "generic",
+    ) -> str:
         if not user_context:
             return ""
+
+        current_page = str(user_context.get("current_page") or "").strip()
+        if mode == "platform":
+            safe_first = cls._extract_greeting_name(user_context)
+            name_val = safe_first if safe_first != "there" else ""
+            lines = [
+                "=== VERIFIED PLATFORM USER CONTEXT ===",
+                f"• Logged-In User First Name ({{user_first_name}}): {name_val or '(unavailable / unauthenticated -> use \"Hello!\" or \"Hi there!\")'}",
+            ]
+            if current_page:
+                lines.append(f"• Active Website Page (current_page): {current_page}")
+            lines.append("======================================")
+            return "\n".join(lines) + "\n\n"
 
         full_name = user_context.get("name") or user_context.get("display_name") or "Valued Client"
         first_name = user_context.get("first_name") or (str(full_name).split()[0] if " " in str(full_name) else str(full_name))
@@ -434,21 +515,21 @@ class OpenAIGeneratorService:
             )
         elif mode == "platform":
             return (
-                "You are the Platform Navigation Assistant for Dr. Sarah Hensley's official website, learning portal, and client membership area.\n"
+                "You are the dedicated Platform Navigation Assistant for Dr. Sarah Hensley's official website, learning portal, and client membership area.\n"
                 "Your role is a CLEAR, DIRECT, STEP-BY-STEP PLATFORM GUIDE:\n\n"
-                "MANDATORY PLATFORM NAVIGATION RULES:\n"
-                "1. STRICTLY GROUNDED IN RETRIEVED PLATFORM DOCS:\n"
-                "   - Base every button name, menu path, URL, email address, and step ONLY on the retrieved Platform Knowledge Excerpts below.\n"
-                "   - NEVER invent, guess, or fabricate URLs, portal paths, menu labels, prices, or support emails that are not explicitly present in the retrieved excerpts.\n"
-                "   - If the retrieved platform docs do not cover a specific account or technical step, say clearly what is not documented and advise the user to contact official support.\n\n"
-                "2. DIRECT STEP-BY-STEP INSTRUCTIONS:\n"
-                "   - Provide clear, numbered steps explaining where features, menus, downloads, and pages are located (login, password reset, course dashboard, billing settings, workbook downloads, and support tickets).\n\n"
-                "3. CONCISE & ACTIONABLE:\n"
-                "   - Keep navigation guidance crisp, structured, and easy to follow (under 150 words unless detailed steps require slightly more).\n"
-                "   - Cite source docs neutrally when helpful and never disclose internal backend pipeline or database details.\n\n"
-                "4. REDIRECTION FOR CLINICAL / COURSE CONTENT:\n"
-                "   - If a user asks clinical attachment psychology questions or seeks relationship advice, briefly note that this assistant handles portal navigation and invite them to switch to Clinical / Attachment Guidance mode.\n"
-                "   - If they ask about program pricing or which course fits their relationship goals, invite them to switch to Program Advisor mode."
+                "MANDATORY OPENING GREETING & DYNAMIC USER CONTEXT:\n"
+                "- EVERY opening response MUST begin on Line 1 with a friendly, brief 1-line greeting addressing the user by their dynamic `{user_first_name}` from Verified Platform User Context (e.g., 'Hello {user_first_name}!', 'Hi {user_first_name}!', or 'Greetings {user_first_name}!').\n"
+                "- If `{user_first_name}` is unavailable, empty, or unauthenticated, fall back to a warm generic 1-line opening ('Hello!' or 'Hi there!').\n"
+                "- Keep the greeting concise (1 line max) before seamlessly transitioning into the answer.\n"
+                "- Do NOT repeat greeting fluff if continuing a multi-turn conversation in quick succession—keep rapid follow-ups light and conversational.\n\n"
+                "MANDATORY RESPONSE STRUCTURE & FLOW:\n"
+                "1. Line 1: Dynamic greeting with user's name (or 'Hello!' / 'Hi there!' fallback on first turn).\n"
+                "2. Core Answer: Direct, concise explanation using ONLY the retrieved Platform Knowledge Excerpts below. NEVER invent URLs, buttons, menu paths, prices, or support emails not present in the excerpts.\n"
+                "3. Procedural Steps: Numbered, actionable steps for 'how-to' queries (login, password reset, course dashboard, workbook downloads, billing settings, support tickets).\n"
+                "4. Proactive Follow-up: End with 1 brief, helpful next step tailored to the user's `current_page` (when provided in context) or ask which portal step they want to do next.\n\n"
+                "BOUNDARIES & REDIRECTION:\n"
+                "- If a question asks deep clinical attachment psychology or personal relationship advice, briefly note this assistant handles website/portal navigation and invite them to switch to Clinical / Attachment Guidance mode.\n"
+                "- If they ask which program/course to purchase, invite them to switch to Program Advisor mode."
             )
         elif mode == "owner":
             return (
@@ -545,7 +626,7 @@ class OpenAIGeneratorService:
             }
 
         greeting_name = self._extract_greeting_name(user_context)
-        user_salutation = f"Hi {greeting_name},\n\n" if greeting_name != "there" else ""
+        user_salutation = self._format_salutation_prefix(greeting_name, mode)
 
         if OFF_TOPIC_REGEX.search(query):
             refusal_text = self._build_out_of_scope_reply(user_salutation, mode, reason="off_topic")
@@ -663,7 +744,7 @@ class OpenAIGeneratorService:
 
         formatted_context = "\n\n---\n\n".join(context_blocks)
 
-        user_profile_section = self._build_personalized_profile_section(user_context)
+        user_profile_section = self._build_personalized_profile_section(user_context, mode=mode)
         has_history = bool(user_context and user_context.get("has_history", False))
         user_name = user_context.get("name") if user_context else None
 
@@ -757,16 +838,15 @@ class OpenAIGeneratorService:
             generated_text = re.sub(r'\bscripted\s+script\b', 'script', generated_text, flags=re.I)
             generated_text = re.sub(r'(\n\s*[-*•]\s*)$', '', generated_text.rstrip())
 
-            # Layer 2 Deterministic Salutation Guardrail:
-            # Turn 1: ensure the response begins cleanly with "Hi {greeting_name},"
-            if not is_follow_up and not chat_history and not OFF_TOPIC_REGEX.search(query):
-                expected_salutation = f"Hi {greeting_name},"
-                if not generated_text.startswith(expected_salutation):
-                    cleaned_body = re.sub(r'^(Hi|Hello|Hey|Greetings|Good\s+(morning|afternoon|evening))\b[^\n,]*[,!:]?\s*', '', generated_text, flags=re.I)
-                    generated_text = f"{expected_salutation}\n\n{cleaned_body.lstrip()}"
-            elif (is_follow_up or chat_history) and not OFF_TOPIC_REGEX.search(query):
-                # Continuing turn: remove repetitive initial greeting if model echoed it
-                generated_text = re.sub(r'^(Hi|Hello|Hey|Greetings)\b[^\n,]*[,!:]?\s*', '', generated_text, flags=re.I).lstrip()
+            # Layer 2 Deterministic Salutation Guardrail
+            generated_text = self._apply_salutation_guardrail(
+                generated_text,
+                greeting_name=greeting_name,
+                mode=mode,
+                is_follow_up=is_follow_up,
+                chat_history=chat_history,
+                query=query,
+            )
 
         if mode == "sales" and recommended_products and generated_text and not OFF_TOPIC_REGEX.search(query) and "outside the scope" not in generated_text and "Recommended Next Step for Your Journey" not in generated_text:
             fallback_card = "\n\n### Recommended Next Step for Your Journey\n"
@@ -809,7 +889,7 @@ class OpenAIGeneratorService:
             return
 
         greeting_name = self._extract_greeting_name(user_context)
-        user_salutation = f"Hi {greeting_name},\n\n" if greeting_name != "there" else ""
+        user_salutation = self._format_salutation_prefix(greeting_name, mode)
 
         if OFF_TOPIC_REGEX.search(query):
             refusal_text = self._build_out_of_scope_reply(user_salutation, mode, reason="off_topic")
@@ -885,7 +965,7 @@ class OpenAIGeneratorService:
 
         formatted_context = "\n\n---\n\n".join(context_blocks)
 
-        user_profile_section = self._build_personalized_profile_section(user_context)
+        user_profile_section = self._build_personalized_profile_section(user_context, mode=mode)
         has_history = bool(user_context and user_context.get("has_history", False))
         user_name = user_context.get("name") if user_context else None
 
@@ -988,13 +1068,14 @@ class OpenAIGeneratorService:
             final_ans = re.sub(r'\bscripted\s+script\b', 'script', final_ans, flags=re.I)
             final_ans = re.sub(r'(\n\s*[-*•]\s*)$', '', final_ans.rstrip())
             # Layer 2 Deterministic Salutation Guardrail for streaming
-            if not is_follow_up and not chat_history and not OFF_TOPIC_REGEX.search(query):
-                expected_salutation = f"Hi {greeting_name},"
-                if not final_ans.startswith(expected_salutation):
-                    cleaned_body = re.sub(r'^(Hi|Hello|Hey|Greetings|Good\s+(morning|afternoon|evening))\b[^\n,]*[,!:]?\s*', '', final_ans, flags=re.I)
-                    final_ans = f"{expected_salutation}\n\n{cleaned_body.lstrip()}"
-            elif (is_follow_up or chat_history) and not OFF_TOPIC_REGEX.search(query):
-                final_ans = re.sub(r'^(Hi|Hello|Hey|Greetings)\b[^\n,]*[,!:]?\s*', '', final_ans, flags=re.I).lstrip()
+            final_ans = self._apply_salutation_guardrail(
+                final_ans,
+                greeting_name=greeting_name,
+                mode=mode,
+                is_follow_up=is_follow_up,
+                chat_history=chat_history,
+                query=query,
+            )
 
             yield {
                 "token": "",

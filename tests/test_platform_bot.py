@@ -154,12 +154,17 @@ def test_generator_platform_mode_prompts_and_empty_or_offtopic_guards(monkeypatc
 
     sys_prompt = gen._build_system_prompt(mode="platform")
     assert "Platform Navigation Assistant" in sys_prompt
-    assert "NEVER invent, guess, or fabricate URLs" in sys_prompt
+    assert "MANDATORY OPENING GREETING & DYNAMIC USER CONTEXT" in sys_prompt
+    assert "NEVER invent URLs" in sys_prompt
 
     greeting = gen._get_chit_chat_reply("hi", user_context={"first_name": "Maya"}, mode="platform")
     assert greeting is not None
-    assert "Hi Maya!" in greeting
+    assert "Hello Maya!" in greeting
     assert "Platform Navigation Assistant" in greeting
+
+    anon_greeting = gen._get_chit_chat_reply("hi", user_context={"first_name": "Website Visitor"}, mode="platform")
+    assert anon_greeting is not None
+    assert anon_greeting.startswith("Hi there!")
 
     # Empty retrieved_chunks on a portal query should NOT emit clinical psychology refusal
     empty_res = gen.generate_answer(
@@ -222,10 +227,33 @@ def test_generator_platform_mode_grounded_completion(monkeypatch):
         mode="platform",
         user_context={"first_name": "Alex"},
     )
+    assert res["answer"].startswith("Hello Alex!")
     assert "Forgot Password" in res["answer"]
     assert len(res["citations"]) == 1
     assert res["citations"][0]["document_name"] == "PLATFORM_PORTAL_GUIDE.md"
-    mock_client.chat.completions.create.assert_called_once()
+
+    # Unauthenticated Turn 1 falls back to warm generic greeting
+    res_anon = gen.generate_answer(
+        query="How can I reset my portal password?",
+        retrieved_chunks=chunks,
+        mode="platform",
+        user_context={"first_name": "Website Visitor"},
+    )
+    assert res_anon["answer"].startswith("Hi there!")
+
+    # Rapid follow-up with prior assistant message avoids repetitive greeting fluff
+    res_followup = gen.generate_answer(
+        query="What if I don't receive the email?",
+        retrieved_chunks=chunks,
+        mode="platform",
+        user_context={"first_name": "Alex"},
+        chat_history=[
+            {"role": "user", "content": "How can I reset my portal password?"},
+            {"role": "assistant", "content": "Hello Alex!\n\n1. Go to Login.\n2. Click Forgot Password."},
+        ],
+    )
+    assert not res_followup["answer"].startswith("Hello Alex!")
+    assert mock_client.chat.completions.create.call_count == 3
 
 
 @patch("src.rag_service.get_semantic_cache")
@@ -352,6 +380,36 @@ def test_floating_platform_widget_routes_and_sandboxed_chat():
     assert "Platform Help" in res_page.text
     assert "/platform-widget.js" in res_page.text
 
+    res_ctx_anon = client.get("/api/platform-widget/context?current_page=/courses")
+    assert res_ctx_anon.status_code == 200
+    ctx_anon = res_ctx_anon.json()
+    assert ctx_anon["success"] is True
+    assert ctx_anon["authenticated"] is False
+    assert ctx_anon["user_first_name"] == ""
+    assert ctx_anon["greeting_line"] == "Hi there!"
+    assert ctx_anon["current_page"] == "/courses"
+    assert len(ctx_anon["suggested_actions"]) == 4
+
+    with patch("app.get_user_db") as mock_get_db:
+        db = MagicMock()
+        db.get_user_profile.return_value = {"user_id": "1836", "name": "Maya Lin"}
+        mock_get_db.return_value = db
+
+        bearer_headers = _auth_headers(user_id="1836", mode="platform")
+
+        res_ctx_auth = client.get(
+            "/api/platform-widget/context?current_page=/billing",
+            headers=bearer_headers,
+        )
+        assert res_ctx_auth.status_code == 200
+        ctx_auth = res_ctx_auth.json()
+        assert ctx_auth["authenticated"] is True
+        assert ctx_auth["user_id"] == "1836"
+        assert ctx_auth["user_first_name"] == "Maya"
+        assert ctx_auth["greeting_line"] == "Hello Maya!"
+        assert ctx_auth["current_page"] == "/billing"
+        assert any("billing" in chip["label"].lower() or "subscription" in chip["label"].lower() for chip in ctx_auth["suggested_actions"])
+
     with patch("app.execute_rag_pipeline") as mock_rag:
         mock_rag.return_value = {
             "question": "How do I reset my password?",
@@ -363,16 +421,44 @@ def test_floating_platform_widget_routes_and_sandboxed_chat():
         }
         res_chat = client.post(
             "/api/platform-widget/chat",
-            json={"session_id": "plat_demo_1", "message": "How do I reset my password?"},
+            json={
+                "session_id": "plat_demo_1",
+                "message": "How do I reset my password?",
+                "current_page": "/login",
+            },
         )
         assert res_chat.status_code == 200
         payload = res_chat.json()
         assert payload["success"] is True
         assert payload["mode"] == "platform"
         assert payload["session_id"] == "plat_demo_1"
+        assert payload["current_page"] == "/login"
+        assert len(payload["suggested_actions"]) == 4
         assert "Forgot Password" in payload["answer"]
         assert mock_rag.call_args.kwargs["mode"] == "platform"
         assert mock_rag.call_args.kwargs["user_id"] == "plat_visitor_plat_demo_1"
         assert mock_rag.call_args.kwargs["user_profile"]["has_history"] is False
+        assert mock_rag.call_args.kwargs["user_profile"]["current_page"] == "/login"
+
+        with patch("app.get_user_db") as mock_get_db:
+            db = MagicMock()
+            db.get_user_profile.return_value = {"user_id": "1836", "name": "Maya Lin"}
+            mock_get_db.return_value = db
+
+            res_auth_chat = client.post(
+                "/api/platform-widget/chat",
+                json={
+                    "session_id": "plat_demo_auth",
+                    "message": "Where do I open my workbook?",
+                    "current_page": "/courses",
+                },
+                headers=bearer_headers,
+            )
+            assert res_auth_chat.status_code == 200
+            auth_payload = res_auth_chat.json()
+            assert auth_payload["user_first_name"] == "Maya"
+            assert mock_rag.call_args.kwargs["user_id"] == "1836"
+            assert mock_rag.call_args.kwargs["user_profile"]["first_name"] == "Maya"
+
 
 

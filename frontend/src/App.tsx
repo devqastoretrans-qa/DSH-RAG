@@ -1413,7 +1413,7 @@ export const App: React.FC = () => {
         onSelectUser={(uid) => void handleSelectUser(uid)}
       />
       {/* Dedicated Floating Bottom-Right Platform Help Bot */}
-      <PlatformWidget authToken={authToken} />
+      <PlatformWidget authToken={authToken} userId={userId} />
     </div>
   );
 };

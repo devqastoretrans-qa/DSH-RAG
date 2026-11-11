@@ -961,6 +961,135 @@ async def platform_agent_endpoint(
 class PlatformWidgetChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=1000, description="Website or portal navigation question")
     session_id: Optional[str] = Field(default=None, max_length=64, description="Ephemeral widget session ID")
+    current_page: Optional[str] = Field(default=None, max_length=256, description="Active page path where the widget was invoked")
+
+
+def _extract_optional_platform_uid(request: Request) -> Optional[str]:
+    """Extracts and cryptographically verifies an optional caller user_id from headers."""
+    auth_header = request.headers.get("Authorization", "").strip()
+    candidate_token = None
+    if auth_header.lower().startswith("bearer "):
+        candidate_token = auth_header[7:].strip()
+    elif "x-session-token" in request.headers:
+        candidate_token = request.headers.get("x-session-token", "").strip()
+    elif "x-api-key" in request.headers:
+        candidate_token = request.headers.get("x-api-key", "").strip()
+
+    if not candidate_token:
+        return None
+
+    master_key = os.getenv("RAG_API_KEY", "").strip()
+    if master_key and secrets.compare_digest(candidate_token.encode("utf-8"), master_key.encode("utf-8")):
+        return request.headers.get("x-target-user-id", "").strip() or "admin"
+
+    try:
+        claims = verify_session_token(candidate_token)
+        sub = str(claims.get("sub") or "").strip()
+        if sub and sub.lower() not in ("guest", "none", "null"):
+            return sub
+    except ValueError:
+        pass
+    return None
+
+
+def _extract_clean_first_name(profile: Optional[Dict[str, Any]], uid: Optional[str] = None) -> str:
+    """Extracts a human-readable first name from a fetched user profile, returning '' when unavailable."""
+    if not profile:
+        return ""
+    raw = str(profile.get("first_name") or profile.get("name") or profile.get("display_name") or "").strip()
+    if not raw:
+        return ""
+    low = raw.lower()
+    if (
+        low in ("there", "guest", "website visitor", "visitor", "none", "null", "anonymous", "unauthenticated")
+        or low.startswith("plat_visitor_")
+        or (uid and low == uid.strip().lower() and raw.isdigit())
+    ):
+        return ""
+    if "@" in raw:
+        raw = raw.split("@")[0].replace(".", " ").replace("_", " ").title()
+    return raw.split()[0] if " " in raw else raw
+
+
+def _get_platform_suggested_actions(
+    current_page: Optional[str],
+    query: Optional[str] = None
+) -> List[Dict[str, str]]:
+    """Returns contextual quick-reply action chips mapped to current_page and query intent."""
+    page_low = (current_page or "").lower()
+    q_low = (query or "").lower()
+
+    if any(k in page_low for k in ("login", "signin", "sign-in", "lost-password", "reset-password")) or any(
+        k in q_low for k in ("password", "login", "log in", "sign in")
+    ):
+        return [
+            {"label": "Reset forgotten password", "prompt": "How do I reset a forgotten password?"},
+            {"label": "Check login email mismatch", "prompt": "Why can't I see my account after logging in?"},
+            {"label": "Go to course dashboard", "prompt": "How do I open my course dashboard after logging in?"},
+            {"label": "Contact support", "prompt": "How do I contact support if my login still fails?"},
+        ]
+
+    if any(k in page_low for k in ("billing", "checkout", "order", "payment", "subscription", "receipt")) or any(
+        k in q_low for k in ("billing", "receipt", "invoice", "payment", "card", "subscription", "refund")
+    ):
+        return [
+            {"label": "Download order receipt", "prompt": "Where can I download my order receipt or invoice?"},
+            {"label": "Update payment card", "prompt": "How do I update my payment method or subscription?"},
+            {"label": "Find purchased courses", "prompt": "Where do I access a course right after checkout?"},
+            {"label": "Contact billing support", "prompt": "How do I submit a billing support request?"},
+        ]
+
+    if any(k in page_low for k in ("course", "lesson", "module", "dashboard", "workbook", "portal", "my-account")) or any(
+        k in q_low for k in ("course", "module", "lesson", "workbook", "download", "dashboard")
+    ):
+        return [
+            {"label": "Download PDF workbooks", "prompt": "Where do I download course PDF workbooks and exercises?"},
+            {"label": "Course missing from dashboard", "prompt": "What should I check if an enrolled course is missing?"},
+            {"label": "Update account details", "prompt": "How do I update my account email or password?"},
+            {"label": "View orders & billing", "prompt": "Where can I view my orders and billing details?"},
+        ]
+
+    return [
+        {"label": "How do I log in?", "prompt": "How do I log into my account?"},
+        {"label": "Reset forgotten password", "prompt": "How do I reset a forgotten password?"},
+        {"label": "Find courses & workbooks", "prompt": "Where do I find my course dashboard and download workbooks?"},
+        {"label": "Billing & support", "prompt": "How do I check my billing receipts or contact support?"},
+    ]
+
+
+@app.get(
+    "/api/platform-widget/context",
+    tags=["Platform Widget"],
+    summary="Fetch Logged-In User Greeting & Page-Aware Quick Actions for Platform Widget"
+)
+async def platform_widget_context_endpoint(
+    request: Request,
+    current_page: Optional[str] = Query(default=None, max_length=256)
+):
+    """
+    Resolves the currently logged-in user's first name from MySQL / WordPress API (when authenticated)
+    and returns personalized greeting text plus quick-reply action chips mapped to current_page.
+    """
+    uid = _extract_optional_platform_uid(request)
+    first_name = ""
+    if uid:
+        try:
+            user_db = get_user_db()
+            profile = await run_in_threadpool(user_db.get_user_profile, uid)
+            first_name = _extract_clean_first_name(profile, uid=uid)
+        except Exception as e:
+            logger.warning(f"[Platform Widget Context] User lookup failed for '{uid}': {e}")
+
+    greeting_line = f"Hello {first_name}!" if first_name else "Hi there!"
+    return {
+        "success": True,
+        "authenticated": bool(uid),
+        "user_id": uid,
+        "user_first_name": first_name,
+        "greeting_line": greeting_line,
+        "current_page": current_page or "/",
+        "suggested_actions": _get_platform_suggested_actions(current_page),
+    }
 
 
 @app.get(
@@ -1019,33 +1148,25 @@ async def platform_widget_chat_endpoint(
     raw_sid = (body.session_id or "").strip()
     safe_sid = re.sub(r"[^a-zA-Z0-9_-]", "", raw_sid)[:64]
     sid = safe_sid or f"plat_{uuid.uuid4().hex[:16]}"
+    clean_page = (body.current_page or "").strip() or None
 
-    uid = None
-    visitor_profile: Optional[Dict[str, Any]] = None
+    uid = _extract_optional_platform_uid(request)
+    resolved_profile: Optional[Dict[str, Any]] = None
+    user_first_name = ""
 
-    auth_header = request.headers.get("Authorization", "").strip()
-    candidate_token = None
-    if auth_header.lower().startswith("bearer "):
-        candidate_token = auth_header[7:].strip()
-    elif "x-session-token" in request.headers:
-        candidate_token = request.headers.get("x-session-token", "").strip()
-    elif "x-api-key" in request.headers:
-        candidate_token = request.headers.get("x-api-key", "").strip()
-
-    if candidate_token:
-        master_key = os.getenv("RAG_API_KEY", "").strip()
-        if master_key and secrets.compare_digest(candidate_token.encode("utf-8"), master_key.encode("utf-8")):
-            uid = request.headers.get("x-target-user-id", "").strip() or "admin"
-        else:
-            try:
-                claims = verify_session_token(candidate_token)
-                sub = str(claims.get("sub") or "").strip()
-                if sub and sub.lower() not in ("guest", "none", "null"):
-                    uid = sub
-            except ValueError:
-                pass
-
-    if not uid:
+    if uid:
+        try:
+            user_db = get_user_db()
+            fetched = await run_in_threadpool(user_db.get_user_profile, uid)
+            if fetched:
+                resolved_profile = dict(fetched)
+                if clean_page:
+                    resolved_profile["current_page"] = clean_page
+                user_first_name = _extract_clean_first_name(resolved_profile, uid=uid)
+                resolved_profile["first_name"] = user_first_name or "there"
+        except Exception as e:
+            logger.warning(f"[Platform Widget] Failed profile lookup for '{uid}': {e}")
+    else:
         client_ip = (
             request.headers.get("x-forwarded-for", "").split(",")[0].strip()
             or request.headers.get("x-real-ip", "").strip()
@@ -1059,10 +1180,11 @@ async def platform_widget_chat_endpoint(
                 headers={"Retry-After": str(retry_after)}
             )
         uid = f"plat_visitor_{sid}"
-        visitor_profile = {
+        resolved_profile = {
             "user_id": uid,
             "name": "Website Visitor",
             "first_name": "there",
+            "current_page": clean_page,
             "courses_purchased": [],
             "books_purchased": [],
             "all_purchases": [],
@@ -1080,13 +1202,16 @@ async def platform_widget_chat_endpoint(
             generate_answer=True,
             mode="platform",
             conversation_id=sid,
-            user_profile=visitor_profile,
+            user_profile=resolved_profile,
             chat_history=None
         )
         return {
             "success": True,
             "mode": "platform",
             "session_id": sid,
+            "user_first_name": user_first_name,
+            "current_page": clean_page or "/",
+            "suggested_actions": _get_platform_suggested_actions(clean_page, query=clean_msg),
             "question": clean_msg,
             "answer": rag_res.get("answer"),
             "answer_html": rag_res.get("answer_html"),

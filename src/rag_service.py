@@ -210,6 +210,7 @@ def execute_rag_pipeline(
             "streaks": user_profile.get("streaks") or [],
             "recent_activities": user_profile.get("recent_activities") or [],
             "past_records": user_profile.get("past_records") or [],
+            "current_page": user_profile.get("current_page"),
             "has_history": bool(owned or user_profile.get("streaks") or user_profile.get("past_records")),
             "backend": "Stateless Request Payload"
         }
@@ -324,10 +325,14 @@ def execute_rag_pipeline(
         )
         if "@" in str(raw_first):
             raw_first = str(raw_first).split("@")[0].replace(".", " ").replace("_", " ").title()
-        if " " in str(raw_first).strip():
+        if str(raw_first).strip().lower() in ("there", "guest", "website visitor", "visitor", "none", "null", "anonymous", "unauthenticated") or str(raw_first).strip().lower().startswith("plat_visitor_"):
+            greeting_name = "there"
+        elif " " in str(raw_first).strip():
             greeting_name = str(raw_first).strip().split()[0]
         else:
             greeting_name = str(raw_first).strip()
+
+        plat_salutation = f"Hello {greeting_name}!" if greeting_name != "there" else "Hi there!"
 
         is_identity_query = bool(re.search(r"\b(who|what)\s+are\s+you\b|\bwhat\s+can\s+you\s+do\b", clean_query, re.I))
 
@@ -362,7 +367,8 @@ def execute_rag_pipeline(
                 )
             elif mode == "platform":
                 greeting_text = (
-                    f"Hi {greeting_name}! I am Doctor Sarah Hensley's **Platform Navigation Assistant**.{course_mention}\n\n"
+                    f"{plat_salutation}\n\n"
+                    f"I am Doctor Sarah Hensley's **Platform Navigation Assistant**.{course_mention}\n\n"
                     "I can help you locate pages in your membership portal, reset your password, find your enrolled courses and workbooks, manage billing settings, or reach support. What would you like help finding?"
                 )
             else:
@@ -373,7 +379,8 @@ def execute_rag_pipeline(
                 )
         elif mode == "platform":
             greeting_text = (
-                f"Hi {greeting_name}! Welcome to Dr. Sarah Hensley's Membership Portal Guide.{course_mention}\n\n"
+                f"{plat_salutation}\n\n"
+                f"Welcome to Dr. Sarah Hensley's Membership Portal Guide.{course_mention} "
                 "Ask me how to sign in, reset your password, find an enrolled course or workbook, update billing details, or contact support."
             )
         elif mode == "sales":

@@ -14,7 +14,7 @@
     return null;
   })();
 
-  var userCfg = window.DSH_PLATFORM_WIDGET_CONFIG || {};
+  var userCfg = window.DSH_PLATFORM_WIDGET_CONFIG || window.DSH_CHAT_CONFIG || {};
   var detectedOrigin = "";
   if (scriptEl && scriptEl.src) {
     try {
@@ -26,6 +26,7 @@
 
   var apiBase = (
     userCfg.apiUrl ||
+    userCfg.api_url ||
     (scriptEl && scriptEl.getAttribute("data-api-url")) ||
     detectedOrigin ||
     window.location.origin
@@ -59,10 +60,29 @@
     } catch (_) {}
     return fresh;
   }
+  function getCurrentPagePath() {
+    return (window.location.pathname || "/") + (window.location.search || "");
+  }
+  function getAuthToken() {
+    var cfg = window.DSH_PLATFORM_WIDGET_CONFIG || window.DSH_CHAT_CONFIG || {};
+    return (
+      cfg.sessionToken ||
+      cfg.session_token ||
+      (scriptEl && scriptEl.getAttribute("data-token")) ||
+      ""
+    );
+  }
 
   var sessionId = getSessionId();
   var isOpen = openByDefault;
   var isSending = false;
+  var userFirstName = "";
+  var suggestedActions = [
+    { label: "How do I log in?", prompt: "How do I log into my account?" },
+    { label: "Forgot password", prompt: "How do I reset a forgotten password?" },
+    { label: "Find courses & workbooks", prompt: "Where do I find my course dashboard and download workbooks?" },
+    { label: "Billing & support", prompt: "How do I check my billing receipts or contact support?" }
+  ];
 
   var host = document.createElement("div");
   host.id = "dsh-platform-bot-host";
@@ -94,7 +114,7 @@
     ".dsh-msg.bot ol, .dsh-msg.bot ul { margin: 4px 0 8px 0; padding-left: 18px; } .dsh-msg.bot li { margin-bottom: 3px; }",
     ".dsh-msg.bot a { color: #34d399; text-decoration: underline; }",
     ".dsh-msg.user { align-self: flex-end; background: #059669; color: #ffffff; border-bottom-right-radius: 4px; }",
-    ".dsh-quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 10px 14px; background: #0b1120; }",
+    ".dsh-quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 14px; border-top: 1px solid rgba(148,163,184,0.12); background: #0b1120; }",
     ".dsh-chip { border: 1px solid #1e293b; background: #131c31; color: #a7f3d0; border-radius: 9999px; padding: 6px 10px; font-size: 11.5px; cursor: pointer; text-align: left; transition: border-color .15s; }",
     ".dsh-chip:hover { border-color: #10b981; background: #16243d; }",
     ".dsh-footer { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid #1e293b; background: #0f172a; }",
@@ -120,7 +140,7 @@
     "    </div>",
     "    <div>",
     "      <div class='dsh-title'>Platform Help Assistant</div>",
-    "      <div class='dsh-subtitle'>Website, Login, Portal & Billing Guide</div>",
+    "      <div class='dsh-subtitle' data-role='subtitle'>Website, Login, Portal &amp; Billing Guide</div>",
     "    </div>",
     "  </div>",
     "  <div class='dsh-actions'>",
@@ -129,12 +149,7 @@
     "  </div>",
     "</div>",
     "<div class='dsh-body' data-role='messages'></div>",
-    "<div class='dsh-quick' data-role='quick'>",
-    "  <button type='button' class='dsh-chip' data-q='How do I log into my account?'>How do I log in?</button>",
-    "  <button type='button' class='dsh-chip' data-q='How do I reset a forgotten password?'>Forgot password</button>",
-    "  <button type='button' class='dsh-chip' data-q='Where do I find my course dashboard and download workbooks?'>Course & workbooks</button>",
-    "  <button type='button' class='dsh-chip' data-q='How do I check my billing receipts or contact support?'>Billing & support</button>",
-    "</div>",
+    "<div class='dsh-quick' data-role='quick'></div>",
     "<form class='dsh-footer' data-role='form'>",
     "  <input class='dsh-input' data-role='input' type='text' maxlength='1000' placeholder='Ask about login, courses, downloads, billing...' autocomplete='off' />",
     "  <button class='dsh-send' data-role='send' type='submit'>Send</button>",
@@ -155,17 +170,32 @@
 
   var msgContainer = panel.querySelector("[data-role='messages']");
   var quickContainer = panel.querySelector("[data-role='quick']");
+  var subtitleEl = panel.querySelector("[data-role='subtitle']");
   var formEl = panel.querySelector("[data-role='form']");
   var inputEl = panel.querySelector("[data-role='input']");
   var sendBtn = panel.querySelector("[data-role='send']");
 
+  function renderQuickActions(actions) {
+    quickContainer.innerHTML = "";
+    (actions || []).slice(0, 4).forEach(function (item) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "dsh-chip";
+      btn.textContent = item.label;
+      btn.setAttribute("data-q", item.prompt);
+      quickContainer.appendChild(btn);
+    });
+    quickContainer.style.display = (actions && actions.length) ? "flex" : "none";
+  }
+
   function renderWelcome() {
     msgContainer.innerHTML = "";
+    var line1 = userFirstName ? ("Hello " + userFirstName + "!") : "Hi there!";
     appendMessage(
       "bot",
-      "Welcome! I'm your **Platform Navigation Assistant**.\n\nAsk me how to sign in, reset your password, find your course dashboard or workbooks, manage billing, or reach support."
+      line1 + "\n\nI'm your **Platform Navigation Assistant**. Ask me how to sign in, reset your password, find your course dashboard or workbooks, manage billing, or reach support."
     );
-    quickContainer.style.display = "flex";
+    renderQuickActions(suggestedActions);
   }
 
   function escapeHtml(str) {
@@ -214,13 +244,36 @@
     }
   }
 
+  async function loadUserContext() {
+    try {
+      var headers = {};
+      var tok = getAuthToken();
+      if (tok) headers["Authorization"] = "Bearer " + tok;
+      var url = apiBase + "/api/platform-widget/context?current_page=" + encodeURIComponent(getCurrentPagePath());
+      var res = await fetch(url, { headers: headers });
+      if (!res.ok) return;
+      var data = await res.json();
+      if (data && typeof data.user_first_name === "string" && data.user_first_name.trim()) {
+        userFirstName = data.user_first_name.trim();
+        subtitleEl.textContent = "Signed in as " + userFirstName;
+      }
+      if (data && Array.isArray(data.suggested_actions) && data.suggested_actions.length) {
+        suggestedActions = data.suggested_actions;
+      }
+      if (msgContainer.children.length <= 1) {
+        renderWelcome();
+      } else {
+        renderQuickActions(suggestedActions);
+      }
+    } catch (_) {}
+  }
+
   async function sendQuestion(text) {
     var clean = (text || "").trim();
     if (!clean || isSending) return;
 
     isSending = true;
     sendBtn.disabled = true;
-    quickContainer.style.display = "none";
     appendMessage("user", clean, false);
     inputEl.value = "";
 
@@ -228,7 +281,7 @@
 
     try {
       var headers = { "Content-Type": "application/json" };
-      var activeToken = userCfg.sessionToken || (scriptEl && scriptEl.getAttribute("data-token"));
+      var activeToken = getAuthToken();
       if (activeToken) {
         headers["Authorization"] = "Bearer " + activeToken;
       }
@@ -238,7 +291,8 @@
         headers: headers,
         body: JSON.stringify({
           session_id: sessionId,
-          message: clean
+          message: clean,
+          current_page: getCurrentPagePath()
         })
       });
 
@@ -251,6 +305,14 @@
         sessionId = data.session_id;
         try { sessionStorage.setItem(SID_KEY, sessionId); } catch (_) {}
       }
+      if (data.user_first_name && String(data.user_first_name).trim()) {
+        userFirstName = String(data.user_first_name).trim();
+        subtitleEl.textContent = "Signed in as " + userFirstName;
+      }
+      if (Array.isArray(data.suggested_actions) && data.suggested_actions.length) {
+        suggestedActions = data.suggested_actions;
+        renderQuickActions(suggestedActions);
+      }
 
       typingEl.remove();
       if (data.answer_html) {
@@ -260,7 +322,8 @@
       }
     } catch (err) {
       typingEl.remove();
-      appendMessage("bot", "Unable to reach the platform assistant right now: " + (err && err.message ? err.message : "Unknown error"), false);
+      var g = userFirstName ? ("Hello " + userFirstName + "!") : "Hi there!";
+      appendMessage("bot", g + "\n\nUnable to reach the platform assistant right now: " + (err && err.message ? err.message : "Unknown error"), false);
     } finally {
       isSending = false;
       sendBtn.disabled = false;
@@ -292,5 +355,5 @@
   });
 
   renderWelcome();
+  void loadUserContext();
 })();
-
