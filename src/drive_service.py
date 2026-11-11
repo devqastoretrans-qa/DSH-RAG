@@ -145,12 +145,15 @@ class GoogleDriveService:
         env_clin_id = os.getenv("GOOGLE_DRIVE_CLINICAL_FOLDER_ID", "").strip()
         env_sales_id = os.getenv("GOOGLE_DRIVE_SALES_FOLDER_ID", "").strip()
         env_platform_id = os.getenv("GOOGLE_DRIVE_PLATFORM_FOLDER_ID", "").strip()
+        env_owner_id = os.getenv("GOOGLE_DRIVE_OWNER_FOLDER_ID", "").strip()
         if env_clin_id:
             categorized_folders.append({"id": env_clin_id, "name": "Clinical (Env)", "category": "clinical"})
         if env_sales_id:
             categorized_folders.append({"id": env_sales_id, "name": "Sales (Env)", "category": "sales"})
         if env_platform_id:
             categorized_folders.append({"id": env_platform_id, "name": "Platform (Env)", "category": "platform"})
+        if env_owner_id:
+            categorized_folders.append({"id": env_owner_id, "name": "Owner Voice (Env)", "category": "owner"})
 
         # If not explicitly set via individual env vars, auto-discover subfolders inside self.folder_id
         if not categorized_folders and self.folder_id:
@@ -167,7 +170,9 @@ class GoogleDriveService:
                 ).execute()
                 for sf in sub_res.get("files", []):
                     name_low = sf.get("name", "").lower()
-                    if any(k in name_low for k in ("platform", "portal", "helpdesk", "navigation", "website")):
+                    if any(k in name_low for k in ("owner", "founder", "podcast", "voice", "digital twin", "digital_twin", "sarah")):
+                        categorized_folders.append({"id": sf["id"], "name": sf["name"], "category": "owner"})
+                    elif any(k in name_low for k in ("platform", "portal", "helpdesk", "navigation", "website")):
                         categorized_folders.append({"id": sf["id"], "name": sf["name"], "category": "platform"})
                     elif "clinical" in name_low:
                         categorized_folders.append({"id": sf["id"], "name": sf["name"], "category": "clinical"})
@@ -242,7 +247,9 @@ class GoogleDriveService:
             f_name = f.get("name", "")
             f_low = f_name.lower()
             if any(f_low.endswith(ext) for ext in (".pdf", ".docx", ".doc", ".txt", ".md", ".vtt", ".srt")):
-                if any(k in f_low for k in ("platform", "portal", "helpdesk", "navigation")):
+                if any(k in f_low for k in ("owner", "founder", "podcast", "voice", "digital twin", "digital_twin", "lov_doc", "love_doc", "hensley_show")):
+                    cat = "owner"
+                elif any(k in f_low for k in ("platform", "portal", "helpdesk", "navigation")):
                     cat = "platform"
                 elif any(k in f_low for k in ("sales", "catalog", "pricing", "checkout")):
                     cat = "sales"

@@ -122,6 +122,11 @@ PLATFORM_DOMAIN_REGEX = re.compile(
     re.IGNORECASE
 )
 
+OWNER_DOMAIN_REGEX = re.compile(
+    r"\b(sarah\s+hensley|dr\.?\s*sarah|dr\.?\s*hensley|hensley|love\s*doc|lov\s*doc|dating\s+decoder|podcast|show|founder|ceo|story|bio|biography|background|credential|credentials|degree|ph\.?d|doctorate|miami\s+university|kentucky|hensley\s+change\s+model|relational\s+re-?conditioning|philosophy|approach|therapy\s+vs|talk\s+therapy|donald|raina|butcher|elizabeth\s+pomeroy|amy\s+tatiana|team|cnn|washington\s+post|usa\s+today|new\s+york\s+times|coaching\s+style|mission)\b",
+    re.IGNORECASE
+)
+
 
 class OpenAIGeneratorService:
     """
@@ -409,9 +414,9 @@ class OpenAIGeneratorService:
 
         if mode == "owner":
             return (
-                f"{user_salutation}I am Dr. Sarah Hensley's exclusive Owner Agent, dedicated to sharing clinical relationship psychology, attachment theory, and subconscious healing guidance.\n\n"
-                "The topic you asked about is outside the scope of my relationship and attachment work. "
-                "Please feel free to ask me anything about attachment patterns, emotional triggers, communication frameworks, or relationship healing!"
+                f"{user_salutation}I am Dr. Sarah Hensley's exclusive Digital Twin and Owner Agent, dedicated to sharing my founder story, podcast insights, relationship philosophy, attachment science, and practical behavioral coaching.\n\n"
+                "The topic you asked about is outside the scope of my relationship psychology, coaching philosophy, and founder work. "
+                "Please feel free to ask me about my background and podcast, The Hensley Change Model, attachment patterns, emotional triggers, or relationship healing!"
             )
 
         if reason == "off_topic":
@@ -431,6 +436,8 @@ class OpenAIGeneratorService:
         """Check whether the query matches verified domain keywords for the active assistant mode."""
         if mode == "platform":
             return bool(PLATFORM_DOMAIN_REGEX.search(query))
+        if mode == "owner":
+            return bool(CLINICAL_DOMAIN_REGEX.search(query) or OWNER_DOMAIN_REGEX.search(query))
         has_sales_match = (
             mode == "sales"
             and bool(re.search(
@@ -552,16 +559,18 @@ class OpenAIGeneratorService:
             )
         elif mode == "owner":
             return (
-                "You are Dr. Sarah Hensley speaking directly in your authentic, first-person clinical voice ('In my 15 years of clinical practice...', 'What I see with attachment wounds...').\n"
-                "You are a specialized relationship psychologist, master coach, and recognized expert in Attachment Theory and subconscious relational reprogramming.\n\n"
-                "MANDATORY OWNER VOICE RULES:\n"
+                "You are Dr. Sarah Hensley speaking directly in your authentic, first-person voice as Founder, CEO, Social Psychologist, and Attachment & Attraction Expert.\n"
+                "You have access to two complementary knowledge streams in the retrieved excerpts below: (1) Founder Voice, Personal Story, Credentials, Coaching Team & Podcast Insights, and (2) Clinical Attachment Science & Behavioral Frameworks.\n\n"
+                "MANDATORY OWNER VOICE (DIGITAL TWIN) RULES:\n"
                 "0. OPENING GREETING:\n"
-                "   - Begin opening responses cleanly on Line 1 addressing the user by their first name from Customer Profile (e.g., 'Hello {first_name}!' or 'Hi there!' if unavailable) before flowing naturally into your 1st-person response.\n\n"
-                "1. AUTHENTIC 1ST-PERSON TONE:\n"
-                "   - Speak directly as Dr. Sarah Hensley with warmth, authority, directness, and compassionate clinical insight.\n"
-                "   - Ground all insights in your core attachment frameworks (Anxious, Avoidant, Fearful Avoidant, Secure).\n\n"
-                "2. NO CANNED DISCLAIMERS:\n"
-                "   - Do NOT say 'As an AI...' or 'I am an automated assistant...'. Speak naturally and clinically as Dr. Sarah.\n\n"
+                "   - Begin opening responses cleanly on Line 1 addressing the user by their first name from Customer Profile (e.g., 'Hello {first_name}!' or 'Hi there!' if unavailable) before flowing naturally into your 1st-person response. Do not repeat this greeting on continuing follow-up turns.\n\n"
+                "1. AUTHENTIC 1ST-PERSON FOUNDER & CLINICAL TONE:\n"
+                "   - Speak directly as Dr. Sarah Hensley ('My approach...', 'In my work with The Hensley Change Model...', 'What I learned through my own journey...') with clarity, directness, warmth, and behavioral focus.\n"
+                "   - Seamlessly answer questions about your academic background (Miami University, University of Kentucky), personal journey to earned secure attachment, coaching vs. traditional talk therapy, team coaches (such as Elizabeth Pomeroy and Amy Tatiana), The Dr. Sarah Hensley Show / The Love Doc Podcast (with co-host Raina Butcher), AND deep attachment science questions (Anxious, Avoidant, Fearful Avoidant, Secure).\n"
+                "   - Ground every factual claim strictly in the provided knowledge excerpts—never invent credentials, podcast episodes, statistics, or dates.\n\n"
+                "2. STRICT CITATION & NO META-AI RULE:\n"
+                "   - Do NOT include bracketed citations like [1], [Doc: ...], footnotes, or reference lists. Speak seamlessly in your own natural voice.\n"
+                "   - Do NOT say 'As an AI...' or 'I am an automated assistant...'.\n\n"
                 "3. CLINICAL CRISIS BOUNDARY:\n"
                 "   - If a client expresses acute psychological crisis, domestic abuse, or self-harm, gently pause and direct them to professional emergency medical support and crisis lines."
             )

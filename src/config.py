@@ -62,6 +62,22 @@ PLATFORM_FOLDER_KEYWORDS = (
 )
 PLATFORM_FILE_KEYWORDS = ("platform", "portal", "helpdesk", "navigation")
 
+OWNER_COLLECTION: Dict[str, Any] = {
+    "folder_name": "Owner Voice",
+    "collection_name": os.getenv("QDRANT_OWNER_COLLECTION_NAME", "owner_voice").strip() or "owner_voice",
+    "display_name": "Founder Voice & Podcast",
+    "folder_id": os.getenv("GOOGLE_DRIVE_OWNER_FOLDER_ID", "").strip(),
+    "category": "owner"
+}
+
+OWNER_FOLDER_KEYWORDS = (
+    "owner", "founder", "podcast", "voice", "digital twin", "digital_twin", "sarah"
+)
+OWNER_FILE_KEYWORDS = (
+    "owner", "founder", "podcast", "voice", "digital_twin", "digital twin",
+    "lov_doc", "lov doc", "love_doc", "love doc", "sarah_hensley", "hensley_show"
+)
+
 def get_collection_config(key_or_name: str) -> Optional[Dict[str, Any]]:
     """
     Retrieves collection configuration by key ('journals'), folder name ('Journals'), or folder ID.
@@ -92,8 +108,10 @@ def resolve_target_collection(
     default_sales_col = os.getenv("QDRANT_COLLECTION_NAME", "documents").strip() or "documents"
     platform_col = get_platform_collection_name()
     platform_folder_id = os.getenv("GOOGLE_DRIVE_PLATFORM_FOLDER_ID", PLATFORM_COLLECTION.get("folder_id", "")).strip()
+    owner_col = get_owner_collection_name()
+    owner_folder_id = os.getenv("GOOGLE_DRIVE_OWNER_FOLDER_ID", OWNER_COLLECTION.get("folder_id", "")).strip()
 
-    # 1. Explicit Category Checks (Sales & Platform)
+    # 1. Explicit Category Checks (Sales, Platform & Owner)
     cat_clean = (category or "").strip().lower()
     if cat_clean == "sales":
         return {
@@ -109,6 +127,13 @@ def resolve_target_collection(
             "folder_display": PLATFORM_COLLECTION["display_name"],
             "category": "platform"
         }
+    if cat_clean == "owner":
+        return {
+            "collection_name": owner_col,
+            "collection_key": "owner",
+            "folder_display": OWNER_COLLECTION["display_name"],
+            "category": "owner"
+        }
 
     # 2. Check Match by Folder ID
     if folder_id:
@@ -119,6 +144,13 @@ def resolve_target_collection(
                 "collection_key": "platform",
                 "folder_display": PLATFORM_COLLECTION["display_name"],
                 "category": "platform"
+            }
+        if owner_folder_id and clean_fid == owner_folder_id:
+            return {
+                "collection_name": owner_col,
+                "collection_key": "owner",
+                "folder_display": OWNER_COLLECTION["display_name"],
+                "category": "owner"
             }
         if clean_fid in FOLDER_ID_TO_KEY:
             k = FOLDER_ID_TO_KEY[clean_fid]
@@ -133,6 +165,13 @@ def resolve_target_collection(
     # 3. Check Match by Folder Name
     if folder_name:
         f_low = folder_name.strip().lower()
+        if f_low in ("owner", "owner voice", "founder", "podcast") or any(w in f_low for w in OWNER_FOLDER_KEYWORDS):
+            return {
+                "collection_name": owner_col,
+                "collection_key": "owner",
+                "folder_display": OWNER_COLLECTION["display_name"],
+                "category": "owner"
+            }
         if f_low in ("platform", "platform guide", "portal") or any(w in f_low for w in PLATFORM_FOLDER_KEYWORDS):
             return {
                 "collection_name": platform_col,
@@ -169,6 +208,13 @@ def resolve_target_collection(
     # 4. Check Match by Filename heuristics
     if filename:
         fn_low = filename.lower()
+        if any(w in fn_low for w in OWNER_FILE_KEYWORDS):
+            return {
+                "collection_name": owner_col,
+                "collection_key": "owner",
+                "folder_display": OWNER_COLLECTION["display_name"],
+                "category": "owner"
+            }
         if any(w in fn_low for w in PLATFORM_FILE_KEYWORDS):
             return {
                 "collection_name": platform_col,
@@ -210,3 +256,8 @@ def get_all_clinical_collection_names() -> list[str]:
 def get_platform_collection_name() -> str:
     """Returns the dedicated Qdrant collection name for Platform & Portal docs."""
     return os.getenv("QDRANT_PLATFORM_COLLECTION_NAME", PLATFORM_COLLECTION["collection_name"]).strip() or "platform_guide"
+
+
+def get_owner_collection_name() -> str:
+    """Returns the dedicated Qdrant collection name for Owner Agent / Founder Voice docs."""
+    return os.getenv("QDRANT_OWNER_COLLECTION_NAME", OWNER_COLLECTION["collection_name"]).strip() or "owner_voice"

@@ -138,8 +138,10 @@ def compute_bm25_score(query: str, text: str, k1: float = 1.5, b: float = 0.75, 
 from src.config import (
     CLINICAL_COLLECTIONS,
     PLATFORM_COLLECTION,
+    OWNER_COLLECTION,
     get_collection_config,
     get_platform_collection_name,
+    get_owner_collection_name,
 )
 
 
@@ -254,6 +256,27 @@ def search_similar_chunks(
 
         # Retrieve candidates from each target collection and merge (25 per col for full subfolder coverage)
         fetch_per_col = max(top_k * 5, 25) if use_reranker else top_k
+
+        # Owner Agent (Digital Twin) merges Founder Voice / Podcast docs with Clinical Science
+        if mode == "owner":
+            owner_col = get_owner_collection_name()
+            try:
+                owner_candidates = qdrant.search_similar(
+                    query_vector,
+                    top_k=fetch_per_col,
+                    collection_name=owner_col
+                )
+                for c in owner_candidates:
+                    if not c.get("folder_display"):
+                        c["folder_display"] = OWNER_COLLECTION["display_name"]
+                    if not c.get("collection_key"):
+                        c["collection_key"] = "owner"
+                    if not c.get("category"):
+                        c["category"] = "owner"
+                candidates.extend(owner_candidates)
+            except Exception as e:
+                print(f"[Search] Owner voice collection lookup skipped ({owner_col}): {e}")
+
         for k in target_keys:
             cfg = CLINICAL_COLLECTIONS.get(k)
             if not cfg:
@@ -294,9 +317,10 @@ def search_similar_chunks(
             and c.get("category") not in ("sales", "clinical")
         ]
     elif mode in ("generic", "owner", "learning", "coaching"):
+        excluded_cats = ("sales", "platform") if mode == "owner" else ("sales", "platform", "owner")
         clinical_candidates = [
             c for c in candidates
-            if c.get("category") not in ("sales", "platform")
+            if c.get("category") not in excluded_cats
             and not any(k in (c.get("document_name") or c.get("filename") or "").lower() for k in ("sales", "catalog", "pricing", "checkout"))
         ]
         if clinical_candidates:

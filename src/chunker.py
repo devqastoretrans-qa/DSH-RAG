@@ -187,7 +187,9 @@ def chunk_document_pages(
             chunk_category = category
             if not chunk_category:
                 f_low = filename.lower()
-                if any(k in f_low for k in ("platform", "portal", "helpdesk", "navigation")):
+                if any(k in f_low for k in ("owner", "founder", "podcast", "voice", "digital twin", "digital_twin", "lov_doc", "love_doc", "hensley_show")):
+                    chunk_category = "owner"
+                elif any(k in f_low for k in ("platform", "portal", "helpdesk", "navigation")):
                     chunk_category = "platform"
                 elif any(k in f_low for k in ("sales", "catalog", "pricing", "checkout", "masterclass")):
                     chunk_category = "sales"
