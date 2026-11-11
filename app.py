@@ -241,7 +241,7 @@ async def serve_ui(request: Request):
 # Request & Response Schemas
 # -----------------------------------------------------------------------------
 class SearchQueryRequest(BaseModel):
-    query: str = Field(..., min_length=1, max_length=2000, description="Natural language search query", json_schema_extra={"example": "How to avoid being short-tempered?"})
+    query: str = Field(..., min_length=1, max_length=50000, description="Natural language search query", json_schema_extra={"example": "How to avoid being short-tempered?"})
     top_k: int = Field(default=5, ge=1, le=20, description="Number of top matching chunks to retrieve")
     generate_answer: bool = Field(default=True, description="Whether to synthesize an AI answer using retrieved chunks")
     user_id: Optional[str] = Field(default="admin", description="Authenticated user ID to personalize response with purchase history and past records")
@@ -253,7 +253,7 @@ class SearchQueryRequest(BaseModel):
 
 class AskRequest(BaseModel):
     user_id: Optional[str] = Field(default="guest", description="Identifies the user asking the question", json_schema_extra={"example": "john"})
-    question: str = Field(..., min_length=1, max_length=2000, description="The question asked by the user", json_schema_extra={"example": "How can I stay calm when I have ADHD?"})
+    question: str = Field(..., min_length=1, max_length=50000, description="The question asked by the user", json_schema_extra={"example": "How can I stay calm when I have ADHD?"})
     user_profile: Optional[Dict[str, Any]] = Field(default=None, description="Direct customer profile passed from frontend (eliminates database duplication and lookups)")
     chat_history: Optional[List[Dict[str, str]]] = Field(default=None, description="Optional conversational history passed directly from frontend")
     conversation_id: Optional[str] = Field(default=None, description="Allows maintaining conversation history", json_schema_extra={"example": "conv_abc123"})
@@ -282,7 +282,7 @@ class SessionTokenResponse(BaseModel):
 
 class ChatRequest(BaseModel):
     session_id: str = Field(..., description="Unique frontend session ID for conversation tracking", json_schema_extra={"example": "sess_abc123"})
-    message: str = Field(..., min_length=1, max_length=2000, description="User question or follow-up prompt", json_schema_extra={"example": "How do I communicate with my partner?"})
+    message: str = Field(..., min_length=1, max_length=50000, description="User question or follow-up prompt", json_schema_extra={"example": "How do I communicate with my partner?"})
     user_id: Optional[str] = Field(default="admin", description="WordPress user ID or persona key")
     user_profile: Optional[Dict[str, Any]] = Field(default=None, description="Direct customer profile passed from frontend")
     chat_history: Optional[List[Dict[str, str]]] = Field(default=None, description="Optional conversation turns passed directly from frontend")
@@ -1073,9 +1073,18 @@ async def ask_api_v1_stream(
                 "question": clean_query,
                 "answer": crisis_text,
                 "sources": [],
-                "conversation_id": request.conversation_id,
-                "session_id": request.session_id
+                "conversation_id": sid or request.conversation_id,
+                "session_id": sid or request.session_id
             }
+            if uid and uid.lower() != "guest" and sid:
+                conv_memory.record_turn(
+                    user_id=uid,
+                    conversation_id=sid,
+                    user_query=clean_query,
+                    assistant_answer=crisis_text,
+                    retrieved_chunks=[],
+                    mode=req_mode
+                )
             yield f"event: done\ndata: {json.dumps(done_payload)}\n\n"
 
         return StreamingResponse(
@@ -1226,14 +1235,21 @@ async def ask_api_v1_stream(
 
                 # Format clean sources
                 sources = []
-                for chunk in retrieved_chunks:
-                    doc_name = chunk.get("document_name") or chunk.get("filename") or "Document"
-                    score = float(chunk.get("rerank_score", chunk.get("score", 0.0)))
+                for chunk in (retrieved_chunks or []):
+                    if not isinstance(chunk, dict):
+                        continue
+                    doc_name = chunk.get("document_name") or chunk.get("filename") or chunk.get("document") or "Document"
+                    try:
+                        score = float(chunk.get("rerank_score", chunk.get("score", 0.0)) or 0.0)
+                    except (TypeError, ValueError):
+                        score = 0.0
+                    raw_snippet = chunk.get("text") or chunk.get("snippet") or ""
                     sources.append({
                         "document": doc_name,
                         "relevance_score": round(score, 4),
                         "page": chunk.get("page") or chunk.get("page_number"),
-                        "chunk_id": chunk.get("chunk_id")
+                        "chunk_id": chunk.get("chunk_id"),
+                        "snippet": str(raw_snippet)[:320] if raw_snippet else None,
                     })
 
                 done_payload = {
@@ -1402,6 +1418,7 @@ async def chat_endpoint(
                 "question": rag_res["question"],
                 "answer": rag_res["answer"],
                 "answer_html": rag_res.get("answer_html"),
+                "sources": rag_res.get("sources", []),
                 "recommended_products": rag_res.get("recommended_products", []),
                 "disambiguation_options": rag_res.get("disambiguation_options", []),
                 "ai_model": rag_res.get("ai_model"),
@@ -1431,6 +1448,7 @@ async def chat_endpoint(
                 "question": rag_res["question"],
                 "answer": rag_res["answer"],
                 "answer_html": rag_res.get("answer_html"),
+                "sources": rag_res.get("sources", []),
                 "recommended_products": rag_res.get("recommended_products", []),
                 "disambiguation_options": rag_res.get("disambiguation_options", []),
                 "ai_model": rag_res.get("ai_model"),
@@ -1549,16 +1567,23 @@ async def chat_reset_endpoint(
 async def list_chat_sessions_endpoint(
     limit: int = 50,
     mode: Optional[str] = None,
+    q: Optional[str] = None,
+    search: Optional[str] = None,
     auth_claims: Dict[str, Any] = Depends(verify_chat_access)
 ):
     """
     Returns recent conversation sessions strictly for the authenticated user_id,
-    optionally filtered by bot mode ('generic' or 'sales').
+    optionally filtered by bot mode ('generic' or 'sales') and safe parameterized search query.
     Derives user_id solely from the verified token; ignores client query parameters.
     """
     current_uid = auth_claims["user_id"]
     conv_memory = get_conversation_memory()
-    sessions = conv_memory.get_recent_sessions(user_id=current_uid, limit=limit, mode=mode)
+    sessions = conv_memory.get_recent_sessions(
+        user_id=current_uid,
+        limit=limit,
+        mode=mode,
+        search_query=q or search
+    )
     return JSONResponse(status_code=200, content={
         "success": True,
         "count": len(sessions),
@@ -1695,6 +1720,51 @@ async def get_chat_history_endpoint(
         "session_id": session_id,
         "user_id": current_uid,
         "turns": turns
+    })
+
+
+@app.get(
+    "/api/chats/{thread_id}/messages",
+    tags=["Chat API"],
+    summary="Re-hydrate thread messages for a specific conversation thread"
+)
+async def get_thread_messages_endpoint(
+    thread_id: str,
+    mode: Optional[str] = None,
+    limit: int = 100,
+    auth_claims: Dict[str, Any] = Depends(verify_chat_access)
+):
+    """
+    Returns persisted messages for thread_id belonging strictly to the authenticated caller.
+    Used for tab-reload state re-hydration and thread switching. Returns 404 if missing or unowned.
+    """
+    current_uid = auth_claims["user_id"]
+    conv_memory = get_conversation_memory()
+
+    turns = conv_memory.get_session_turns(
+        user_id=current_uid,
+        conversation_id=thread_id,
+        limit=limit,
+        mode=mode
+    )
+    if not turns and not mode:
+        history = conv_memory.get_chat_history(user_id=current_uid, conversation_id=thread_id, max_turns=50)
+        if history:
+            turns = history
+
+    if not turns:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Chat session '{thread_id}' not found."
+        )
+
+    return JSONResponse(status_code=200, content={
+        "success": True,
+        "thread_id": thread_id,
+        "session_id": thread_id,
+        "user_id": current_uid,
+        "turns": turns,
+        "messages": turns
     })
 
 

@@ -17,6 +17,7 @@ export interface SourceCitation {
   relevance_score?: number | null;
   snippet?: string | null;
   text?: string | null;
+  url?: string | null;
 }
 
 export interface RecommendedProduct {
@@ -36,11 +37,22 @@ export interface ChatMessage {
   isStreaming?: boolean;
   isStopped?: boolean;
   isError?: boolean;
+  errorDetail?: string;
+  retryPrompt?: string;
   cached?: boolean;
   latencySec?: string;
   sources?: SourceCitation[];
   recommendedProducts?: RecommendedProduct[];
   retrievalContextSummary?: string;
+}
+
+export interface ToastNotification {
+  id: string;
+  type: 'error' | 'warning' | 'info' | 'success';
+  title?: string;
+  message: string;
+  actionLabel?: string;
+  onAction?: () => void;
 }
 
 export interface ChatThread {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Eraser,
   Plus,
@@ -47,6 +47,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onClearHistory,
   onOpenProfileModal,
 }) => {
+  const [confirmClear, setConfirmClear] = useState(false);
+
   const displayName =
     currentUser?.name ||
     (userId === 'guest' ? 'Guest Visitor' : `User ${userId}`);
@@ -172,17 +174,40 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <Settings className="h-4 w-4 shrink-0 text-slate-400" />
             </button>
 
-            {threads.length > 0 && (
-              <button
-                type="button"
-                onClick={() => void onClearHistory()}
-                className="flex shrink-0 items-center gap-1 rounded-xl border border-slate-200 px-2.5 py-2 text-[11px] font-medium text-slate-600 transition-colors hover:border-rose-500/40 hover:bg-rose-500/10 hover:text-rose-600 dark:border-slate-700/80 dark:text-slate-300 dark:hover:text-rose-400"
-                title="Clear all chats in active mode"
-              >
-                <Eraser className="h-3.5 w-3.5" />
-                <span>Clear</span>
-              </button>
-            )}
+            {threads.length > 0 &&
+              (confirmClear ? (
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConfirmClear(false);
+                      void onClearHistory();
+                    }}
+                    className="rounded-lg bg-rose-600 px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-rose-500"
+                    title="Confirm clear all"
+                  >
+                    Clear All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmClear(false)}
+                    className="rounded-lg border border-slate-300 px-2 py-1.5 text-[11px] text-slate-600 hover:bg-slate-200 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                    title="Cancel"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmClear(true)}
+                  className="flex shrink-0 items-center gap-1 rounded-xl border border-slate-200 px-2.5 py-2 text-[11px] font-medium text-slate-600 transition-colors hover:border-rose-500/40 hover:bg-rose-500/10 hover:text-rose-600 dark:border-slate-700/80 dark:text-slate-300 dark:hover:text-rose-400"
+                  title="Clear all chats in active mode"
+                >
+                  <Eraser className="h-3.5 w-3.5" />
+                  <span>Clear</span>
+                </button>
+              ))}
           </div>
         </div>
       </aside>

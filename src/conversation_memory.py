@@ -79,8 +79,8 @@ class ConversationSession:
                 flags=re.I
             ).strip().rstrip("?.!")
             if len(topic_str) > 3:
-                return topic_str
-        return previous_topic or clean
+                return topic_str[:200]
+        return (previous_topic or clean)[:200]
 
 
 class ConversationMemoryManager:
@@ -223,7 +223,7 @@ class ConversationMemoryManager:
         if key in self._sessions:
             return self._sessions[key]
 
-        # Load from MySQL if active
+        # Load from MySQL if active (fetch newest max_turns * 2 rows, then restore chronological order)
         if self.has_mysql:
             try:
                 now = time.time()
@@ -234,12 +234,12 @@ class ConversationMemoryManager:
                             SELECT role, content, topic, mode, created_at
                             FROM conversation_turns
                             WHERE session_key = %s AND created_at >= %s
-                            ORDER BY created_at ASC, id ASC
+                            ORDER BY created_at DESC, id DESC
                             LIMIT %s
                         """, (key, cutoff, self.max_turns * 2))
-                        rows = cursor.fetchall()
+                        rows = list(reversed(cursor.fetchall()))
                 if rows:
-                    cid = conversation_id.strip() if conversation_id and conversation_id.strip() else "default_conv"
+                    cid = conversation_id.strip()[:100] if conversation_id and conversation_id.strip() else "default_conv"
                     session = ConversationSession(conversation_id=cid, user_id=user_id)
                     last_topic = None
                     last_mode = "generic"
@@ -267,13 +267,13 @@ class ConversationMemoryManager:
                     SELECT role, content, topic, mode, created_at
                     FROM conversation_turns
                     WHERE session_key = ? AND created_at >= ?
-                    ORDER BY created_at ASC, id ASC
+                    ORDER BY created_at DESC, id DESC
                     LIMIT ?
                 """, (key, cutoff, self.max_turns * 2))
-                rows = cursor.fetchall()
+                rows = list(reversed(cursor.fetchall()))
 
             if rows:
-                cid = conversation_id.strip() if conversation_id and conversation_id.strip() else "default_conv"
+                cid = conversation_id.strip()[:100] if conversation_id and conversation_id.strip() else "default_conv"
                 session = ConversationSession(conversation_id=cid, user_id=user_id)
                 last_topic = None
                 last_mode = "generic"
@@ -304,11 +304,14 @@ class ConversationMemoryManager:
             for k in sorted_keys[: len(self._sessions) - self.max_sessions]:
                 self._sessions.pop(k, None)
 
-        # Periodic SQLite TTL purge (prune old turns older than 2 hours)
+        # Purge ONLY ephemeral guest turns older than TTL so persistent user chat history stays intact
         try:
             cutoff = now - self.ttl_seconds
             with self._get_sqlite_conn() as conn:
-                conn.execute("DELETE FROM conversation_turns WHERE created_at < ?", (cutoff,))
+                conn.execute(
+                    "DELETE FROM conversation_turns WHERE session_key LIKE 'guest_ephemeral:%' AND created_at < ?",
+                    (cutoff,)
+                )
                 conn.commit()
         except Exception:
             pass
@@ -386,8 +389,8 @@ class ConversationMemoryManager:
         with self._lock:
             self._cleanup_expired()
             uid = user_id.strip() if user_id and user_id.strip() else "guest"
-            key = self._session_key(user_id, conversation_id)
-            cid = conversation_id.strip() if conversation_id and conversation_id.strip() else key
+            key = self._session_key(user_id, conversation_id)[:150]
+            cid = (conversation_id.strip() if conversation_id and conversation_id.strip() else key)[:100]
 
             if key not in self._sessions:
                 self._sessions[key] = ConversationSession(conversation_id=cid, user_id=uid)
@@ -400,52 +403,40 @@ class ConversationMemoryManager:
                 max_turns=self.max_turns
             )
 
+            topic = (self._sessions[key].last_topic or "")[:255]
+
             # Persist to MySQL for zero-lock multi-worker sharing
             if self.has_mysql:
                 try:
                     now = time.time()
-                    topic = self._sessions[key].last_topic
                     with self._get_mysql_conn() as conn:
                         with conn.cursor() as cur:
                             cur.execute("""
                                 INSERT INTO conversation_turns (session_key, user_id, conversation_id, role, content, topic, mode, created_at, is_orphaned, owner_status)
                                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0, 'verified')
-                            """, (key, user_id, cid, "user", user_query, topic, mode, now))
+                            """, (key, uid, cid, "user", user_query, topic, mode, now))
                             cur.execute("""
                                 INSERT INTO conversation_turns (session_key, user_id, conversation_id, role, content, topic, mode, created_at, is_orphaned, owner_status)
                                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0, 'verified')
-                            """, (key, user_id, cid, "assistant", assistant_answer, topic, mode, now))
-                except Exception:
-                    pass
+                            """, (key, uid, cid, "assistant", assistant_answer, topic, mode, now + 0.0001))
+                except Exception as e:
+                    logger.warning(f"[ConversationMemory] MySQL record_turn failed: {e}")
 
-            # Persist to SQLite as local backup
+            # Persist to SQLite as full conversation store (LLM sliding window stays in RAM via max_turns)
             try:
                 now = time.time()
-                topic = self._sessions[key].last_topic
                 with self._get_sqlite_conn() as conn:
                     conn.execute("""
                         INSERT INTO conversation_turns (session_key, user_id, conversation_id, role, content, topic, mode, created_at, is_orphaned, owner_status)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'verified')
-                    """, (key, user_id, cid, "user", user_query, topic, mode, now))
+                    """, (key, uid, cid, "user", user_query, topic, mode, now))
                     conn.execute("""
                         INSERT INTO conversation_turns (session_key, user_id, conversation_id, role, content, topic, mode, created_at, is_orphaned, owner_status)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'verified')
-                    """, (key, user_id, cid, "assistant", assistant_answer, topic, mode, now))
-
-                    # Prune turns older than the sliding window (max_turns * 2 messages)
-                    conn.execute("""
-                        DELETE FROM conversation_turns
-                        WHERE session_key = ? AND id NOT IN (
-                            SELECT id FROM conversation_turns
-                            WHERE session_key = ?
-                            ORDER BY created_at DESC, id DESC
-                            LIMIT ?
-                        )
-                    """, (key, key, self.max_turns * 2))
-
+                    """, (key, uid, cid, "assistant", assistant_answer, topic, mode, now + 0.0001))
                     conn.commit()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[ConversationMemory] SQLite record_turn failed: {e}")
 
             # Persist to human-readable logs/chat.log
             try:
@@ -573,21 +564,21 @@ class ConversationMemoryManager:
                 logger.warning(f"[ConversationMemory] MySQL delete session failed: {e}")
 
         # 2. Check & Delete in SQLite
-        try:
-            with self._get_sqlite_conn() as conn:
-                cur = conn.cursor()
-                cur.execute("SELECT id FROM conversation_turns WHERE user_id = ? AND conversation_id = ? LIMIT 1", (uid, cid))
-                if cur.fetchone():
-                    found = True
-                cur.execute("DELETE FROM conversation_turns WHERE user_id = ? AND conversation_id = ?", (uid, cid))
-                cur.execute("DELETE FROM conversation_metadata WHERE user_id = ? AND conversation_id = ?", (uid, cid))
-                conn.commit()
-        except Exception as e:
-            logger.error(f"[ConversationMemory] SQLite delete session error: {e}")
-
-        # 3. Clean memory
-        key = self._session_key(uid, cid)
         with self._lock:
+            try:
+                with self._get_sqlite_conn() as conn:
+                    cur = conn.cursor()
+                    cur.execute("SELECT id FROM conversation_turns WHERE user_id = ? AND conversation_id = ? LIMIT 1", (uid, cid))
+                    if cur.fetchone():
+                        found = True
+                    cur.execute("DELETE FROM conversation_turns WHERE user_id = ? AND conversation_id = ?", (uid, cid))
+                    cur.execute("DELETE FROM conversation_metadata WHERE user_id = ? AND conversation_id = ?", (uid, cid))
+                    conn.commit()
+            except Exception as e:
+                logger.error(f"[ConversationMemory] SQLite delete session error: {e}")
+
+            # 3. Clean memory
+            key = self._session_key(uid, cid)
             if key in self._sessions:
                 found = True
                 self._sessions.pop(key, None)
@@ -739,11 +730,12 @@ class ConversationMemoryManager:
         self,
         user_id: str,
         limit: int = 50,
-        mode: Optional[str] = None
+        mode: Optional[str] = None,
+        search_query: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Returns a list of recent conversation sessions strictly for the authenticated user_id.
-        Optionally filters by bot mode (e.g., 'generic' or 'sales').
+        Optionally filters by bot mode (e.g., 'generic' or 'sales') and parameterized search_query.
         Excludes orphaned/unowned records and never leaks another user's sessions.
         Includes session_id, user_id, title (derived from first user query), last updated timestamp, and turn count.
         """
@@ -755,8 +747,14 @@ class ConversationMemoryManager:
 
         clean_uid = str(user_id).strip()
         clean_mode = str(mode).strip() if mode and str(mode).strip() else None
+        clean_search = str(search_query).strip() if search_query and str(search_query).strip() else None
+        like_pattern = None
+        if clean_search:
+            escaped_q = clean_search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            like_pattern = f"%{escaped_q}%"
 
         # 1. Attempt MySQL query if enabled
+        mysql_ok = False
         if self.has_mysql:
             try:
                 with self._get_mysql_conn() as conn:
@@ -766,8 +764,56 @@ class ConversationMemoryManager:
                         if clean_mode:
                             where_clause += " AND mode = %s"
                             params.append(clean_mode)
+                        outer_where = ""
+                        if like_pattern:
+                            outer_where = "WHERE LOWER(COALESCE(sub.title, '')) LIKE LOWER(%s) ESCAPE '\\\\'"
+                            params.append(like_pattern)
                         params.append(limit)
                         sql = f"""
+                            SELECT * FROM (
+                                SELECT 
+                                    conversation_id,
+                                    user_id,
+                                    mode,
+                                    MIN(created_at) as created_at,
+                                    MAX(created_at) as updated_at,
+                                    COUNT(*) as message_count,
+                                    COALESCE(
+                                        NULLIF((SELECT custom_title FROM conversation_metadata cm WHERE cm.user_id = ct.user_id AND cm.conversation_id = ct.conversation_id LIMIT 1), ''),
+                                        (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.user_id = ct.user_id AND ct2.role = 'user' AND ct2.is_orphaned = 0 ORDER BY ct2.id ASC LIMIT 1)
+                                    ) as title
+                                FROM conversation_turns ct
+                                {where_clause}
+                                GROUP BY conversation_id, user_id, mode
+                            ) AS sub
+                            {outer_where}
+                            ORDER BY sub.created_at ASC
+                            LIMIT %s
+                        """
+                        cur.execute(sql, tuple(params))
+                        rows = cur.fetchall()
+                        mysql_ok = True
+            except Exception as e:
+                logger.warning(f"[ConversationMemory] MySQL recent sessions lookup failed, falling back to SQLite: {e}")
+                rows = []
+
+        # 2. Fallback to SQLite when MySQL is unavailable or didn't serve rows
+        if not mysql_ok or (not rows and not clean_search):
+            try:
+                with self._lock, self._get_sqlite_conn() as conn:
+                    cur = conn.cursor()
+                    where_clause = "WHERE user_id = ? AND is_orphaned = 0"
+                    params = [clean_uid]
+                    if clean_mode:
+                        where_clause += " AND mode = ?"
+                        params.append(clean_mode)
+                    outer_where = ""
+                    if like_pattern:
+                        outer_where = "WHERE LOWER(COALESCE(sub.title, '')) LIKE LOWER(?) ESCAPE '\\'"
+                        params.append(like_pattern)
+                    params.append(limit)
+                    sql = f"""
+                        SELECT * FROM (
                             SELECT 
                                 conversation_id,
                                 user_id,
@@ -782,42 +828,9 @@ class ConversationMemoryManager:
                             FROM conversation_turns ct
                             {where_clause}
                             GROUP BY conversation_id, user_id, mode
-                            ORDER BY MIN(created_at) ASC, MIN(id) ASC
-                            LIMIT %s
-                        """
-                        cur.execute(sql, tuple(params))
-                        rows = cur.fetchall()
-            except Exception as e:
-                logger.warning(f"[ConversationMemory] MySQL recent sessions lookup failed, falling back to SQLite: {e}")
-                rows = []
-
-        # 2. Fallback to SQLite
-        if not rows:
-            try:
-                with self._get_sqlite_conn() as conn:
-                    cur = conn.cursor()
-                    where_clause = "WHERE user_id = ? AND is_orphaned = 0"
-                    params = [clean_uid]
-                    if clean_mode:
-                        where_clause += " AND mode = ?"
-                        params.append(clean_mode)
-                    params.append(limit)
-                    sql = f"""
-                        SELECT 
-                            conversation_id,
-                            user_id,
-                            mode,
-                            MIN(created_at) as created_at,
-                            MAX(created_at) as updated_at,
-                            COUNT(*) as message_count,
-                            COALESCE(
-                                NULLIF((SELECT custom_title FROM conversation_metadata cm WHERE cm.user_id = ct.user_id AND cm.conversation_id = ct.conversation_id LIMIT 1), ''),
-                                (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.user_id = ct.user_id AND ct2.role = 'user' AND ct2.is_orphaned = 0 ORDER BY ct2.id ASC LIMIT 1)
-                            ) as title
-                        FROM conversation_turns ct
-                        {where_clause}
-                        GROUP BY conversation_id, user_id, mode
-                        ORDER BY MIN(created_at) ASC, MIN(id) ASC
+                        ) AS sub
+                        {outer_where}
+                        ORDER BY sub.created_at ASC
                         LIMIT ?
                     """
                     cur.execute(sql, tuple(params))
@@ -892,7 +905,7 @@ class ConversationMemoryManager:
 
         if not rows:
             try:
-                with self._get_sqlite_conn() as conn:
+                with self._lock, self._get_sqlite_conn() as conn:
                     cur = conn.cursor()
                     where_clause = "WHERE user_id = ? AND conversation_id = ? AND is_orphaned = 0"
                     params = [clean_uid, clean_cid]

@@ -28,14 +28,22 @@ const GROUP_ORDER: ChronologicalGroup[] = [
   'Older',
 ];
 
-function getChronologicalGroup(tsSeconds: number): ChronologicalGroup {
+function normalizeTimestampMs(tsValue?: number | null): number {
+  const num = Number(tsValue);
+  if (!Number.isFinite(num) || num <= 0) {
+    return Date.now();
+  }
+  return num > 1e12 ? num : num * 1000;
+}
+
+function getChronologicalGroup(tsValue?: number | null): ChronologicalGroup {
   const now = new Date();
   const startOfToday = new Date(
     now.getFullYear(),
     now.getMonth(),
     now.getDate()
   ).getTime();
-  const ms = tsSeconds > 1e12 ? tsSeconds : tsSeconds * 1000;
+  const ms = normalizeTimestampMs(tsValue);
   const diffDays = (startOfToday - ms) / (1000 * 60 * 60 * 24);
 
   if (ms >= startOfToday) return 'Today';
@@ -44,13 +52,22 @@ function getChronologicalGroup(tsSeconds: number): ChronologicalGroup {
   return 'Older';
 }
 
-function formatShortDate(tsSeconds: number): string {
-  const ms = tsSeconds > 1e12 ? tsSeconds : tsSeconds * 1000;
-  return new Date(ms).toLocaleDateString([], {
+function formatShortDate(tsValue?: number | null): string {
+  const ms = normalizeTimestampMs(tsValue);
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString([], {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
   });
+}
+
+function formatIsoDate(tsValue?: number | null): string {
+  const ms = normalizeTimestampMs(tsValue);
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString().slice(0, 10);
 }
 
 export const ChatHistory: React.FC<ChatHistoryProps> = ({
@@ -65,18 +82,16 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const groupedThreads = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const filtered = threads.filter((t) => {
       if (!q) return true;
-      const group = getChronologicalGroup(t.updated_at || t.created_at).toLowerCase();
-      const dateStr = formatShortDate(t.updated_at || t.created_at).toLowerCase();
-      const isoDate = new Date(
-        (t.updated_at || t.created_at) * 1000
-      )
-        .toISOString()
-        .slice(0, 10);
+      const rawTs = t.updated_at || t.created_at;
+      const group = getChronologicalGroup(rawTs).toLowerCase();
+      const dateStr = formatShortDate(rawTs).toLowerCase();
+      const isoDate = formatIsoDate(rawTs).toLowerCase();
       return (
         (t.title || '').toLowerCase().includes(q) ||
         group.includes(q) ||
@@ -93,7 +108,7 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
     };
 
     for (const thread of filtered) {
-      const ts = thread.updated_at || thread.created_at || Date.now() / 1000;
+      const ts = thread.updated_at || thread.created_at;
       buckets[getChronologicalGroup(ts)].push(thread);
     }
 
@@ -155,6 +170,7 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
               {items.map((thread) => {
                 const isActive = thread.session_id === activeSessionId;
                 const isEditing = editingId === thread.session_id;
+                const isConfirmingDelete = confirmDeleteId === thread.session_id;
                 const displayNum = thread.chat_number ? `${thread.chat_number}.` : '';
 
                 return (
@@ -201,11 +217,45 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
                           <X className="h-3.5 w-3.5" />
                         </button>
                       </div>
+                    ) : isConfirmingDelete ? (
+                      <div className="flex flex-1 items-center justify-between gap-2 text-[11px]">
+                        <span className="truncate font-medium text-rose-500 dark:text-rose-400">
+                          Delete chat?
+                        </span>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmDeleteId(null);
+                              void onDeleteThread(thread.session_id);
+                            }}
+                            className="rounded bg-rose-600 px-2 py-0.5 text-[10px] font-semibold text-white hover:bg-rose-500"
+                            title="Confirm delete"
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmDeleteId(null);
+                            }}
+                            className="rounded border border-slate-300 px-1.5 py-0.5 text-[10px] text-slate-600 hover:bg-slate-200 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                            title="Cancel delete"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
                     ) : (
                       <>
                         <button
                           type="button"
-                          onClick={() => onSelectThread(thread)}
+                          onClick={() => {
+                            setConfirmDeleteId(null);
+                            onSelectThread(thread);
+                          }}
                           title={`${displayNum ? displayNum + ' ' : ''}${thread.title}`}
                           className="flex min-w-0 flex-1 items-center gap-2 text-left"
                         >
@@ -229,6 +279,7 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
+                              setConfirmDeleteId(null);
                               setEditingId(thread.session_id);
                               setDraftTitle(thread.title || '');
                             }}
@@ -241,7 +292,7 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              void onDeleteThread(thread.session_id);
+                              setConfirmDeleteId(thread.session_id);
                             }}
                             className="rounded p-1 text-slate-400 hover:bg-rose-500/15 hover:text-rose-500"
                             title="Delete conversation"
@@ -261,4 +312,3 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
     </div>
   );
 };
-

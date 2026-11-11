@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
@@ -9,6 +9,10 @@ export default defineConfig({
     outDir: path.resolve(__dirname, '../static/dist'),
     emptyOutDir: true,
     sourcemap: false,
+  },
+  test: {
+    environment: 'jsdom',
+    globals: true,
   },
   server: {
     port: 5173,

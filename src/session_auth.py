@@ -5,6 +5,7 @@ import json
 import base64
 import time
 import secrets
+import threading
 from collections import defaultdict, deque
 from typing import Optional, Dict, Any, Tuple
 from fastapi import Request, HTTPException, status
@@ -147,35 +148,39 @@ class SlidingWindowRateLimiter:
     """
     In-memory sliding window rate limiter for defense-in-depth protection.
     Limits requests to max_requests within window_seconds per key (IP address or session ID).
+    Thread-safe for concurrent FastAPI async/threadpool workers.
     """
     def __init__(self, max_requests: int = 15, window_seconds: int = 60):
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self.history: Dict[str, deque] = defaultdict(deque)
+        self._lock = threading.Lock()
 
     def is_limited(self, key: str) -> Tuple[bool, int]:
         now = time.time()
         window_start = now - self.window_seconds
-        queue = self.history[key]
+        with self._lock:
+            queue = self.history[key]
 
-        # Purge timestamps outside the sliding window
-        while queue and queue[0] < window_start:
-            queue.popleft()
+            # Purge timestamps outside the sliding window
+            while queue and queue[0] < window_start:
+                queue.popleft()
 
-        if len(queue) >= self.max_requests:
-            oldest = queue[0]
-            retry_after = max(1, int(oldest + self.window_seconds - now))
-            return True, retry_after
+            if len(queue) >= self.max_requests:
+                oldest = queue[0]
+                retry_after = max(1, int(oldest + self.window_seconds - now))
+                return True, retry_after
 
-        queue.append(now)
-        return False, 0
+            queue.append(now)
+            return False, 0
 
     def reset(self, key: Optional[str] = None):
         """Clears rate limit state (useful for testing)."""
-        if key:
-            self.history.pop(key, None)
-        else:
-            self.history.clear()
+        with self._lock:
+            if key:
+                self.history.pop(key, None)
+            else:
+                self.history.clear()
 
 
 # Default singleton rate limiter: 15 messages per 60 seconds per client

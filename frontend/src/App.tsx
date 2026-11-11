@@ -18,15 +18,90 @@ import type {
   QuickPromptPreset,
   RecommendedProduct,
   SourceCitation,
+  ToastNotification,
 } from './types/chat';
 import { Sidebar } from './components/Sidebar';
 import { ChatMessage } from './components/ChatMessage';
 import { ChatInput } from './components/ChatInput';
 import { ProfileSettingsModal } from './components/ProfileSettingsModal';
+import { ToastContainer } from './components/ToastContainer';
+
+const STORAGE_KEYS = {
+  token: 'studio_chat_token',
+  user: 'studio_active_user',
+  mode: 'studio_active_mode',
+  sessionGeneric: 'studio_active_session_generic',
+  sessionSales: 'studio_active_session_sales',
+} as const;
+
+const REQUEST_TIMEOUT_MS = 15000;
+const STREAM_TIMEOUT_MS = 90000;
 
 function createSessionId(mode: BotMode): string {
   const prefix = mode === 'sales' ? 'sess_sales_' : 'sess_clinical_';
-  return prefix + Math.random().toString(36).substring(2, 10);
+  const rand =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID().replace(/-/g, '').slice(0, 10)
+      : Math.random().toString(36).substring(2, 12);
+  return `${prefix}${rand}`;
+}
+
+function getDefaultTitle(mode: BotMode): string {
+  return mode === 'sales' ? 'New Program Advisor Chat' : 'New Clinical Chat';
+}
+
+function getStoredSessionId(mode: BotMode): string | null {
+  try {
+    const key =
+      mode === 'sales' ? STORAGE_KEYS.sessionSales : STORAGE_KEYS.sessionGeneric;
+    const saved = sessionStorage.getItem(key);
+    return saved && saved.trim() ? saved.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistSessionId(mode: BotMode, sessionId: string): void {
+  try {
+    const key =
+      mode === 'sales' ? STORAGE_KEYS.sessionSales : STORAGE_KEYS.sessionGeneric;
+    sessionStorage.setItem(key, sessionId);
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+async function parseHttpErrorMessage(res: Response): Promise<string> {
+  const fallback = `Request failed with HTTP ${res.status}`;
+  try {
+    const text = await res.text();
+    if (!text) return fallback;
+    try {
+      const parsed = JSON.parse(text) as {
+        error?: string;
+        detail?: unknown;
+        message?: string;
+      };
+      if (typeof parsed.error === 'string' && parsed.error.trim()) {
+        return parsed.error.trim();
+      }
+      if (typeof parsed.detail === 'string' && parsed.detail.trim()) {
+        return parsed.detail.trim();
+      }
+      if (Array.isArray(parsed.detail) && parsed.detail.length > 0) {
+        const first = parsed.detail[0] as { msg?: string };
+        if (first?.msg) return first.msg;
+      }
+      if (typeof parsed.message === 'string' && parsed.message.trim()) {
+        return parsed.message.trim();
+      }
+    } catch {
+      return text.slice(0, 200);
+    }
+  } catch {
+    return fallback;
+  }
+  return fallback;
 }
 
 const QUICK_PRESETS: QuickPromptPreset[] = [
@@ -74,6 +149,24 @@ interface ChannelBuffer {
 }
 
 export const App: React.FC = () => {
+  const initialMode: BotMode = (() => {
+    try {
+      const m = sessionStorage.getItem(STORAGE_KEYS.mode);
+      return m === 'sales' ? 'sales' : 'generic';
+    } catch {
+      return 'generic';
+    }
+  })();
+
+  const initialUserId: string = (() => {
+    try {
+      const u = sessionStorage.getItem(STORAGE_KEYS.user);
+      return u && u.trim() ? u.trim() : '1836';
+    } catch {
+      return '1836';
+    }
+  })();
+
   const [isDark, setIsDark] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
@@ -81,10 +174,10 @@ export const App: React.FC = () => {
   const [filter, setFilter] = useState<ChatFilter>({
     searchQuery: '',
     messageFilter: 'all',
-    mode: 'generic',
+    mode: initialMode,
   });
 
-  const [userId, setUserId] = useState('1836');
+  const [userId, setUserId] = useState(initialUserId);
   const [authToken, setAuthToken] = useState('');
   const [usersCatalog, setUsersCatalog] = useState<PersonaUser[]>([]);
   const [systemStats, setSystemStats] = useState<{
@@ -93,17 +186,23 @@ export const App: React.FC = () => {
     users?: number;
   }>({});
 
-  const [channels, setChannels] = useState<Record<BotMode, ChannelBuffer>>({
-    generic: {
-      sessionId: createSessionId('generic'),
-      messages: [],
-      title: 'New Clinical Chat',
-    },
-    sales: {
-      sessionId: createSessionId('sales'),
-      messages: [],
-      title: 'New Program Advisor Chat',
-    },
+  const [channels, setChannels] = useState<Record<BotMode, ChannelBuffer>>(() => {
+    const genSid = getStoredSessionId('generic') || createSessionId('generic');
+    const salesSid = getStoredSessionId('sales') || createSessionId('sales');
+    persistSessionId('generic', genSid);
+    persistSessionId('sales', salesSid);
+    return {
+      generic: {
+        sessionId: genSid,
+        messages: [],
+        title: getDefaultTitle('generic'),
+      },
+      sales: {
+        sessionId: salesSid,
+        messages: [],
+        title: getDefaultTitle('sales'),
+      },
+    };
   });
 
   const [threadsByMode, setThreadsByMode] = useState<
@@ -117,13 +216,49 @@ export const App: React.FC = () => {
   const [inputValue, setInputValue] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [showScrollBottomBtn, setShowScrollBottomBtn] = useState(false);
+  const [toasts, setToasts] = useState<ToastNotification[]>([]);
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const activeRequestSeqRef = useRef(0);
+  const selectThreadSeqRef = useRef(0);
+  const isSubmittingRef = useRef(false);
+  const msgCounterRef = useRef(0);
+  const channelsRef = useRef(channels);
+  channelsRef.current = channels;
 
   const activeMode = filter.mode;
   const activeChannel = channels[activeMode];
   const activeThreads = threadsByMode[activeMode];
+
+  const nextMsgId = useCallback((prefix: string) => {
+    msgCounterRef.current += 1;
+    return `${prefix}_${Date.now()}_${msgCounterRef.current}`;
+  }, []);
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const pushToast = useCallback(
+    (toast: Omit<ToastNotification, 'id'>) => {
+      const id = nextMsgId('toast');
+      setToasts((prev) => [...prev.slice(-3), { ...toast, id }]);
+      window.setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, 6500);
+    },
+    [nextMsgId]
+  );
+
+  // Persist active mode for tab reload recovery
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(STORAGE_KEYS.mode, activeMode);
+    } catch {
+      // ignore
+    }
+  }, [activeMode]);
 
   // Sync Tailwind dark class on <html>
   useEffect(() => {
@@ -145,71 +280,235 @@ export const App: React.FC = () => {
     [authToken]
   );
 
+  const abortActiveStream = useCallback(() => {
+    activeRequestSeqRef.current += 1;
+    isSubmittingRef.current = false;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsStreaming(false);
+  }, []);
+
+  const fetchWithTimeout = useCallback(
+    async (
+      input: RequestInfo | URL,
+      init: RequestInit = {},
+      timeoutMs: number = REQUEST_TIMEOUT_MS
+    ): Promise<Response> => {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(
+        () => controller.abort(new DOMException('Request timed out', 'TimeoutError')),
+        timeoutMs
+      );
+      try {
+        return await fetch(input, {
+          ...init,
+          signal: init.signal || controller.signal,
+        });
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    },
+    []
+  );
+
   const fetchThreads = useCallback(
     async (mode: BotMode, tokenOverride?: string) => {
       const tok = tokenOverride ?? authToken;
       if (!tok) return;
       setIsLoadingThreads(true);
       try {
-        const res = await fetch(
+        const res = await fetchWithTimeout(
           `/api/chat/sessions?mode=${encodeURIComponent(mode)}&limit=50`,
           { headers: buildAuthHeaders(tok) }
         );
-        if (!res.ok) return;
+        if (!res.ok) {
+          const msg = await parseHttpErrorMessage(res);
+          pushToast({
+            type: 'warning',
+            title: 'Session Sync Warning',
+            message: msg,
+          });
+          return;
+        }
         const data = (await res.json()) as { sessions?: ChatThread[] };
         const clean = (data.sessions || []).filter(
           (s) => (s.mode || 'generic') === mode
         );
         setThreadsByMode((prev) => ({ ...prev, [mode]: clean }));
       } catch (err) {
-        console.warn('Failed to fetch sessions:', err);
+        if ((err as Error).name !== 'AbortError') {
+          pushToast({
+            type: 'error',
+            title: 'Failed to Load Chat History',
+            message: 'Network error while fetching past conversations.',
+          });
+        }
       } finally {
         setIsLoadingThreads(false);
       }
     },
-    [authToken, buildAuthHeaders]
+    [authToken, buildAuthHeaders, fetchWithTimeout, pushToast]
   );
 
   const authenticateUser = useCallback(
     async (targetUserId: string) => {
       try {
-        const res = await fetch('/api/auth/token', {
+        const res = await fetchWithTimeout('/api/auth/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ user_id: targetUserId }),
         });
-        if (!res.ok) return '';
+        if (!res.ok) {
+          const msg = await parseHttpErrorMessage(res);
+          pushToast({
+            type: 'error',
+            title: 'Authentication Error',
+            message: msg,
+          });
+          return '';
+        }
         const data = (await res.json()) as { token?: string };
         const tok = data.token || '';
         setAuthToken(tok);
-        sessionStorage.setItem('studio_chat_token', tok);
-        sessionStorage.setItem('studio_active_user', targetUserId);
+        try {
+          sessionStorage.setItem(STORAGE_KEYS.token, tok);
+          sessionStorage.setItem(STORAGE_KEYS.user, targetUserId);
+        } catch {
+          // ignore
+        }
         return tok;
-      } catch (err) {
-        console.warn('Failed to authenticate user:', err);
+      } catch {
+        pushToast({
+          type: 'error',
+          title: 'Connection Error',
+          message: 'Unable to authenticate session with backend.',
+        });
         return '';
       }
     },
-    []
+    [fetchWithTimeout, pushToast]
+  );
+
+  const hydrateThreadMessages = useCallback(
+    async (
+      sessionId: string,
+      targetMode: BotMode,
+      titleFallback?: string,
+      tokenOverride?: string,
+      silentIfNotFound: boolean = false
+    ) => {
+      const seq = ++selectThreadSeqRef.current;
+      setIsLoadingHistory(true);
+      try {
+        const res = await fetchWithTimeout(
+          `/api/chats/${encodeURIComponent(
+            sessionId
+          )}/messages?mode=${encodeURIComponent(targetMode)}`,
+          { headers: buildAuthHeaders(tokenOverride) }
+        );
+        if (seq !== selectThreadSeqRef.current) return;
+
+        if (res.status === 404 && silentIfNotFound) {
+          return;
+        }
+        if (!res.ok) {
+          const errMsg = await parseHttpErrorMessage(res);
+          pushToast({
+            type: 'error',
+            title: `Could Not Load Thread (${res.status})`,
+            message: errMsg,
+          });
+          return;
+        }
+
+        const data = (await res.json()) as {
+          turns?: Array<{
+            role: 'user' | 'assistant' | 'system';
+            content: string;
+            mode?: BotMode;
+            created_at?: number;
+          }>;
+          messages?: Array<{
+            role: 'user' | 'assistant' | 'system';
+            content: string;
+            mode?: BotMode;
+            created_at?: number;
+          }>;
+        };
+
+        const rawList = data.messages || data.turns || [];
+        const mapped: ChatMessageType[] = rawList.map((t, idx) => ({
+          id: `${sessionId}_turn_${idx}`,
+          role:
+            t.role === 'user'
+              ? 'user'
+              : t.role === 'system'
+              ? 'system'
+              : 'assistant',
+          content: t.content,
+          mode: (t.mode as BotMode) || targetMode,
+          createdAt: t.created_at || Date.now() / 1000,
+        }));
+
+        const firstUserTurn = mapped.find((m) => m.role === 'user');
+        const derivedTitle =
+          titleFallback ||
+          (firstUserTurn ? firstUserTurn.content.slice(0, 60) : getDefaultTitle(targetMode));
+
+        persistSessionId(targetMode, sessionId);
+        setChannels((prev) => ({
+          ...prev,
+          [targetMode]: {
+            sessionId,
+            messages: mapped,
+            title: derivedTitle,
+          },
+        }));
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError' && !silentIfNotFound) {
+          pushToast({
+            type: 'error',
+            title: 'Network Error',
+            message: 'Failed to load conversation messages. Please try again.',
+          });
+        }
+      } finally {
+        if (seq === selectThreadSeqRef.current) {
+          setIsLoadingHistory(false);
+        }
+      }
+    },
+    [buildAuthHeaders, fetchWithTimeout, pushToast]
   );
 
   const handleSelectUser = useCallback(
     async (nextUserId: string) => {
-      abortControllerRef.current?.abort();
-      setIsStreaming(false);
-      sessionStorage.clear();
+      abortActiveStream();
+      try {
+        sessionStorage.removeItem(STORAGE_KEYS.sessionGeneric);
+        sessionStorage.removeItem(STORAGE_KEYS.sessionSales);
+        sessionStorage.removeItem(STORAGE_KEYS.token);
+      } catch {
+        // ignore
+      }
       setUserId(nextUserId);
       setThreadsByMode({ generic: [], sales: [] });
+      const genSid = createSessionId('generic');
+      const salesSid = createSessionId('sales');
+      persistSessionId('generic', genSid);
+      persistSessionId('sales', salesSid);
       setChannels({
         generic: {
-          sessionId: createSessionId('generic'),
+          sessionId: genSid,
           messages: [],
-          title: 'New Clinical Chat',
+          title: getDefaultTitle('generic'),
         },
         sales: {
-          sessionId: createSessionId('sales'),
+          sessionId: salesSid,
           messages: [],
-          title: 'New Program Advisor Chat',
+          title: getDefaultTitle('sales'),
         },
       });
       const tok = await authenticateUser(nextUserId);
@@ -217,17 +516,19 @@ export const App: React.FC = () => {
         await fetchThreads(filter.mode, tok);
       }
     },
-    [authenticateUser, fetchThreads, filter.mode]
+    [abortActiveStream, authenticateUser, fetchThreads, filter.mode]
   );
 
-  // Initial startup load
+  // Initial startup load + mid-conversation reload re-hydration
   useEffect(() => {
+    let mounted = true;
     const boot = async () => {
       try {
         const [usersRes, statsRes] = await Promise.all([
-          fetch('/api/users').catch(() => null),
-          fetch('/api/system/stats').catch(() => null),
+          fetchWithTimeout('/api/users').catch(() => null),
+          fetchWithTimeout('/api/system/stats').catch(() => null),
         ]);
+        if (!mounted) return;
         if (usersRes && usersRes.ok) {
           const uData = (await usersRes.json()) as { users?: PersonaUser[] };
           setUsersCatalog(uData.users || []);
@@ -246,13 +547,23 @@ export const App: React.FC = () => {
       } catch {
         // Non-blocking startup stats
       }
-      const tok = await authenticateUser('1836');
-      if (tok) {
-        await fetchThreads('generic', tok);
+
+      const tok = await authenticateUser(initialUserId);
+      if (!mounted || !tok) return;
+
+      await fetchThreads(initialMode, tok);
+      const savedSid = getStoredSessionId(initialMode);
+      if (savedSid) {
+        await hydrateThreadMessages(savedSid, initialMode, undefined, tok, true);
       }
     };
     void boot();
-  }, [authenticateUser, fetchThreads]);
+    return () => {
+      mounted = false;
+      abortControllerRef.current?.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const el = scrollContainerRef.current;
@@ -279,86 +590,58 @@ export const App: React.FC = () => {
 
   const handleModeSwitch = useCallback(
     (nextMode: BotMode) => {
-      if (isStreaming || nextMode === activeMode) return;
+      if (nextMode === activeMode) return;
+      abortActiveStream();
       setFilter((prev) => ({ ...prev, mode: nextMode }));
       void fetchThreads(nextMode);
     },
-    [activeMode, fetchThreads, isStreaming]
+    [abortActiveStream, activeMode, fetchThreads]
   );
 
   const handleNewChat = useCallback(() => {
-    if (isStreaming) {
-      abortControllerRef.current?.abort();
-      setIsStreaming(false);
-    }
+    abortActiveStream();
+    selectThreadSeqRef.current += 1;
+    setIsLoadingHistory(false);
+    const freshSessionId = createSessionId(activeMode);
+    persistSessionId(activeMode, freshSessionId);
     setChannels((prev) => ({
       ...prev,
       [activeMode]: {
-        sessionId: createSessionId(activeMode),
+        sessionId: freshSessionId,
         messages: [],
-        title:
-          activeMode === 'sales'
-            ? 'New Program Advisor Chat'
-            : 'New Clinical Chat',
+        title: getDefaultTitle(activeMode),
       },
     }));
-  }, [activeMode, isStreaming]);
+  }, [abortActiveStream, activeMode]);
 
   const handleSelectThread = useCallback(
     async (thread: ChatThread) => {
-      if (isStreaming) return;
+      abortActiveStream();
       const targetMode = thread.mode || activeMode;
       setFilter((prev) => ({ ...prev, mode: targetMode }));
-      setIsLoadingHistory(true);
-
-      try {
-        const res = await fetch(
-          `/api/chat/history?session_id=${encodeURIComponent(
-            thread.session_id
-          )}&mode=${encodeURIComponent(targetMode)}`,
-          { headers: buildAuthHeaders() }
-        );
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-        const data = (await res.json()) as {
-          turns?: Array<{
-            role: 'user' | 'assistant' | 'system';
-            content: string;
-            mode?: BotMode;
-            created_at?: number;
-          }>;
-        };
-        const mapped: ChatMessageType[] = (data.turns || []).map((t, idx) => ({
-          id: `${thread.session_id}_turn_${idx}`,
-          role: t.role === 'user' ? 'user' : t.role === 'system' ? 'system' : 'assistant',
-          content: t.content,
-          mode: (t.mode as BotMode) || targetMode,
-          createdAt: t.created_at || Date.now() / 1000,
-        }));
-
-        setChannels((prev) => ({
-          ...prev,
-          [targetMode]: {
-            sessionId: thread.session_id,
-            messages: mapped,
-            title: thread.title || 'Conversation',
-          },
-        }));
-        window.setTimeout(() => scrollToBottom('auto'), 40);
-      } catch (err) {
-        console.error('Failed to load thread:', err);
-      } finally {
-        setIsLoadingHistory(false);
-      }
+      persistSessionId(targetMode, thread.session_id);
+      setChannels((prev) => ({
+        ...prev,
+        [targetMode]: {
+          ...prev[targetMode],
+          sessionId: thread.session_id,
+          title: thread.title || 'Conversation',
+        },
+      }));
+      await hydrateThreadMessages(
+        thread.session_id,
+        targetMode,
+        thread.title || 'Conversation'
+      );
+      window.setTimeout(() => scrollToBottom('auto'), 40);
     },
-    [activeMode, buildAuthHeaders, isStreaming, scrollToBottom]
+    [abortActiveStream, activeMode, hydrateThreadMessages, scrollToBottom]
   );
 
   const handleRenameThread = useCallback(
     async (sessionId: string, newTitle: string) => {
       try {
-        const res = await fetch(
+        const res = await fetchWithTimeout(
           `/api/chat/sessions/${encodeURIComponent(sessionId)}`,
           {
             method: 'PATCH',
@@ -368,7 +651,15 @@ export const App: React.FC = () => {
             body: JSON.stringify({ title: newTitle }),
           }
         );
-        if (!res.ok) return;
+        if (!res.ok) {
+          const msg = await parseHttpErrorMessage(res);
+          pushToast({
+            type: 'error',
+            title: 'Rename Failed',
+            message: msg,
+          });
+          return;
+        }
         const data = (await res.json()) as { title?: string };
         const finalTitle = data.title || newTitle;
         setThreadsByMode((prev) => ({
@@ -382,97 +673,141 @@ export const App: React.FC = () => {
             ? { ...prev, [activeMode]: { ...prev[activeMode], title: finalTitle } }
             : prev
         );
-      } catch (err) {
-        console.error('Failed to rename thread:', err);
+      } catch {
+        pushToast({
+          type: 'error',
+          title: 'Network Error',
+          message: 'Unable to rename conversation.',
+        });
       }
     },
-    [activeMode, buildAuthHeaders]
+    [activeMode, buildAuthHeaders, fetchWithTimeout, pushToast]
   );
 
   const handleDeleteThread = useCallback(
     async (sessionId: string) => {
-      if (!window.confirm('Delete this conversation permanently?')) return;
+      const isViewingDeleted = channelsRef.current[activeMode].sessionId === sessionId;
+      if (isViewingDeleted) {
+        abortActiveStream();
+      }
       try {
-        const res = await fetch(
+        const res = await fetchWithTimeout(
           `/api/chat/sessions/${encodeURIComponent(sessionId)}`,
           {
             method: 'DELETE',
             headers: buildAuthHeaders(),
           }
         );
-        if (!res.ok) return;
+        if (!res.ok && res.status !== 404) {
+          const msg = await parseHttpErrorMessage(res);
+          pushToast({
+            type: 'error',
+            title: 'Delete Failed',
+            message: msg,
+          });
+          return;
+        }
         setThreadsByMode((prev) => ({
           ...prev,
           [activeMode]: prev[activeMode].filter((t) => t.session_id !== sessionId),
         }));
-        if (activeChannel.sessionId === sessionId) {
+        if (isViewingDeleted) {
           handleNewChat();
         } else {
           void fetchThreads(activeMode);
         }
-      } catch (err) {
-        console.error('Failed to delete thread:', err);
+      } catch {
+        pushToast({
+          type: 'error',
+          title: 'Network Error',
+          message: 'Failed to delete conversation.',
+        });
       }
     },
-    [activeChannel.sessionId, activeMode, buildAuthHeaders, fetchThreads, handleNewChat]
+    [abortActiveStream, activeMode, buildAuthHeaders, fetchThreads, fetchWithTimeout, handleNewChat, pushToast]
   );
 
   const handleClearHistory = useCallback(async () => {
-    const label =
-      activeMode === 'sales' ? 'Program Advisor' : 'Clinical Educator';
-    if (
-      !window.confirm(
-        `Remove all past ${label} conversations? Your next chat will start as #1.`
-      )
-    ) {
-      return;
-    }
+    abortActiveStream();
     try {
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `/api/chat/sessions?mode=${encodeURIComponent(activeMode)}`,
         {
           method: 'DELETE',
           headers: buildAuthHeaders(),
         }
       );
-      if (!res.ok) return;
+      if (!res.ok) {
+        const msg = await parseHttpErrorMessage(res);
+        pushToast({
+          type: 'error',
+          title: 'Clear History Failed',
+          message: msg,
+        });
+        return;
+      }
       setThreadsByMode((prev) => ({ ...prev, [activeMode]: [] }));
       handleNewChat();
-    } catch (err) {
-      console.error('Failed to clear sessions:', err);
+    } catch {
+      pushToast({
+        type: 'error',
+        title: 'Network Error',
+        message: 'Unable to clear conversation history.',
+      });
     }
-  }, [activeMode, buildAuthHeaders, handleNewChat]);
+  }, [abortActiveStream, activeMode, buildAuthHeaders, fetchWithTimeout, handleNewChat, pushToast]);
 
   const handleStopGeneration = useCallback(() => {
-    abortControllerRef.current?.abort();
-  }, []);
+    abortActiveStream();
+  }, [abortActiveStream]);
 
   const handleSubmitMessage = useCallback(
-    async (overridePrompt?: string, overrideMode?: BotMode) => {
+    async (
+      overridePrompt?: string,
+      overrideMode?: BotMode,
+      options?: { replaceErrorMsgId?: string; skipUserEcho?: boolean }
+    ) => {
       const targetMode = overrideMode || activeMode;
       const text = (overridePrompt ?? inputValue).trim();
-      if (!text || isStreaming) return;
+      if (!text || isSubmittingRef.current) return;
+
+      if (text.length > 50000) {
+        pushToast({
+          type: 'warning',
+          title: 'Prompt Too Long',
+          message: 'Please keep messages under 50,000 characters.',
+        });
+        return;
+      }
+
+      // Synchronous re-entrancy lock prevents rapid-fire race conditions
+      isSubmittingRef.current = true;
+      const reqSeq = ++activeRequestSeqRef.current;
 
       if (overrideMode && overrideMode !== activeMode) {
         setFilter((prev) => ({ ...prev, mode: overrideMode }));
       }
 
-      const channelSnapshot = channels[targetMode];
+      const channelSnapshot = channelsRef.current[targetMode];
       const sessionId = channelSnapshot.sessionId;
+      persistSessionId(targetMode, sessionId);
+
       const isFirstMessage = channelSnapshot.messages.length === 0;
       const nextTitle = isFirstMessage
         ? text.slice(0, 60)
         : channelSnapshot.title;
 
-      const userMsg: ChatMessageType = {
-        id: `user_${Date.now()}`,
-        role: 'user',
-        content: text,
-        mode: targetMode,
-        createdAt: Date.now(),
-      };
+      const userMsg: ChatMessageType | null = options?.skipUserEcho
+        ? null
+        : {
+            id: nextMsgId('user'),
+            role: 'user',
+            content: text,
+            mode: targetMode,
+            createdAt: Date.now(),
+          };
 
-      const assistantMsgId = `bot_${Date.now()}`;
+      const assistantMsgId = nextMsgId('bot');
       const placeholderBotMsg: ChatMessageType = {
         id: assistantMsgId,
         role: 'assistant',
@@ -480,6 +815,7 @@ export const App: React.FC = () => {
         mode: targetMode,
         createdAt: Date.now(),
         isStreaming: true,
+        retryPrompt: text,
       };
 
       if (!overridePrompt) {
@@ -487,31 +823,58 @@ export const App: React.FC = () => {
       }
       setIsStreaming(true);
 
-      setChannels((prev) => ({
-        ...prev,
-        [targetMode]: {
-          ...prev[targetMode],
-          title: nextTitle,
-          messages: [...prev[targetMode].messages, userMsg, placeholderBotMsg],
-        },
-      }));
+      setChannels((prev) => {
+        const baseMessages = options?.replaceErrorMsgId
+          ? prev[targetMode].messages.filter(
+              (m) => m.id !== options.replaceErrorMsgId
+            )
+          : prev[targetMode].messages;
+        return {
+          ...prev,
+          [targetMode]: {
+            ...prev[targetMode],
+            title: nextTitle,
+            messages: [
+              ...baseMessages,
+              ...(userMsg ? [userMsg] : []),
+              placeholderBotMsg,
+            ],
+          },
+        };
+      });
 
       const controller = new AbortController();
       abortControllerRef.current = controller;
+      const timeoutId = window.setTimeout(
+        () =>
+          controller.abort(
+            new DOMException('Response timed out after 90s', 'TimeoutError')
+          ),
+        STREAM_TIMEOUT_MS
+      );
       const startTime = performance.now();
 
       const updateAssistantMsg = (
         updater: (prevMsg: ChatMessageType) => ChatMessageType
       ) => {
-        setChannels((prev) => ({
-          ...prev,
-          [targetMode]: {
-            ...prev[targetMode],
-            messages: prev[targetMode].messages.map((m) =>
-              m.id === assistantMsgId ? updater(m) : m
-            ),
-          },
-        }));
+        setChannels((prev) => {
+          // Strict guard: never mutate a switched/new session or stale superseded request
+          if (
+            activeRequestSeqRef.current !== reqSeq ||
+            prev[targetMode].sessionId !== sessionId
+          ) {
+            return prev;
+          }
+          return {
+            ...prev,
+            [targetMode]: {
+              ...prev[targetMode],
+              messages: prev[targetMode].messages.map((m) =>
+                m.id === assistantMsgId ? updater(m) : m
+              ),
+            },
+          };
+        });
       };
 
       try {
@@ -528,77 +891,121 @@ export const App: React.FC = () => {
           signal: controller.signal,
         });
 
-        if (!res.ok || !res.body) {
-          throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          const errMsg = await parseHttpErrorMessage(res);
+          const apiErr = new Error(errMsg) as Error & { status?: number };
+          apiErr.status = res.status;
+          throw apiErr;
+        }
+
+        if (!res.body) {
+          throw new Error('Streaming response body unavailable.');
         }
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder('utf-8');
+        let sseBuffer = '';
         let accumulated = '';
         let receivedDonePayload = false;
+
+        const processLine = (rawLine: string) => {
+          const line = rawLine.trim();
+          if (!line.startsWith('data:')) return;
+          const jsonStr = line.slice(5).trim();
+          if (!jsonStr || jsonStr === '[DONE]') return;
+
+          const payload = JSON.parse(jsonStr) as {
+            token?: string;
+            done?: boolean;
+            answer?: string;
+            full_answer?: string;
+            sources?: SourceCitation[] | null;
+            recommended_products?: RecommendedProduct[] | null;
+            cached?: boolean;
+          };
+
+          if (typeof payload.token === 'string' && payload.token.length > 0) {
+            accumulated += payload.token;
+            updateAssistantMsg((m) => ({
+              ...m,
+              content: accumulated,
+              isStreaming: true,
+            }));
+          } else if (payload.done || payload.answer !== undefined) {
+            receivedDonePayload = true;
+            const finalAns =
+              payload.answer || payload.full_answer || accumulated || 'No response generated.';
+            const latencySec = (
+              (performance.now() - startTime) /
+              1000
+            ).toFixed(2);
+            const sources = Array.isArray(payload.sources)
+              ? payload.sources.filter(Boolean)
+              : [];
+            const docNames = sources
+              .map((s) => s.document)
+              .filter(Boolean)
+              .slice(0, 3)
+              .join(', ');
+
+            updateAssistantMsg((m) => ({
+              ...m,
+              content: finalAns,
+              isStreaming: false,
+              cached: Boolean(payload.cached),
+              latencySec,
+              sources,
+              recommendedProducts: Array.isArray(payload.recommended_products)
+                ? payload.recommended_products
+                : [],
+              retrievalContextSummary:
+                sources.length > 0
+                  ? `${sources.length} vector chunk${
+                      sources.length === 1 ? '' : 's'
+                    } (${docNames})`
+                  : undefined,
+            }));
+          }
+        };
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n');
+          if (
+            activeRequestSeqRef.current !== reqSeq ||
+            controller.signal.aborted
+          ) {
+            await reader.cancel().catch(() => undefined);
+            break;
+          }
+
+          sseBuffer += decoder.decode(value, { stream: true });
+          const lines = sseBuffer.split(/\r?\n/);
+          sseBuffer = lines.pop() ?? '';
 
           for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
             try {
-              const payload = JSON.parse(line.slice(6)) as {
-                token?: string;
-                done?: boolean;
-                answer?: string;
-                full_answer?: string;
-                sources?: SourceCitation[];
-                recommended_products?: RecommendedProduct[];
-                cached?: boolean;
-              };
-
-              if (payload.token) {
-                accumulated += payload.token;
-                updateAssistantMsg((m) => ({
-                  ...m,
-                  content: accumulated,
-                  isStreaming: true,
-                }));
-              } else if (payload.done || payload.answer) {
-                receivedDonePayload = true;
-                const finalAns =
-                  payload.answer || payload.full_answer || accumulated;
-                const latencySec = (
-                  (performance.now() - startTime) /
-                  1000
-                ).toFixed(2);
-                const sources = payload.sources || [];
-                const docNames = sources
-                  .map((s) => s.document)
-                  .filter(Boolean)
-                  .slice(0, 3)
-                  .join(', ');
-
-                updateAssistantMsg((m) => ({
-                  ...m,
-                  content: finalAns,
-                  isStreaming: false,
-                  cached: Boolean(payload.cached),
-                  latencySec,
-                  sources,
-                  recommendedProducts: payload.recommended_products || [],
-                  retrievalContextSummary:
-                    sources.length > 0
-                      ? `${sources.length} vector chunks (${docNames})`
-                      : undefined,
-                }));
-              }
+              processLine(line);
             } catch {
-              // Ignore partial SSE lines
+              // Malformed JSON line in stream; continue reading remaining chunks safely
             }
           }
         }
 
-        if (!receivedDonePayload && accumulated.length === 0) {
+        if (sseBuffer.trim()) {
+          try {
+            processLine(sseBuffer);
+          } catch {
+            // Ignore trailing incomplete frame
+          }
+        }
+
+        if (
+          activeRequestSeqRef.current === reqSeq &&
+          !controller.signal.aborted &&
+          !receivedDonePayload &&
+          accumulated.length === 0
+        ) {
           // Fallback to non-streaming /chat endpoint
           const fallbackRes = await fetch('/chat', {
             method: 'POST',
@@ -612,27 +1019,44 @@ export const App: React.FC = () => {
             }),
             signal: controller.signal,
           });
+          if (!fallbackRes.ok) {
+            const errMsg = await parseHttpErrorMessage(fallbackRes);
+            const apiErr = new Error(errMsg) as Error & { status?: number };
+            apiErr.status = fallbackRes.status;
+            throw apiErr;
+          }
           const data = (await fallbackRes.json()) as {
             answer?: string;
-            sources?: SourceCitation[];
-            recommended_products?: RecommendedProduct[];
+            sources?: SourceCitation[] | null;
+            recommended_products?: RecommendedProduct[] | null;
             cached?: boolean;
           };
           const latencySec = ((performance.now() - startTime) / 1000).toFixed(2);
+          const sources = Array.isArray(data.sources)
+            ? data.sources.filter(Boolean)
+            : [];
           updateAssistantMsg((m) => ({
             ...m,
             content: data.answer || 'No response generated.',
             isStreaming: false,
             cached: Boolean(data.cached),
             latencySec,
-            sources: data.sources || [],
-            recommendedProducts: data.recommended_products || [],
+            sources,
+            recommendedProducts: Array.isArray(data.recommended_products)
+              ? data.recommended_products
+              : [],
           }));
         } else if (!receivedDonePayload) {
           updateAssistantMsg((m) => ({ ...m, isStreaming: false }));
         }
       } catch (err) {
-        if ((err as Error).name === 'AbortError') {
+        const errorObj = err as Error & { status?: number };
+        const isTimeout =
+          errorObj.name === 'TimeoutError' ||
+          (controller.signal.reason &&
+            (controller.signal.reason as Error).name === 'TimeoutError');
+
+        if (errorObj.name === 'AbortError' && !isTimeout) {
           updateAssistantMsg((m) => ({
             ...m,
             content: m.content || 'Generation stopped by user.',
@@ -640,20 +1064,66 @@ export const App: React.FC = () => {
             isStopped: true,
           }));
         } else {
+          const detail = isTimeout
+            ? 'The server took too long to respond (request timed out).'
+            : errorObj.message || 'Connection error while generating response.';
           updateAssistantMsg((m) => ({
             ...m,
-            content: 'Connection error while generating response. Please try again.',
+            content: `${detail}`,
             isStreaming: false,
             isError: true,
+            errorDetail: detail,
+            retryPrompt: text,
           }));
+          pushToast({
+            type: 'error',
+            title: isTimeout
+              ? 'Request Timed Out'
+              : errorObj.status
+              ? `Server Error (${errorObj.status})`
+              : 'Network Error',
+            message: detail,
+            actionLabel: 'Retry',
+            onAction: () => {
+              void handleSubmitMessage(text, targetMode, {
+                replaceErrorMsgId: assistantMsgId,
+                skipUserEcho: true,
+              });
+            },
+          });
         }
       } finally {
-        setIsStreaming(false);
-        abortControllerRef.current = null;
-        void fetchThreads(targetMode);
+        window.clearTimeout(timeoutId);
+        // Only clear global streaming locks if this request is still the active one
+        if (activeRequestSeqRef.current === reqSeq) {
+          isSubmittingRef.current = false;
+          setIsStreaming(false);
+          if (abortControllerRef.current === controller) {
+            abortControllerRef.current = null;
+          }
+          void fetchThreads(targetMode);
+        }
       }
     },
-    [activeMode, buildAuthHeaders, channels, fetchThreads, inputValue, isStreaming]
+    [
+      activeMode,
+      buildAuthHeaders,
+      fetchThreads,
+      inputValue,
+      nextMsgId,
+      pushToast,
+    ]
+  );
+
+  const handleRetryMessage = useCallback(
+    (failedMessage: ChatMessageType) => {
+      if (!failedMessage.retryPrompt) return;
+      void handleSubmitMessage(failedMessage.retryPrompt, failedMessage.mode, {
+        replaceErrorMsgId: failedMessage.id,
+        skipUserEcho: true,
+      });
+    },
+    [handleSubmitMessage]
   );
 
   const visibleMessages = useMemo(() => {
@@ -692,6 +1162,8 @@ export const App: React.FC = () => {
 
   return (
     <div className="flex h-dvh w-screen overflow-hidden bg-slate-50 text-slate-900 dark:bg-[#0B1120] dark:text-slate-100">
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
       {/* Left Collapsible Sidebar */}
       <Sidebar
         isOpen={sidebarOpen}
@@ -745,7 +1217,6 @@ export const App: React.FC = () => {
 
           {/* Bot Mode Pills + Message Role/Context Filter + Theme Toggle */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* Dual Bot Switcher */}
             <div className="inline-flex rounded-xl border border-slate-200 bg-slate-100 p-0.5 dark:border-slate-800 dark:bg-slate-900">
               <button
                 type="button"
@@ -775,7 +1246,6 @@ export const App: React.FC = () => {
               </button>
             </div>
 
-            {/* Quick Message Filter Toggle */}
             <div
               className="hidden items-center rounded-xl border border-slate-200 bg-slate-100 p-0.5 md:inline-flex dark:border-slate-800 dark:bg-slate-900"
               title="Filter displayed messages"
@@ -805,7 +1275,6 @@ export const App: React.FC = () => {
               ))}
             </div>
 
-            {/* Theme Toggle */}
             <button
               type="button"
               onClick={() => setIsDark((prev) => !prev)}
@@ -838,7 +1307,6 @@ export const App: React.FC = () => {
                 ))}
               </div>
             ) : activeChannel.messages.length === 0 ? (
-              /* Welcome Hero Empty State */
               <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center py-8 text-center">
                 <div
                   className={`mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border shadow-sm ${
@@ -897,13 +1365,13 @@ export const App: React.FC = () => {
                     key={msg.id}
                     message={msg}
                     userInitials={userInitials}
+                    onRetry={handleRetryMessage}
                   />
                 ))}
               </div>
             )}
           </div>
 
-          {/* Floating Scroll-to-Bottom Button */}
           {showScrollBottomBtn && (
             <button
               type="button"
@@ -948,4 +1416,3 @@ export const App: React.FC = () => {
 };
 
 export default App;
-

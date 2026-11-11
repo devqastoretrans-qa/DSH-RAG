@@ -26,6 +26,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [showPresets, setShowPresets] = useState(false);
 
+  const MAX_CHARS = 50000;
+  const isOverLimit = value.length > MAX_CHARS;
+
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
@@ -36,7 +39,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (!isStreaming && value.trim()) {
+      if (!e.repeat && !isStreaming && value.trim() && !isOverLimit) {
         onSubmit();
       }
     }
@@ -118,23 +121,32 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             <button
               type="button"
               onClick={() => onSubmit()}
-              disabled={!value.trim()}
+              disabled={!value.trim() || isOverLimit}
               className={`mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white shadow-sm transition-all disabled:cursor-not-allowed disabled:opacity-35 ${
                 activeMode === 'sales'
                   ? 'bg-amber-500 hover:bg-amber-400'
                   : 'bg-emerald-600 hover:bg-emerald-500'
               }`}
-              title="Send message"
+              title={isOverLimit ? 'Message exceeds 50,000 characters' : 'Send message'}
             >
               <ArrowUp className="h-4 w-4" />
             </button>
           )}
         </div>
 
-        <div className="mt-1.5 flex items-center justify-between px-1 text-[11px] text-slate-400 dark:text-slate-500">
+        <div className="mt-1.5 flex items-center justify-between gap-2 px-1 text-[11px] text-slate-400 dark:text-slate-500">
           <span>
             Press <kbd className="font-mono font-semibold">Enter</kbd> to send •{' '}
             <kbd className="font-mono font-semibold">Shift+Enter</kbd> for new line
+            {value.length > 2000 && (
+              <span
+                className={`ml-2 font-mono ${
+                  isOverLimit ? 'font-semibold text-rose-500' : 'text-slate-400'
+                }`}
+              >
+                ({value.length.toLocaleString()} / {MAX_CHARS.toLocaleString()} chars)
+              </span>
+            )}
           </span>
           <span
             className={

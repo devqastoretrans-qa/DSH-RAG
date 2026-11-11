@@ -1,14 +1,18 @@
 import React, { useMemo, useState } from 'react';
 import DOMPurify from 'dompurify';
 import hljs from 'highlight.js';
+import katex from 'katex';
 import { marked } from 'marked';
 import {
   AlertCircle,
   Bot,
   Briefcase,
   Check,
+  ChevronDown,
+  ChevronUp,
   Copy,
   Database,
+  RotateCcw,
   Sparkles,
   User,
 } from 'lucide-react';
@@ -18,6 +22,7 @@ import { SourceAccordion } from './SourceAccordion';
 export interface ChatMessageProps {
   message: ChatMessageType;
   userInitials?: string;
+  onRetry?: (message: ChatMessageType) => void;
 }
 
 interface ContentSegment {
@@ -26,32 +31,68 @@ interface ContentSegment {
   language?: string;
 }
 
-function splitMarkdownAndCode(raw: string): ContentSegment[] {
-  const segments: ContentSegment[] = [];
-  const fenceRegex = /```([a-zA-Z0-9_+-]*)\n([\s\S]*?)```/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null = null;
+const USER_LONG_MESSAGE_THRESHOLD = 1800;
 
-  while ((match = fenceRegex.exec(raw)) !== null) {
-    if (match.index > lastIndex) {
-      segments.push({
-        type: 'markdown',
-        content: raw.slice(lastIndex, match.index),
-      });
+/**
+ * Splits markdown prose and fenced code blocks while respecting nested fence lengths
+ * (e.g., ``` blocks nested inside ```` fences), CRLF line endings, and unclosed streaming fences.
+ */
+export function splitMarkdownAndCode(raw: string): ContentSegment[] {
+  if (!raw) return [{ type: 'markdown', content: '' }];
+
+  const normalized = raw.replace(/\r\n/g, '\n');
+  const lines = normalized.split('\n');
+  const segments: ContentSegment[] = [];
+  let proseLines: string[] = [];
+  let codeLines: string[] = [];
+  let inCode = false;
+  let fenceLen = 3;
+  let fenceLang = 'text';
+
+  const flushProse = () => {
+    if (proseLines.length > 0) {
+      segments.push({ type: 'markdown', content: proseLines.join('\n') });
+      proseLines = [];
     }
-    segments.push({
-      type: 'code',
-      language: (match[1] || 'text').toLowerCase(),
-      content: match[2].replace(/\n$/, ''),
-    });
-    lastIndex = fenceRegex.lastIndex;
+  };
+
+  for (const line of lines) {
+    const trimmedStart = line.trimStart();
+    if (!inCode) {
+      const openMatch = trimmedStart.match(/^(`{3,})([a-zA-Z0-9_+-]*)\s*$/);
+      if (openMatch) {
+        flushProse();
+        inCode = true;
+        fenceLen = openMatch[1].length;
+        fenceLang = (openMatch[2] || 'text').toLowerCase();
+        codeLines = [];
+        continue;
+      }
+      proseLines.push(line);
+    } else {
+      const closeMatch = trimmedStart.match(/^(`{3,})\s*$/);
+      if (closeMatch && closeMatch[1].length >= fenceLen) {
+        segments.push({
+          type: 'code',
+          language: fenceLang,
+          content: codeLines.join('\n'),
+        });
+        inCode = false;
+        codeLines = [];
+        continue;
+      }
+      codeLines.push(line);
+    }
   }
 
-  if (lastIndex < raw.length) {
+  if (inCode) {
     segments.push({
-      type: 'markdown',
-      content: raw.slice(lastIndex),
+      type: 'code',
+      language: fenceLang,
+      content: codeLines.join('\n'),
     });
+  } else {
+    flushProse();
   }
 
   return segments.length > 0 ? segments : [{ type: 'markdown', content: raw }];
@@ -88,7 +129,7 @@ const CodeBlock: React.FC<{ code: string; language: string }> = ({
   };
 
   return (
-    <div className="code-block-wrapper">
+    <div className="code-block-wrapper max-w-full">
       <div className="code-block-header">
         <span className="uppercase tracking-wider">{language || 'code'}</span>
         <button type="button" onClick={handleCopy} className="code-copy-btn">
@@ -120,9 +161,80 @@ const CodeBlock: React.FC<{ code: string; language: string }> = ({
   );
 };
 
-function renderSafeMarkdownHtml(markdown: string): string {
-  const rawHtml = marked.parse(markdown || '', { async: false }) as string;
-  return DOMPurify.sanitize(rawHtml, {
+function renderLatexExpressions(markdown: string): {
+  processed: string;
+  placeholders: Map<string, string>;
+} {
+  const placeholders = new Map<string, string>();
+  let counter = 0;
+
+  const stashMath = (expr: string, displayMode: boolean): string => {
+    const key = `KATEXPLACEHOLDER${counter++}ENDKATEX`;
+    let rendered = '';
+    try {
+      rendered = katex.renderToString(expr.trim(), {
+        displayMode,
+        throwOnError: false,
+        strict: false,
+        trust: false,
+      });
+    } catch {
+      rendered = expr
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+    placeholders.set(key, rendered);
+    return displayMode ? `\n\n${key}\n\n` : key;
+  };
+
+  // Display math: $$...$$ and \[...\]
+  let out = markdown.replace(/\$\$([\s\S]+?)\$\$/g, (_, inner: string) =>
+    stashMath(inner, true)
+  );
+  out = out.replace(/\\\[([\s\S]+?)\\\]/g, (_, inner: string) =>
+    stashMath(inner, true)
+  );
+
+  // Explicit inline math: \(...\)
+  out = out.replace(/\\\(([\s\S]+?)\\\)/g, (_, inner: string) =>
+    stashMath(inner, false)
+  );
+
+  // Pandoc-style inline $...$ while preserving prices like "$97" and "$197"
+  out = out.replace(
+    /(^|[^\\$])\$(?!\s)([^$\n]+?[^\s$\\]|\S)\$(?!\d)/g,
+    (full: string, prefix: string, inner: string) => {
+      // Skip currency expressions like "$97 and $197" where inner starts with digits & lacks math ops
+      if (/^\d/.test(inner) && !/[\\^_=+\-*/()]/.test(inner)) {
+        return full;
+      }
+      return `${prefix}${stashMath(inner, false)}`;
+    }
+  );
+
+  return { processed: out, placeholders };
+}
+
+export function renderSafeMarkdownHtml(markdown: string): string {
+  const { processed, placeholders } = renderLatexExpressions(markdown || '');
+  let rawHtml = marked.parse(processed, {
+    async: false,
+    gfm: true,
+    breaks: true,
+  }) as string;
+
+  // Restore KaTeX HTML placeholders
+  placeholders.forEach((renderedHtml, key) => {
+    rawHtml = rawHtml.split(key).join(renderedHtml);
+  });
+
+  // Wrap tables inside horizontal scroll containers to protect mobile/card layout
+  rawHtml = rawHtml
+    .replace(/<table([\s\S]*?)>/gi, '<div class="table-scroll-wrapper"><table$1>')
+    .replace(/<\/table>/gi, '</table></div>');
+
+  const sanitized = DOMPurify.sanitize(rawHtml, {
     ALLOWED_TAGS: [
       'p',
       'br',
@@ -143,7 +255,9 @@ function renderSafeMarkdownHtml(markdown: string): string {
       'li',
       'blockquote',
       'code',
+      'pre',
       'hr',
+      'div',
       'table',
       'thead',
       'tbody',
@@ -152,18 +266,74 @@ function renderSafeMarkdownHtml(markdown: string): string {
       'td',
       'span',
       'a',
+      // Safe KaTeX MathML/HTML output tags
+      'math',
+      'semantics',
+      'mrow',
+      'mi',
+      'mn',
+      'mo',
+      'msup',
+      'msub',
+      'mfrac',
+      'msqrt',
+      'mroot',
+      'annotation',
     ],
-    ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'title'],
+    ALLOWED_ATTR: [
+      'href',
+      'target',
+      'rel',
+      'class',
+      'title',
+      'aria-hidden',
+      'encoding',
+      'xmlns',
+      'style',
+    ],
+    FORBID_TAGS: [
+      'script',
+      'iframe',
+      'object',
+      'embed',
+      'form',
+      'input',
+      'textarea',
+      'button',
+      'svg',
+      'img',
+      'style',
+      'link',
+      'meta',
+    ],
+    FORBID_ATTR: [
+      'onerror',
+      'onload',
+      'onclick',
+      'onmouseover',
+      'onfocus',
+      'onblur',
+    ],
+    ALLOW_DATA_ATTR: false,
   });
+
+  // Enforce safe link attributes
+  return sanitized.replace(
+    /<a\b([^>]*?)>/gi,
+    (_m, attrs: string) =>
+      `<a${attrs.replace(/\s*(target|rel)="[^"]*"/gi, '')} target="_blank" rel="noopener noreferrer">`
+  );
 }
 
 export const ChatMessage: React.FC<ChatMessageProps> = ({
   message,
   userInitials = 'U',
+  onRetry,
 }) => {
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
   const isSales = message.mode === 'sales';
+  const [expandLongPrompt, setExpandLongPrompt] = useState(false);
 
   const segments = useMemo(
     () => (isUser ? [] : splitMarkdownAndCode(message.content || '')),
@@ -171,9 +341,11 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   );
 
   const timeLabel = useMemo(() => {
-    const ms =
-      message.createdAt > 1e12 ? message.createdAt : message.createdAt * 1000;
-    return new Date(ms).toLocaleTimeString([], {
+    const rawTs = Number(message.createdAt) || Date.now();
+    const ms = rawTs > 1e12 ? rawTs : rawTs * 1000;
+    const d = new Date(ms);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString([], {
       hour: '2-digit',
       minute: '2-digit',
     });
@@ -187,21 +359,54 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           <div className="font-mono text-[11px] font-semibold uppercase tracking-wide text-sky-600 dark:text-sky-300">
             System / Retrieval Context
           </div>
-          <p className="mt-1 leading-relaxed">{message.content}</p>
+          <p className="mt-1 break-words [overflow-wrap:anywhere] leading-relaxed">
+            {message.content}
+          </p>
         </div>
       </div>
     );
   }
 
   if (isUser) {
+    const rawContent = message.content || '';
+    const isUltraLong = rawContent.length > USER_LONG_MESSAGE_THRESHOLD;
+    const displayedUserText =
+      isUltraLong && !expandLongPrompt
+        ? `${rawContent.slice(0, 1200)}...`
+        : rawContent;
+
     return (
       <div className="mx-auto flex w-full max-w-3xl justify-end gap-3">
-        <div className="flex max-w-[85%] flex-col items-end sm:max-w-[75%]">
-          <div className="rounded-2xl rounded-tr-sm border border-amber-500/25 bg-gradient-to-br from-amber-500/15 to-amber-600/10 px-4 py-3 text-sm leading-relaxed text-slate-900 shadow-sm dark:border-amber-400/25 dark:from-amber-400/15 dark:to-amber-500/10 dark:text-slate-100">
-            <p className="whitespace-pre-wrap break-words">{message.content}</p>
+        <div className="flex min-w-0 max-w-[85%] flex-col items-end sm:max-w-[75%]">
+          <div className="max-w-full overflow-hidden rounded-2xl rounded-tr-sm border border-amber-500/25 bg-gradient-to-br from-amber-500/15 to-amber-600/10 px-4 py-3 text-sm leading-relaxed text-slate-900 shadow-sm dark:border-amber-400/25 dark:from-amber-400/15 dark:to-amber-500/10 dark:text-slate-100">
+            <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+              {displayedUserText}
+            </p>
+            {isUltraLong && (
+              <button
+                type="button"
+                onClick={() => setExpandLongPrompt((prev) => !prev)}
+                className="mt-2 inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2 py-0.5 font-mono text-[11px] font-semibold text-amber-800 hover:bg-amber-500/25 dark:text-amber-200"
+              >
+                {expandLongPrompt ? (
+                  <>
+                    <ChevronUp className="h-3 w-3" />
+                    <span>Collapse prompt</span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-3 w-3" />
+                    <span>
+                      Show full message ({rawContent.length.toLocaleString()}{' '}
+                      chars)
+                    </span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
           <span className="mt-1 px-1 font-mono text-[11px] text-slate-400 dark:text-slate-500">
-            You • {timeLabel}
+            You{timeLabel ? ` • ${timeLabel}` : ''}
           </span>
         </div>
         <div
@@ -233,16 +438,28 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
 
       <div className="min-w-0 flex-1">
         <div
-          className={`rounded-2xl rounded-tl-sm border px-4 py-3.5 shadow-sm ${
+          className={`max-w-full overflow-hidden rounded-2xl rounded-tl-sm border px-4 py-3.5 shadow-sm ${
             message.isError
               ? 'border-rose-500/35 bg-rose-500/10 text-rose-800 dark:text-rose-200'
               : 'border-slate-200 bg-white text-slate-800 dark:border-slate-800 dark:bg-[#131E32] dark:text-slate-100'
           }`}
         >
           {message.isError && (
-            <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400">
-              <AlertCircle className="h-4 w-4" />
-              <span>Generation Notice</span>
+            <div className="mb-2 flex items-center justify-between gap-2 text-xs font-semibold text-rose-600 dark:text-rose-400">
+              <div className="flex items-center gap-1.5">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>Generation Error</span>
+              </div>
+              {onRetry && message.retryPrompt && (
+                <button
+                  type="button"
+                  onClick={() => onRetry(message)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-rose-500/40 bg-rose-500/15 px-2.5 py-1 text-[11px] font-semibold text-rose-700 transition-colors hover:bg-rose-500/25 dark:text-rose-200"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  <span>Retry</span>
+                </button>
+              )}
             </div>
           )}
 
@@ -269,27 +486,29 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
             )}
           </div>
 
-          {message.recommendedProducts &&
+          {Array.isArray(message.recommendedProducts) &&
             message.recommendedProducts.length > 0 && (
               <div className="mt-3 grid gap-2">
                 {message.recommendedProducts.map((prod, idx) => (
                   <div
                     key={`prod-${idx}`}
-                    className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3"
+                    className="min-w-0 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3"
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-1.5 text-sm font-semibold text-amber-800 dark:text-amber-300">
-                        <Sparkles className="h-4 w-4" />
-                        {prod.name || prod.title || 'Recommended Program'}
+                      <span className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-amber-800 dark:text-amber-300">
+                        <Sparkles className="h-4 w-4 shrink-0" />
+                        <span className="truncate">
+                          {prod.name || prod.title || 'Recommended Program'}
+                        </span>
                       </span>
                       {prod.price && (
-                        <span className="rounded-md bg-emerald-500/15 px-2 py-0.5 font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                        <span className="shrink-0 rounded-md bg-emerald-500/15 px-2 py-0.5 font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-300">
                           {prod.price}
                         </span>
                       )}
                     </div>
                     {prod.description && (
-                      <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                      <p className="mt-1 break-words text-xs leading-relaxed text-slate-600 dark:text-slate-300">
                         {prod.description}
                       </p>
                     )}
@@ -299,12 +518,12 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
             )}
 
           {message.retrievalContextSummary && (
-            <div className="mt-2.5 rounded-lg border border-slate-200/80 bg-slate-50 px-3 py-2 font-mono text-[11px] text-slate-600 dark:border-slate-700/60 dark:bg-slate-900/60 dark:text-slate-300">
+            <div className="mt-2.5 break-words rounded-lg border border-slate-200/80 bg-slate-50 px-3 py-2 font-mono text-[11px] text-slate-600 dark:border-slate-700/60 dark:bg-slate-900/60 dark:text-slate-300">
               Context Retrieved: {message.retrievalContextSummary}
             </div>
           )}
 
-          {message.sources && message.sources.length > 0 && (
+          {Array.isArray(message.sources) && message.sources.length > 0 && (
             <SourceAccordion sources={message.sources} mode={message.mode} />
           )}
         </div>
@@ -319,8 +538,12 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           >
             {isSales ? 'Program Advisor' : 'Clinical Educator'}
           </span>
-          <span>•</span>
-          <span>{timeLabel}</span>
+          {timeLabel && (
+            <>
+              <span>•</span>
+              <span>{timeLabel}</span>
+            </>
+          )}
           {message.cached && (
             <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-600 dark:text-amber-300">
               Cached
@@ -337,4 +560,3 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
     </div>
   );
 };
-
