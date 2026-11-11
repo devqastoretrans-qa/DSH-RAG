@@ -247,7 +247,7 @@ class SearchQueryRequest(BaseModel):
     user_id: Optional[str] = Field(default="admin", description="Authenticated user ID to personalize response with purchase history and past records")
     user_profile: Optional[Dict[str, Any]] = Field(default=None, description="Optional direct customer profile passed from frontend (eliminates database duplication)")
     chat_history: Optional[List[Dict[str, str]]] = Field(default=None, description="Optional conversation turns passed directly from frontend")
-    mode: Optional[str] = Field(default="generic", description="Response mode: 'generic' or 'sales'")
+    mode: Optional[str] = Field(default="generic", description="Response mode: 'generic', 'sales', or 'platform'")
     conversation_id: Optional[str] = Field(default=None, description="Active conversation tracking identifier for multi-turn chat memory")
 
 
@@ -258,14 +258,14 @@ class AskRequest(BaseModel):
     chat_history: Optional[List[Dict[str, str]]] = Field(default=None, description="Optional conversational history passed directly from frontend")
     conversation_id: Optional[str] = Field(default=None, description="Allows maintaining conversation history", json_schema_extra={"example": "conv_abc123"})
     session_id: Optional[str] = Field(default=None, description="Allows associating the request with a particular session", json_schema_extra={"example": "sess_xyz789"})
-    mode: Optional[str] = Field(default="generic", description="Response mode: 'generic' (clinical) or 'sales'")
+    mode: Optional[str] = Field(default="generic", description="Response mode: 'generic' (clinical), 'sales', or 'platform'")
     folders: Optional[List[str]] = Field(default=None, description="Optional list of clinical subfolders to search ('journals', 'other', 'tools', 'reflections')")
 
 
 class SessionTokenRequest(BaseModel):
     user_id: Optional[str] = Field(default="guest", description="WordPress user ID or username", json_schema_extra={"example": "1042"})
     session_id: Optional[str] = Field(default=None, description="Frontend chat session ID", json_schema_extra={"example": "sess_98765"})
-    mode: Optional[str] = Field(default="generic", description="Response lane: 'generic' or 'sales'")
+    mode: Optional[str] = Field(default="generic", description="Response lane: 'generic', 'sales', or 'platform'")
     ttl_seconds: Optional[int] = Field(default=7200, ge=60, le=86400, description="Token validity in seconds (default 2 hours = 7200s)")
 
 
@@ -286,14 +286,14 @@ class ChatRequest(BaseModel):
     user_id: Optional[str] = Field(default="admin", description="WordPress user ID or persona key")
     user_profile: Optional[Dict[str, Any]] = Field(default=None, description="Direct customer profile passed from frontend")
     chat_history: Optional[List[Dict[str, str]]] = Field(default=None, description="Optional conversation turns passed directly from frontend")
-    mode: Optional[str] = Field(default="generic", description="Bot lane: 'generic' (clinical) or 'sales'")
+    mode: Optional[str] = Field(default="generic", description="Bot lane: 'generic' (clinical), 'sales', or 'platform'")
     session_token: Optional[str] = Field(default=None, description="Temporary HMAC-SHA256 session token issued by WordPress")
 
 
 class ChatResetRequest(BaseModel):
     session_id: str = Field(..., description="Session ID to clear", json_schema_extra={"example": "sess_abc123"})
     user_id: Optional[str] = Field(default=None, description="Optional user ID")
-    mode: Optional[str] = Field(default=None, description="Optional bot lane: 'generic' or 'sales'")
+    mode: Optional[str] = Field(default=None, description="Optional bot lane: 'generic', 'sales', or 'platform'")
     session_token: Optional[str] = Field(default=None, description="Temporary HMAC-SHA256 session token issued by WordPress")
 
 
@@ -913,6 +913,7 @@ async def _handle_agent_chat_endpoint(
         )
         return {
             "success": True,
+            "mode": mode,
             "agent": mode,
             "agent_name": agent_name,
             "session_id": sid,
@@ -1096,7 +1097,7 @@ async def ask_api_v1_stream(
     # 1. Resolve Multi-Turn Follow-Ups and Entity Stitching (<0.1ms)
     resolved_query, can_reuse_chunks, cached_chunks = conv_memory.resolve_follow_up(
         user_id=uid,
-        conversation_id=request.conversation_id,
+        conversation_id=sid,
         query=clean_query
     )
     is_follow_up = (resolved_query != clean_query) or can_reuse_chunks
@@ -1255,7 +1256,7 @@ async def ask_api_v1_stream(
                 done_payload = {
                     "success": True,
                     "mode": req_mode,
-                    "user_id": request.user_id,
+                    "user_id": uid,
                     "question": clean_query,
                     "answer": full_answer,
                     "answer_html": answer_html,
@@ -1573,7 +1574,7 @@ async def list_chat_sessions_endpoint(
 ):
     """
     Returns recent conversation sessions strictly for the authenticated user_id,
-    optionally filtered by bot mode ('generic' or 'sales') and safe parameterized search query.
+    optionally filtered by bot mode ('generic', 'sales', or 'platform') and safe parameterized search query.
     Derives user_id solely from the verified token; ignores client query parameters.
     """
     current_uid = auth_claims["user_id"]
@@ -1674,7 +1675,7 @@ async def delete_all_chat_sessions_endpoint(
 ):
     """
     Deletes all chat sessions belonging strictly to the authenticated caller,
-    optionally scoped to a single bot mode ('generic' or 'sales').
+    optionally scoped to a single bot mode ('generic', 'sales', or 'platform').
     """
     current_uid = auth_claims["user_id"]
     conv_memory = get_conversation_memory()
@@ -1698,7 +1699,7 @@ async def get_chat_history_endpoint(
 ):
     """
     Returns recent multi-turn conversation turns for the active session,
-    optionally filtered by bot mode ('generic' or 'sales').
+    optionally filtered by bot mode ('generic', 'sales', or 'platform').
     Strictly verifies ownership: Returns 404 if session belongs to another user or does not exist.
     """
     current_uid = auth_claims["user_id"]

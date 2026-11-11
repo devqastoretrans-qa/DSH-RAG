@@ -86,6 +86,18 @@ class ConversationSession:
 class ConversationMemoryManager:
     """Thread-safe conversation manager with hybrid SQLite persistence and fast in-memory LRU cache."""
 
+    VALID_MODES = ("generic", "sales", "platform", "owner", "learning", "coaching")
+
+    @staticmethod
+    def _normalize_mode(mode: Optional[str], default: str = "generic") -> str:
+        """Normalizes known bot modes without collapsing distinct agent lanes to 'generic'."""
+        if not mode or not str(mode).strip():
+            return default
+        clean = str(mode).strip().lower()
+        if clean in ConversationMemoryManager.VALID_MODES:
+            return clean
+        return default
+
     def __init__(self, ttl_seconds: int = CHAT_HISTORY_TTL_SECONDS, max_sessions: int = 500, max_turns: int = CHAT_HISTORY_TURNS):
         self.ttl_seconds = ttl_seconds
         self.max_sessions = max_sessions
@@ -392,6 +404,7 @@ class ConversationMemoryManager:
             key = self._session_key(user_id, conversation_id)[:150]
             cid = (conversation_id.strip() if conversation_id and conversation_id.strip() else key)[:100]
 
+            clean_mode = self._normalize_mode(mode)
             if key not in self._sessions:
                 self._sessions[key] = ConversationSession(conversation_id=cid, user_id=uid)
 
@@ -399,7 +412,7 @@ class ConversationMemoryManager:
                 user_query=user_query,
                 assistant_answer=assistant_answer,
                 retrieved_chunks=retrieved_chunks,
-                mode=mode,
+                mode=clean_mode,
                 max_turns=self.max_turns
             )
 
@@ -414,11 +427,11 @@ class ConversationMemoryManager:
                             cur.execute("""
                                 INSERT INTO conversation_turns (session_key, user_id, conversation_id, role, content, topic, mode, created_at, is_orphaned, owner_status)
                                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0, 'verified')
-                            """, (key, uid, cid, "user", user_query, topic, mode, now))
+                            """, (key, uid, cid, "user", user_query, topic, clean_mode, now))
                             cur.execute("""
                                 INSERT INTO conversation_turns (session_key, user_id, conversation_id, role, content, topic, mode, created_at, is_orphaned, owner_status)
                                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0, 'verified')
-                            """, (key, uid, cid, "assistant", assistant_answer, topic, mode, now + 0.0001))
+                            """, (key, uid, cid, "assistant", assistant_answer, topic, clean_mode, now + 0.0001))
                 except Exception as e:
                     logger.warning(f"[ConversationMemory] MySQL record_turn failed: {e}")
 
@@ -429,11 +442,11 @@ class ConversationMemoryManager:
                     conn.execute("""
                         INSERT INTO conversation_turns (session_key, user_id, conversation_id, role, content, topic, mode, created_at, is_orphaned, owner_status)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'verified')
-                    """, (key, uid, cid, "user", user_query, topic, mode, now))
+                    """, (key, uid, cid, "user", user_query, topic, clean_mode, now))
                     conn.execute("""
                         INSERT INTO conversation_turns (session_key, user_id, conversation_id, role, content, topic, mode, created_at, is_orphaned, owner_status)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'verified')
-                    """, (key, uid, cid, "assistant", assistant_answer, topic, mode, now + 0.0001))
+                    """, (key, uid, cid, "assistant", assistant_answer, topic, clean_mode, now + 0.0001))
                     conn.commit()
             except Exception as e:
                 logger.warning(f"[ConversationMemory] SQLite record_turn failed: {e}")
@@ -488,7 +501,7 @@ class ConversationMemoryManager:
                     pass
             elif conversation_id:
                 if mode:
-                    clean_mode = "sales" if str(mode).lower() == "sales" else "generic"
+                    clean_mode = self._normalize_mode(mode)
                     keys_to_remove = [k for k in self._sessions if conversation_id in k and (clean_mode in k or getattr(self._sessions[k], "last_mode", None) == clean_mode)]
                     for k in keys_to_remove:
                         self._sessions.pop(k, None)
@@ -521,7 +534,7 @@ class ConversationMemoryManager:
                 try:
                     with self._get_sqlite_conn() as conn:
                         if mode:
-                            clean_mode = "sales" if str(mode).lower() == "sales" else "generic"
+                            clean_mode = self._normalize_mode(mode)
                             conn.execute("DELETE FROM conversation_turns WHERE user_id = ? AND mode = ?", (user_id, clean_mode))
                         else:
                             conn.execute("DELETE FROM conversation_turns WHERE user_id = ?", (user_id,))
@@ -596,7 +609,7 @@ class ConversationMemoryManager:
         uid = str(user_id).strip()
         if uid.lower() in ("", "guest", "none", "null"):
             return 0
-        clean_mode = str(mode).strip() if mode and str(mode).strip() else None
+        clean_mode = self._normalize_mode(mode) if mode and str(mode).strip() else None
 
         deleted = 0
         if self.has_mysql:
@@ -746,7 +759,7 @@ class ConversationMemoryManager:
             return []
 
         clean_uid = str(user_id).strip()
-        clean_mode = str(mode).strip() if mode and str(mode).strip() else None
+        clean_mode = self._normalize_mode(mode) if mode and str(mode).strip() else None
         clean_search = str(search_query).strip() if search_query and str(search_query).strip() else None
         like_pattern = None
         if clean_search:
@@ -879,7 +892,7 @@ class ConversationMemoryManager:
 
         clean_uid = str(user_id).strip()
         clean_cid = str(conversation_id).strip()
-        clean_mode = str(mode).strip() if mode and str(mode).strip() else None
+        clean_mode = self._normalize_mode(mode) if mode and str(mode).strip() else None
 
         if self.has_mysql:
             try:

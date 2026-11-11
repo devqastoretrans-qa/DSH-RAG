@@ -241,8 +241,8 @@ def execute_rag_pipeline(
 
     logger.info(f"[RAG] Request received for user '{effective_uid}' (question length: {len(clean_query)})")
 
-    # 2.2 Tier 0.5: Vague / Low-Entropy Distress Diagnostic Router
-    if VAGUE_DISTRESS_REGEX.match(clean_query):
+    # 2.2 Tier 0.5: Vague / Low-Entropy Distress Diagnostic Router (Clinical / Sales lanes only)
+    if mode != "platform" and VAGUE_DISTRESS_REGEX.match(clean_query):
         greeting_name = (
             user_profile.get("first_name")
             or user_profile.get("name")
@@ -360,12 +360,22 @@ def execute_rag_pipeline(
                     f"{attach_mention}I help members navigate relationship roadblocks and connect with the right course, bundle, or consultation tailored to their healing goals. "
                     "How can I assist you with your relationship today?"
                 )
+            elif mode == "platform":
+                greeting_text = (
+                    f"Hi {greeting_name}! I am Doctor Sarah Hensley's **Platform Navigation Assistant**.{course_mention}\n\n"
+                    "I can help you locate pages in your membership portal, reset your password, find your enrolled courses and workbooks, manage billing settings, or reach support. What would you like help finding?"
+                )
             else:
                 greeting_text = (
                     f"Hi {greeting_name}! I am Doctor Sarah Hensley's Relationship Science AI Assistant.{course_mention}\n\n"
                     f"{attach_mention}I provide clinically validated relationship strategies, attachment theory breakdowns, and conflict de-escalation frameworks (such as the 1-1-1 journal and Boundary Ladder) based on Dr. Sarah's verified knowledge base. "
                     "What relationship topic or challenge would you like to explore?"
                 )
+        elif mode == "platform":
+            greeting_text = (
+                f"Hi {greeting_name}! Welcome to Dr. Sarah Hensley's Membership Portal Guide.{course_mention}\n\n"
+                "Ask me how to sign in, reset your password, find an enrolled course or workbook, update billing details, or contact support."
+            )
         elif mode == "sales":
             if course_mention:
                 greeting_text = (

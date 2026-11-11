@@ -144,10 +144,13 @@ class GoogleDriveService:
 
         env_clin_id = os.getenv("GOOGLE_DRIVE_CLINICAL_FOLDER_ID", "").strip()
         env_sales_id = os.getenv("GOOGLE_DRIVE_SALES_FOLDER_ID", "").strip()
+        env_platform_id = os.getenv("GOOGLE_DRIVE_PLATFORM_FOLDER_ID", "").strip()
         if env_clin_id:
             categorized_folders.append({"id": env_clin_id, "name": "Clinical (Env)", "category": "clinical"})
         if env_sales_id:
             categorized_folders.append({"id": env_sales_id, "name": "Sales (Env)", "category": "sales"})
+        if env_platform_id:
+            categorized_folders.append({"id": env_platform_id, "name": "Platform (Env)", "category": "platform"})
 
         # If not explicitly set via individual env vars, auto-discover subfolders inside self.folder_id
         if not categorized_folders and self.folder_id:
@@ -164,7 +167,9 @@ class GoogleDriveService:
                 ).execute()
                 for sf in sub_res.get("files", []):
                     name_low = sf.get("name", "").lower()
-                    if "clinical" in name_low:
+                    if any(k in name_low for k in ("platform", "portal", "helpdesk", "navigation", "website")):
+                        categorized_folders.append({"id": sf["id"], "name": sf["name"], "category": "platform"})
+                    elif "clinical" in name_low:
                         categorized_folders.append({"id": sf["id"], "name": sf["name"], "category": "clinical"})
                     elif any(k in name_low for k in ("sales", "course", "catalog", "pricing", "masterclass")):
                         categorized_folders.append({"id": sf["id"], "name": sf["name"], "category": "sales"})
@@ -192,7 +197,7 @@ class GoogleDriveService:
                         f"'{target_folder_id}' in parents and "
                         f"(mimeType = 'application/pdf' or "
                         f"mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' or "
-                        f"mimeType = 'text/plain') and "
+                        f"mimeType = 'text/plain' or mimeType = 'text/markdown' or mimeType = 'text/x-markdown') and "
                         f"trashed = false"
                     )
                     res = client.files().list(
@@ -224,7 +229,7 @@ class GoogleDriveService:
             f"'{self.folder_id}' in parents and "
             f"(mimeType = 'application/pdf' or "
             f"mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' or "
-            f"mimeType = 'text/plain') and "
+            f"mimeType = 'text/plain' or mimeType = 'text/markdown' or mimeType = 'text/x-markdown') and "
             f"trashed = false"
         )
         results = client.files().list(
@@ -237,7 +242,12 @@ class GoogleDriveService:
             f_name = f.get("name", "")
             f_low = f_name.lower()
             if any(f_low.endswith(ext) for ext in (".pdf", ".docx", ".doc", ".txt", ".md", ".vtt", ".srt")):
-                cat = "sales" if any(k in f_low for k in ("sales", "catalog", "pricing", "checkout")) else "clinical"
+                if any(k in f_low for k in ("platform", "portal", "helpdesk", "navigation")):
+                    cat = "platform"
+                elif any(k in f_low for k in ("sales", "catalog", "pricing", "checkout")):
+                    cat = "sales"
+                else:
+                    cat = "clinical"
                 all_pdf_records.append({
                     "id": f.get("id"),
                     "name": f_name,

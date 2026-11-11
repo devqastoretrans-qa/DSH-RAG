@@ -47,6 +47,21 @@ FOLDER_ID_TO_KEY: Dict[str, str] = {
     if cfg.get("folder_id")
 }
 
+# Dedicated Platform & Website Navigation Collection Mapping
+PLATFORM_COLLECTION: Dict[str, Any] = {
+    "folder_name": "Platform Guide",
+    "collection_name": os.getenv("QDRANT_PLATFORM_COLLECTION_NAME", "platform_guide").strip() or "platform_guide",
+    "display_name": "Platform & Portal Guide",
+    "folder_id": os.getenv("GOOGLE_DRIVE_PLATFORM_FOLDER_ID", "").strip(),
+    "category": "platform"
+}
+
+PLATFORM_FOLDER_KEYWORDS = (
+    "platform", "portal", "helpdesk", "navigation",
+    "website_guide", "website guide", "membership_guide", "membership guide", "user_guide", "user guide"
+)
+PLATFORM_FILE_KEYWORDS = ("platform", "portal", "helpdesk", "navigation")
+
 def get_collection_config(key_or_name: str) -> Optional[Dict[str, Any]]:
     """
     Retrieves collection configuration by key ('journals'), folder name ('Journals'), or folder ID.
@@ -75,8 +90,10 @@ def resolve_target_collection(
     Ensures clinical documents never leak into the default sales 'documents' collection.
     """
     default_sales_col = os.getenv("QDRANT_COLLECTION_NAME", "documents").strip() or "documents"
+    platform_col = get_platform_collection_name()
+    platform_folder_id = os.getenv("GOOGLE_DRIVE_PLATFORM_FOLDER_ID", PLATFORM_COLLECTION.get("folder_id", "")).strip()
 
-    # 1. Explicit Sales Category Check
+    # 1. Explicit Category Checks (Sales & Platform)
     cat_clean = (category or "").strip().lower()
     if cat_clean == "sales":
         return {
@@ -85,30 +102,53 @@ def resolve_target_collection(
             "folder_display": "Sales & Course Catalog",
             "category": "sales"
         }
+    if cat_clean == "platform":
+        return {
+            "collection_name": platform_col,
+            "collection_key": "platform",
+            "folder_display": PLATFORM_COLLECTION["display_name"],
+            "category": "platform"
+        }
 
     # 2. Check Match by Folder ID
-    if folder_id and folder_id.strip() in FOLDER_ID_TO_KEY:
-        k = FOLDER_ID_TO_KEY[folder_id.strip()]
-        cfg = CLINICAL_COLLECTIONS[k]
-        return {
-            "collection_name": cfg["collection_name"],
-            "collection_key": k,
-            "folder_display": cfg["display_name"],
-            "category": "clinical"
-        }
+    if folder_id:
+        clean_fid = folder_id.strip()
+        if platform_folder_id and clean_fid == platform_folder_id:
+            return {
+                "collection_name": platform_col,
+                "collection_key": "platform",
+                "folder_display": PLATFORM_COLLECTION["display_name"],
+                "category": "platform"
+            }
+        if clean_fid in FOLDER_ID_TO_KEY:
+            k = FOLDER_ID_TO_KEY[clean_fid]
+            cfg = CLINICAL_COLLECTIONS[k]
+            return {
+                "collection_name": cfg["collection_name"],
+                "collection_key": k,
+                "folder_display": cfg["display_name"],
+                "category": "clinical"
+            }
 
     # 3. Check Match by Folder Name
     if folder_name:
+        f_low = folder_name.strip().lower()
+        if f_low in ("platform", "platform guide", "portal") or any(w in f_low for w in PLATFORM_FOLDER_KEYWORDS):
+            return {
+                "collection_name": platform_col,
+                "collection_key": "platform",
+                "folder_display": PLATFORM_COLLECTION["display_name"],
+                "category": "platform"
+            }
         cfg = get_collection_config(folder_name)
         if cfg:
-            key = FOLDER_NAME_TO_KEY.get(folder_name.strip().lower(), "other")
+            key = FOLDER_NAME_TO_KEY.get(f_low, "other")
             return {
                 "collection_name": cfg["collection_name"],
                 "collection_key": key,
                 "folder_display": cfg["display_name"],
                 "category": "clinical"
             }
-        f_low = folder_name.lower()
         if "journal" in f_low:
             c = CLINICAL_COLLECTIONS["journals"]
             return {"collection_name": c["collection_name"], "collection_key": "journals", "folder_display": c["display_name"], "category": "clinical"}
@@ -129,6 +169,13 @@ def resolve_target_collection(
     # 4. Check Match by Filename heuristics
     if filename:
         fn_low = filename.lower()
+        if any(w in fn_low for w in PLATFORM_FILE_KEYWORDS):
+            return {
+                "collection_name": platform_col,
+                "collection_key": "platform",
+                "folder_display": PLATFORM_COLLECTION["display_name"],
+                "category": "platform"
+            }
         if any(w in fn_low for w in ("pricing", "sales", "catalog", "checkout", "masterclass")):
             return {
                 "collection_name": default_sales_col,
@@ -158,3 +205,8 @@ def resolve_target_collection(
 def get_all_clinical_collection_names() -> list[str]:
     """Returns list of all 4 Qdrant collection names."""
     return [cfg["collection_name"] for cfg in CLINICAL_COLLECTIONS.values()]
+
+
+def get_platform_collection_name() -> str:
+    """Returns the dedicated Qdrant collection name for Platform & Portal docs."""
+    return os.getenv("QDRANT_PLATFORM_COLLECTION_NAME", PLATFORM_COLLECTION["collection_name"]).strip() or "platform_guide"

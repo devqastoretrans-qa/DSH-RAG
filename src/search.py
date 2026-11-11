@@ -135,7 +135,12 @@ def compute_bm25_score(query: str, text: str, k1: float = 1.5, b: float = 0.75, 
     return min(1.0, score / max(1.0, len(target_tokens) * 2.0))
 
 
-from src.config import CLINICAL_COLLECTIONS, get_collection_config
+from src.config import (
+    CLINICAL_COLLECTIONS,
+    PLATFORM_COLLECTION,
+    get_collection_config,
+    get_platform_collection_name,
+)
 
 
 def route_clinical_intent(query: str) -> Optional[List[str]]:
@@ -202,7 +207,7 @@ def search_similar_chunks(
         }
 
     clean_query = query.strip()
-    expanded_query = expand_query_semantics(clean_query)
+    expanded_query = clean_query if mode == "platform" else expand_query_semantics(clean_query)
     
     # 1. Generate query embedding if not provided (uses expanded query for clinical matching)
     if query_vector is None:
@@ -218,6 +223,15 @@ def search_similar_chunks(
     if mode == "sales":
         # Sales mode: searches sales collection ('documents')
         candidates = qdrant.search_similar(query_vector, top_k=fetch_k, collection_name=qdrant.collection_name)
+    elif mode == "platform":
+        # Platform mode: searches strictly the dedicated Platform & Portal Guide collection
+        platform_col = get_platform_collection_name()
+        candidates = qdrant.search_similar(query_vector, top_k=fetch_k, collection_name=platform_col)
+        for c in candidates:
+            if not c.get("folder_display"):
+                c["folder_display"] = PLATFORM_COLLECTION["display_name"]
+            if not c.get("collection_key"):
+                c["collection_key"] = "platform"
     else:
         # Clinical (Generic) mode: determine target collections
         target_keys = []
@@ -270,18 +284,27 @@ def search_similar_chunks(
     except Exception:
         pass
 
-    # 2b. Lane Isolation Defense-in-Depth: Clinical and Agent modes must NEVER retrieve sales catalogs or pricing files
-    if mode in ("generic", "platform", "owner", "learning", "coaching"):
+    # 2b. Lane Isolation Defense-in-Depth:
+    # - Clinical & Agent modes must NEVER retrieve sales catalogs/pricing or platform docs
+    # - Platform mode must ONLY retrieve platform docs (never clinical or sales)
+    if mode == "platform":
+        candidates = [
+            c for c in candidates
+            if (c.get("category") in ("platform", None) or c.get("collection_key") == "platform")
+            and c.get("category") not in ("sales", "clinical")
+        ]
+    elif mode in ("generic", "owner", "learning", "coaching"):
         clinical_candidates = [
             c for c in candidates
-            if c.get("category") != "sales" and not any(k in (c.get("document_name") or c.get("filename") or "").lower() for k in ("sales", "catalog", "pricing", "checkout"))
+            if c.get("category") not in ("sales", "platform")
+            and not any(k in (c.get("document_name") or c.get("filename") or "").lower() for k in ("sales", "catalog", "pricing", "checkout"))
         ]
         if clinical_candidates:
             candidates = clinical_candidates
 
     # 3. Lane-Aware Weights & Reciprocal Rank Fusion (RRF) with Min-Max Normalization
-    # Sales lane gives 50/50 balance for exact product names/prices; Generic gives 70/30
-    if mode == "sales":
+    # Sales & Platform lanes give 50/50 balance for exact product/button/menu names; Generic gives 60/40
+    if mode in ("sales", "platform"):
         w_dense = 0.50
         w_sparse = 0.50
     else:
@@ -381,10 +404,10 @@ def search_similar_chunks(
         for t in tools_in_final
     ) or bool(re.search(r"\bfor\s+[A-Za-z0-9]", clean_query, re.I))
 
-    # Only provide disambiguation if:
+    # Only provide disambiguation for clinical mode if:
     # 1. There are at least 2 distinct tools in the top matching results, AND
     # 2. The user did NOT already explicitly name a specific tool in their question
-    if len(tools_in_final) >= 2 and not tool_already_named:
+    if mode not in ("sales", "platform") and len(tools_in_final) >= 2 and not tool_already_named:
         # Build options starting with the verified tools in final results
         pool_for_options = list(final_results)
         if 'candidates' in locals() and candidates:

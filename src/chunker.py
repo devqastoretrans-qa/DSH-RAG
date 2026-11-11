@@ -183,11 +183,13 @@ def chunk_document_pages(
                 expanded_parts.append(next_chunk)
             parent_context = f"[Document: {clean_title} | Page {page_number}]\n" + " ".join(expanded_parts)
 
-            # Resolve category (clinical vs sales)
+            # Resolve category (platform vs sales vs clinical)
             chunk_category = category
             if not chunk_category:
                 f_low = filename.lower()
-                if any(k in f_low for k in ("sales", "catalog", "pricing", "checkout", "masterclass")):
+                if any(k in f_low for k in ("platform", "portal", "helpdesk", "navigation")):
+                    chunk_category = "platform"
+                elif any(k in f_low for k in ("sales", "catalog", "pricing", "checkout", "masterclass")):
                     chunk_category = "sales"
                 else:
                     chunk_category = "clinical"

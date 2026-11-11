@@ -117,6 +117,11 @@ CLINICAL_DOMAIN_REGEX = re.compile(
     re.IGNORECASE
 )
 
+PLATFORM_DOMAIN_REGEX = re.compile(
+    r"\b(login|log\s*in|sign\s*in|sign\s*up|password|reset|forgot|account|profile|dashboard|portal|website|site|menu|button|page|link|url|tab|billing|invoice|receipt|subscription|cancel|refund|payment|card|checkout|workbook|download|pdf|video|audio|module|lesson|course|access|enroll|certificate|support|ticket|contact|email|browser|mobile|app|error|navigate|setting|settings|member|membership|community|group\s*call|zoom|where\s+(?:is|can\s+i\s+find)|how\s+(?:do|can)\s+i)\b",
+    re.IGNORECASE
+)
+
 
 class OpenAIGeneratorService:
     """
@@ -263,6 +268,18 @@ class OpenAIGeneratorService:
                     "I'm your Relationship Program Advisor. I can help guide you toward the right masterclasses, courses, and resources for your specific attachment style and relationship goals. "
                     "How can I help you today?"
                 )
+        elif mode == "platform":
+            if course_mention:
+                return (
+                    f"{salutation}\n\n"
+                    f"Welcome to Dr. Sarah Hensley's Platform Navigation Assistant.{course_mention}\n\n"
+                    "I can help you navigate the learning portal, find your course dashboard, download workbooks, reset your password, or manage billing and account settings. What would you like help finding today?"
+                )
+            return (
+                f"{salutation} Welcome to Dr. Sarah Hensley's Platform Navigation Assistant.\n\n"
+                "I can help you find pages on the website and learning portal, log in or reset your password, access course dashboards and workbooks, or manage billing and support requests. "
+                "What would you like help navigating today?"
+            )
         else:
             if course_mention:
                 return (
@@ -291,6 +308,55 @@ class OpenAIGeneratorService:
         if " " in raw_str:
             return raw_str.split()[0]
         return raw_str
+
+    @staticmethod
+    def _build_out_of_scope_reply(user_salutation: str, mode: str, reason: str = "generic") -> str:
+        """Build a mode-appropriate out-of-scope or missing-knowledge reply without leaking clinical copy into Platform mode."""
+        if mode == "platform":
+            if reason == "empty":
+                return (
+                    f"{user_salutation}I could not find verified portal documentation matching your question in the Platform Guide knowledge base.\n\n"
+                    "I can help with website and learning portal navigation (logging in, resetting your password, finding your course dashboard, downloading workbooks, and managing billing or support) based on published portal guides. "
+                    "If you need relationship psychology guidance or course recommendations instead, please switch to Clinical Guidance or Program Advisor mode."
+                )
+            if reason == "off_topic":
+                return (
+                    f"{user_salutation}I am Dr. Sarah Hensley's Platform Navigation Assistant, dedicated exclusively to helping you navigate the website, learning portal, account settings, and course access.\n\n"
+                    "The topic you asked about (technical development, financial trading, or non-portal inquiries) is outside the scope of platform navigation support. "
+                    "Please feel free to ask how to log in, reset your password, find your dashboard, download workbooks, or manage billing and support!"
+                )
+            return (
+                f"{user_salutation}I am Dr. Sarah Hensley's Platform Navigation Assistant, focused exclusively on navigating the website, learning portal, account settings, workbooks, and billing.\n\n"
+                "The topic you asked about is outside the scope of our verified platform documentation. "
+                "Please ask a website or portal navigation question, or switch to Clinical Guidance / Program Advisor mode for relationship and program questions."
+            )
+
+        if reason == "off_topic":
+            return (
+                f"{user_salutation}I am dedicated exclusively to Dr. Sarah Hensley's relationship psychology, attachment theory, and relationship transformation programs.\n\n"
+                "The topic you asked about (technical development, financial trading, or non-relationship inquiries) is outside the scope of our services. "
+                "Please feel free to ask any question regarding attachment styles, relationship healing, communication frameworks, or Dr. Hensley's programs!"
+            )
+        return (
+            f"{user_salutation}I am dedicated exclusively to Dr. Sarah Hensley's relationship psychology, attachment theory, and relationship transformation programs.\n\n"
+            "The topic you asked about is outside the scope of our verified knowledge base documents. "
+            "Please feel free to ask any question regarding attachment styles, relationship healing, communication frameworks, or Dr. Hensley's programs!"
+        )
+
+    @staticmethod
+    def _has_domain_match(query: str, mode: str) -> bool:
+        """Check whether the query matches verified domain keywords for the active assistant mode."""
+        if mode == "platform":
+            return bool(PLATFORM_DOMAIN_REGEX.search(query))
+        has_sales_match = (
+            mode == "sales"
+            and bool(re.search(
+                r"\b(course|program|class|masterclass|pricing|price|cost|buy|enroll|session|consult|workbook|book|recommend|help|anxious|avoidant|attachment|relationship|ex|breakup|dating|partner|spiral|text)\b",
+                query,
+                re.I,
+            ))
+        )
+        return has_sales_match or bool(CLINICAL_DOMAIN_REGEX.search(query))
 
     @staticmethod
     def _build_personalized_profile_section(user_context: Optional[Dict[str, Any]]) -> str:
@@ -371,15 +437,18 @@ class OpenAIGeneratorService:
                 "You are the Platform Navigation Assistant for Dr. Sarah Hensley's official website, learning portal, and client membership area.\n"
                 "Your role is a CLEAR, DIRECT, STEP-BY-STEP PLATFORM GUIDE:\n\n"
                 "MANDATORY PLATFORM NAVIGATION RULES:\n"
-                "1. DIRECT STEP-BY-STEP INSTRUCTIONS:\n"
-                "   - Provide clear, numbered steps explaining where features, buttons, menus, and pages are located.\n"
-                "   - Guide users through account login, password reset, course dashboard, billing settings, workbook downloads, and support tickets.\n\n"
-                "2. CONCISE & ACTIONABLE:\n"
-                "   - Keep navigation guidance brief and clear (under 120 words).\n"
-                "   - Focus strictly on user experience, link directions, and platform usability.\n\n"
-                "3. REDIRECTION FOR CLINICAL / COURSE CONTENT:\n"
-                "   - If a user asks deep clinical relationship questions or seeks personal therapy, politely advise them to switch to the Owner Voice or Coaching Agent.\n"
-                "   - If they have homework or syllabus questions, guide them to the Learning Agent."
+                "1. STRICTLY GROUNDED IN RETRIEVED PLATFORM DOCS:\n"
+                "   - Base every button name, menu path, URL, email address, and step ONLY on the retrieved Platform Knowledge Excerpts below.\n"
+                "   - NEVER invent, guess, or fabricate URLs, portal paths, menu labels, prices, or support emails that are not explicitly present in the retrieved excerpts.\n"
+                "   - If the retrieved platform docs do not cover a specific account or technical step, say clearly what is not documented and advise the user to contact official support.\n\n"
+                "2. DIRECT STEP-BY-STEP INSTRUCTIONS:\n"
+                "   - Provide clear, numbered steps explaining where features, menus, downloads, and pages are located (login, password reset, course dashboard, billing settings, workbook downloads, and support tickets).\n\n"
+                "3. CONCISE & ACTIONABLE:\n"
+                "   - Keep navigation guidance crisp, structured, and easy to follow (under 150 words unless detailed steps require slightly more).\n"
+                "   - Cite source docs neutrally when helpful and never disclose internal backend pipeline or database details.\n\n"
+                "4. REDIRECTION FOR CLINICAL / COURSE CONTENT:\n"
+                "   - If a user asks clinical attachment psychology questions or seeks relationship advice, briefly note that this assistant handles portal navigation and invite them to switch to Clinical / Attachment Guidance mode.\n"
+                "   - If they ask about program pricing or which course fits their relationship goals, invite them to switch to Program Advisor mode."
             )
         elif mode == "owner":
             return (
@@ -479,11 +548,7 @@ class OpenAIGeneratorService:
         user_salutation = f"Hi {greeting_name},\n\n" if greeting_name != "there" else ""
 
         if OFF_TOPIC_REGEX.search(query):
-            refusal_text = (
-                f"{user_salutation}I am dedicated exclusively to Dr. Sarah Hensley's relationship psychology, attachment theory, and relationship transformation programs.\n\n"
-                "The topic you asked about (technical development, financial trading, or non-relationship inquiries) is outside the scope of our services. "
-                "Please feel free to ask any question regarding attachment styles, relationship healing, communication frameworks, or Dr. Hensley's programs!"
-            )
+            refusal_text = self._build_out_of_scope_reply(user_salutation, mode, reason="off_topic")
             return {
                 "answer": refusal_text,
                 "model": "system-scope-guardrail",
@@ -526,11 +591,7 @@ class OpenAIGeneratorService:
                 }
 
             return {
-                "answer": (
-                    f"{user_salutation}I am dedicated exclusively to Dr. Sarah Hensley's relationship psychology, attachment theory, and relationship transformation programs.\n\n"
-                    "The question you asked is outside the scope of our verified knowledge base documents. "
-                    "Please feel free to ask about attachment styles, relationship healing, communication frameworks, or Dr. Hensley's masterclasses!"
-                ),
+                "answer": self._build_out_of_scope_reply(user_salutation, mode, reason="empty"),
                 "model": self.model,
                 "citations": [],
                 "personalized": bool(user_context and user_context.get("has_history", False)),
@@ -544,8 +605,7 @@ class OpenAIGeneratorService:
         max_rerank_score = max((float(c.get("rerank_score", c.get("score", 0.0))) for c in retrieved_chunks), default=0.0)
         has_rerank_scores = any("rerank_score" in c for c in retrieved_chunks)
 
-        has_sales_match = (mode == "sales" and bool(re.search(r"\b(course|program|class|masterclass|pricing|price|cost|buy|enroll|session|consult|workbook|book|recommend|help|anxious|avoidant|attachment|relationship|ex|breakup|dating|partner|spiral|text)\b", query, re.I)))
-        has_clinical_domain_match = bool(CLINICAL_DOMAIN_REGEX.search(query))
+        has_domain_match = self._has_domain_match(query, mode)
 
         # DEF-06: Calibrated thresholds prevent off-topic prompts from leaking into LLM synthesis
         min_vector_threshold = float(os.getenv("RAG_MIN_VECTOR_SCORE", "0.35"))
@@ -555,7 +615,7 @@ class OpenAIGeneratorService:
         is_low_confidence = (max_vector_score < min_vector_threshold and max_rerank_score < min_rerank_threshold)
         is_hard_irrelevant = (has_rerank_scores and max_rerank_score < strict_rerank_floor and max_vector_score < 0.50)
 
-        if not is_follow_up and not chat_history and not has_sales_match and not has_clinical_domain_match and (is_low_confidence or is_hard_irrelevant):
+        if not is_follow_up and not chat_history and not has_domain_match and (is_low_confidence or is_hard_irrelevant):
             chit_chat = self._get_chit_chat_reply(query, user_context=user_context, mode=mode)
             if chit_chat:
                 return {
@@ -567,11 +627,7 @@ class OpenAIGeneratorService:
                     "out_of_domain": False
                 }
 
-            refusal_text = (
-                f"{user_salutation}I am dedicated exclusively to Dr. Sarah Hensley's relationship psychology, attachment theory, and relationship transformation programs.\n\n"
-                "The topic you asked about is outside the scope of our verified knowledge base documents. "
-                "Please feel free to ask any question regarding attachment styles, relationship healing, communication frameworks, or Dr. Hensley's programs!"
-            )
+            refusal_text = self._build_out_of_scope_reply(user_salutation, mode, reason="out_of_scope")
             return {
                 "answer": refusal_text,
                 "model": self.model,
@@ -752,13 +808,26 @@ class OpenAIGeneratorService:
             yield {"token": "LLM API key is not configured in .env.", "done": True}
             return
 
+        greeting_name = self._extract_greeting_name(user_context)
+        user_salutation = f"Hi {greeting_name},\n\n" if greeting_name != "there" else ""
+
+        if OFF_TOPIC_REGEX.search(query):
+            refusal_text = self._build_out_of_scope_reply(user_salutation, mode, reason="off_topic")
+            yield {"token": refusal_text, "done": False}
+            yield {"token": "", "done": True, "full_answer": refusal_text, "citations": []}
+            return
+
         if not retrieved_chunks:
             chit_chat = self._get_chit_chat_reply(query, user_context=user_context, mode=mode)
             if chit_chat:
                 yield {"token": chit_chat, "done": False}
                 yield {"token": "", "done": True, "full_answer": chit_chat, "citations": []}
                 return
-            no_docs_msg = "No relevant document chunks were found in the knowledge base to answer your question."
+            no_docs_msg = (
+                self._build_out_of_scope_reply(user_salutation, mode, reason="empty")
+                if mode == "platform"
+                else "No relevant document chunks were found in the knowledge base to answer your question."
+            )
             yield {"token": no_docs_msg, "done": False}
             yield {"token": "", "done": True, "full_answer": no_docs_msg, "citations": []}
             return
@@ -768,21 +837,7 @@ class OpenAIGeneratorService:
         max_rerank_score = max((float(c.get("rerank_score", c.get("score", 0.0))) for c in retrieved_chunks), default=0.0)
         has_rerank_scores = any("rerank_score" in c for c in retrieved_chunks)
 
-        greeting_name = self._extract_greeting_name(user_context)
-        user_salutation = f"Hi {greeting_name},\n\n" if greeting_name != "there" else ""
-
-        if OFF_TOPIC_REGEX.search(query):
-            refusal_text = (
-                f"{user_salutation}I am dedicated exclusively to Dr. Sarah Hensley's relationship psychology, attachment theory, and relationship transformation programs.\n\n"
-                "The topic you asked about (technical development, financial trading, or non-relationship inquiries) is outside the scope of our services. "
-                "Please feel free to ask any question regarding attachment styles, relationship healing, communication frameworks, or Dr. Hensley's programs!"
-            )
-            yield {"token": refusal_text, "done": False}
-            yield {"token": "", "done": True, "full_answer": refusal_text, "citations": []}
-            return
-
-        has_sales_match = (mode == "sales" and bool(re.search(r"\b(course|program|class|masterclass|pricing|price|cost|buy|enroll|session|consult|workbook|book|recommend|help|anxious|avoidant|attachment|relationship|ex|breakup|dating|partner|spiral|text)\b", query, re.I)))
-        has_clinical_domain_match = bool(CLINICAL_DOMAIN_REGEX.search(query))
+        has_domain_match = self._has_domain_match(query, mode)
 
         # DEF-06: Calibrated thresholds prevent off-topic prompts from leaking into LLM synthesis
         min_vector_threshold = float(os.getenv("RAG_MIN_VECTOR_SCORE", "0.35"))
@@ -792,18 +847,14 @@ class OpenAIGeneratorService:
         is_low_confidence = (max_vector_score < min_vector_threshold and max_rerank_score < min_rerank_threshold)
         is_hard_irrelevant = (has_rerank_scores and max_rerank_score < strict_rerank_floor and max_vector_score < 0.50)
 
-        if not is_follow_up and not chat_history and not has_sales_match and not has_clinical_domain_match and (is_low_confidence or is_hard_irrelevant):
+        if not is_follow_up and not chat_history and not has_domain_match and (is_low_confidence or is_hard_irrelevant):
             chit_chat = self._get_chit_chat_reply(query, user_context=user_context, mode=mode)
             if chit_chat:
                 yield {"token": chit_chat, "done": False}
                 yield {"token": "", "done": True, "full_answer": chit_chat, "citations": []}
                 return
 
-            refusal_text = (
-                f"{user_salutation}I am dedicated exclusively to Dr. Sarah Hensley's relationship psychology, attachment theory, and relationship transformation programs.\n\n"
-                "The topic you asked about is outside the scope of our verified knowledge base documents. "
-                "Please feel free to ask any question regarding attachment styles, relationship healing, communication frameworks, or Dr. Hensley's programs!"
-            )
+            refusal_text = self._build_out_of_scope_reply(user_salutation, mode, reason="out_of_scope")
             yield {"token": refusal_text, "done": False}
             yield {"token": "", "done": True, "full_answer": refusal_text, "citations": []}
             return
