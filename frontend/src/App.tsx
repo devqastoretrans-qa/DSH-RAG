@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowDown,
   Briefcase,
+  Compass,
   Moon,
   PanelLeft,
   SlidersHorizontal,
@@ -18,6 +19,7 @@ import type {
   QuickPromptPreset,
   RecommendedProduct,
   SourceCitation,
+  SuggestedAction,
   ToastNotification,
 } from './types/chat';
 import { Sidebar } from './components/Sidebar';
@@ -25,7 +27,6 @@ import { ChatMessage } from './components/ChatMessage';
 import { ChatInput } from './components/ChatInput';
 import { ProfileSettingsModal } from './components/ProfileSettingsModal';
 import { ToastContainer } from './components/ToastContainer';
-import { PlatformWidget } from './components/PlatformWidget';
 
 const STORAGE_KEYS = {
   token: 'studio_chat_token',
@@ -33,13 +34,19 @@ const STORAGE_KEYS = {
   mode: 'studio_active_mode',
   sessionGeneric: 'studio_active_session_generic',
   sessionSales: 'studio_active_session_sales',
+  sessionPlatform: 'studio_active_session_platform',
 } as const;
 
 const REQUEST_TIMEOUT_MS = 15000;
 const STREAM_TIMEOUT_MS = 90000;
 
 function createSessionId(mode: BotMode): string {
-  const prefix = mode === 'sales' ? 'sess_sales_' : 'sess_clinical_';
+  const prefix =
+    mode === 'sales'
+      ? 'sess_sales_'
+      : mode === 'platform'
+      ? 'sess_platform_'
+      : 'sess_clinical_';
   const rand =
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID().replace(/-/g, '').slice(0, 10)
@@ -48,13 +55,19 @@ function createSessionId(mode: BotMode): string {
 }
 
 function getDefaultTitle(mode: BotMode): string {
-  return mode === 'sales' ? 'New Program Advisor Chat' : 'New Clinical Chat';
+  if (mode === 'sales') return 'New Program Advisor Chat';
+  if (mode === 'platform') return 'New Platform Help Chat';
+  return 'New Clinical Chat';
 }
 
 function getStoredSessionId(mode: BotMode): string | null {
   try {
     const key =
-      mode === 'sales' ? STORAGE_KEYS.sessionSales : STORAGE_KEYS.sessionGeneric;
+      mode === 'sales'
+        ? STORAGE_KEYS.sessionSales
+        : mode === 'platform'
+        ? STORAGE_KEYS.sessionPlatform
+        : STORAGE_KEYS.sessionGeneric;
     const saved = sessionStorage.getItem(key);
     return saved && saved.trim() ? saved.trim() : null;
   } catch {
@@ -65,7 +78,11 @@ function getStoredSessionId(mode: BotMode): string | null {
 function persistSessionId(mode: BotMode, sessionId: string): void {
   try {
     const key =
-      mode === 'sales' ? STORAGE_KEYS.sessionSales : STORAGE_KEYS.sessionGeneric;
+      mode === 'sales'
+        ? STORAGE_KEYS.sessionSales
+        : mode === 'platform'
+        ? STORAGE_KEYS.sessionPlatform
+        : STORAGE_KEYS.sessionGeneric;
     sessionStorage.setItem(key, sessionId);
   } catch {
     // Ignore storage quota errors
@@ -141,6 +158,34 @@ const QUICK_PRESETS: QuickPromptPreset[] = [
     prompt: 'What is included in the Secure Bundle and what is the investment?',
     mode: 'sales',
   },
+  {
+    id: 'platform_login',
+    category: 'Platform',
+    label: 'How do I log into my account?',
+    prompt: 'How do I log into my account?',
+    mode: 'platform',
+  },
+  {
+    id: 'platform_password',
+    category: 'Platform',
+    label: 'Reset forgotten password',
+    prompt: 'How do I reset a forgotten password?',
+    mode: 'platform',
+  },
+  {
+    id: 'platform_workbooks',
+    category: 'Platform',
+    label: 'Find courses & workbooks',
+    prompt: 'Where do I find my course dashboard and download workbooks?',
+    mode: 'platform',
+  },
+  {
+    id: 'platform_billing',
+    category: 'Platform',
+    label: 'Billing & support',
+    prompt: 'How do I check my billing receipts or contact support?',
+    mode: 'platform',
+  },
 ];
 
 interface ChannelBuffer {
@@ -153,7 +198,8 @@ export const App: React.FC = () => {
   const initialMode: BotMode = (() => {
     try {
       const m = sessionStorage.getItem(STORAGE_KEYS.mode);
-      return m === 'sales' ? 'sales' : 'generic';
+      if (m === 'sales' || m === 'platform') return m;
+      return 'generic';
     } catch {
       return 'generic';
     }
@@ -190,8 +236,10 @@ export const App: React.FC = () => {
   const [channels, setChannels] = useState<Record<BotMode, ChannelBuffer>>(() => {
     const genSid = getStoredSessionId('generic') || createSessionId('generic');
     const salesSid = getStoredSessionId('sales') || createSessionId('sales');
+    const platSid = getStoredSessionId('platform') || createSessionId('platform');
     persistSessionId('generic', genSid);
     persistSessionId('sales', salesSid);
+    persistSessionId('platform', platSid);
     return {
       generic: {
         sessionId: genSid,
@@ -203,6 +251,11 @@ export const App: React.FC = () => {
         messages: [],
         title: getDefaultTitle('sales'),
       },
+      platform: {
+        sessionId: platSid,
+        messages: [],
+        title: getDefaultTitle('platform'),
+      },
     };
   });
 
@@ -211,7 +264,10 @@ export const App: React.FC = () => {
   >({
     generic: [],
     sales: [],
+    platform: [],
   });
+  const [platformGreeting, setPlatformGreeting] = useState('Hi there!');
+  const [platformActions, setPlatformActions] = useState<SuggestedAction[]>([]);
   const [isLoadingThreads, setIsLoadingThreads] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [inputValue, setInputValue] = useState('');
@@ -490,16 +546,19 @@ export const App: React.FC = () => {
       try {
         sessionStorage.removeItem(STORAGE_KEYS.sessionGeneric);
         sessionStorage.removeItem(STORAGE_KEYS.sessionSales);
+        sessionStorage.removeItem(STORAGE_KEYS.sessionPlatform);
         sessionStorage.removeItem(STORAGE_KEYS.token);
       } catch {
         // ignore
       }
       setUserId(nextUserId);
-      setThreadsByMode({ generic: [], sales: [] });
+      setThreadsByMode({ generic: [], sales: [], platform: [] });
       const genSid = createSessionId('generic');
       const salesSid = createSessionId('sales');
+      const platSid = createSessionId('platform');
       persistSessionId('generic', genSid);
       persistSessionId('sales', salesSid);
+      persistSessionId('platform', platSid);
       setChannels({
         generic: {
           sessionId: genSid,
@@ -510,6 +569,11 @@ export const App: React.FC = () => {
           sessionId: salesSid,
           messages: [],
           title: getDefaultTitle('sales'),
+        },
+        platform: {
+          sessionId: platSid,
+          messages: [],
+          title: getDefaultTitle('platform'),
         },
       });
       const tok = await authenticateUser(nextUserId);
@@ -565,6 +629,36 @@ export const App: React.FC = () => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Fetch personalized Platform Help greeting & page-aware quick-reply chips
+  useEffect(() => {
+    let active = true;
+    const currentPage = `${window.location.pathname || '/'}${window.location.search || ''}`;
+    const loadPlatformContext = async () => {
+      try {
+        const res = await fetchWithTimeout(
+          `/api/platform-widget/context?current_page=${encodeURIComponent(currentPage)}`,
+          { headers: buildAuthHeaders() }
+        );
+        if (!res.ok || !active) return;
+        const data = (await res.json()) as {
+          greeting_line?: string;
+          suggested_actions?: SuggestedAction[];
+        };
+        if (!active) return;
+        if (data.greeting_line) setPlatformGreeting(data.greeting_line);
+        if (Array.isArray(data.suggested_actions) && data.suggested_actions.length > 0) {
+          setPlatformActions(data.suggested_actions);
+        }
+      } catch {
+        // Non-blocking context lookup
+      }
+    };
+    void loadPlatformContext();
+    return () => {
+      active = false;
+    };
+  }, [authToken, userId, buildAuthHeaders, fetchWithTimeout]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const el = scrollContainerRef.current;
@@ -879,6 +973,7 @@ export const App: React.FC = () => {
       };
 
       try {
+        const currentPage = `${window.location.pathname || '/'}${window.location.search || ''}`;
         const res = await fetch('/chat/stream', {
           method: 'POST',
           headers: buildAuthHeaders(undefined, {
@@ -888,6 +983,7 @@ export const App: React.FC = () => {
             session_id: sessionId,
             message: text,
             mode: targetMode,
+            ...(targetMode === 'platform' ? { current_page: currentPage } : {}),
           }),
           signal: controller.signal,
         });
@@ -922,6 +1018,7 @@ export const App: React.FC = () => {
             full_answer?: string;
             sources?: SourceCitation[] | null;
             recommended_products?: RecommendedProduct[] | null;
+            suggested_actions?: SuggestedAction[] | null;
             cached?: boolean;
           };
 
@@ -934,6 +1031,13 @@ export const App: React.FC = () => {
             }));
           } else if (payload.done || payload.answer !== undefined) {
             receivedDonePayload = true;
+            if (
+              targetMode === 'platform' &&
+              Array.isArray(payload.suggested_actions) &&
+              payload.suggested_actions.length > 0
+            ) {
+              setPlatformActions(payload.suggested_actions);
+            }
             const finalAns =
               payload.answer || payload.full_answer || accumulated || 'No response generated.';
             const latencySec = (
@@ -1017,6 +1121,7 @@ export const App: React.FC = () => {
               session_id: sessionId,
               message: text,
               mode: targetMode,
+              ...(targetMode === 'platform' ? { current_page: currentPage } : {}),
             }),
             signal: controller.signal,
           });
@@ -1156,10 +1261,23 @@ export const App: React.FC = () => {
       .toUpperCase();
   }, [currentUser, userId]);
 
-  const modeFilteredPresets = useMemo(
-    () => QUICK_PRESETS.filter((p) => p.mode === activeMode || p.mode === 'generic'),
-    [activeMode]
-  );
+  const modeFilteredPresets = useMemo(() => {
+    if (activeMode === 'platform') {
+      if (platformActions.length > 0) {
+        return platformActions.map((act, idx) => ({
+          id: `platform_ctx_${idx}`,
+          category: 'Platform',
+          label: act.label,
+          prompt: act.prompt,
+          mode: 'platform' as const,
+        }));
+      }
+      return QUICK_PRESETS.filter((p) => p.mode === 'platform');
+    }
+    return QUICK_PRESETS.filter(
+      (p) => p.mode === activeMode || p.mode === 'generic'
+    );
+  }, [activeMode, platformActions]);
 
   return (
     <div className="flex h-dvh w-screen overflow-hidden bg-slate-50 text-slate-900 dark:bg-[#0B1120] dark:text-slate-100">
@@ -1245,6 +1363,19 @@ export const App: React.FC = () => {
                 <span className="hidden sm:inline">Program Advisor</span>
                 <span className="sm:hidden">Advisor</span>
               </button>
+              <button
+                type="button"
+                onClick={() => handleModeSwitch('platform')}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
+                  activeMode === 'platform'
+                    ? 'bg-sky-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+              >
+                <Compass className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Platform Help</span>
+                <span className="sm:hidden">Platform</span>
+              </button>
             </div>
 
             <div
@@ -1313,11 +1444,15 @@ export const App: React.FC = () => {
                   className={`mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border shadow-sm ${
                     activeMode === 'sales'
                       ? 'border-amber-500/30 bg-amber-500/15 text-amber-500'
+                      : activeMode === 'platform'
+                      ? 'border-sky-500/30 bg-sky-500/15 text-sky-500'
                       : 'border-emerald-500/30 bg-emerald-500/15 text-emerald-500'
                   }`}
                 >
                   {activeMode === 'sales' ? (
                     <Briefcase className="h-7 w-7" />
+                  ) : activeMode === 'platform' ? (
+                    <Compass className="h-7 w-7" />
                   ) : (
                     <Stethoscope className="h-7 w-7" />
                   )}
@@ -1326,11 +1461,15 @@ export const App: React.FC = () => {
                 <h2 className="font-serif text-2xl font-semibold text-slate-900 dark:text-slate-100">
                   {activeMode === 'sales'
                     ? 'Dr. Sarah Hensley Program Advisor'
+                    : activeMode === 'platform'
+                    ? 'Dr. Sarah Hensley Platform Navigation Assistant'
                     : 'Dr. Sarah Hensley Clinical Educator'}
                 </h2>
                 <p className="mt-2 max-w-lg text-sm leading-relaxed text-slate-500 dark:text-slate-400">
                   {activeMode === 'sales'
                     ? 'Personalized guidance for $97 masterclasses, curriculum roadmaps, and coaching bundles tailored to your attachment profile.'
+                    : activeMode === 'platform'
+                    ? `${platformGreeting} Step-by-step help with website login, password reset, course dashboards, PDF workbooks, billing, and account support.`
                     : 'Evidence-based clinical guidance on attachment styles, subconscious core wounds, and nervous system regulation with zero sales pitches.'}
                 </p>
 
@@ -1412,8 +1551,6 @@ export const App: React.FC = () => {
         onToggleTheme={() => setIsDark((prev) => !prev)}
         onSelectUser={(uid) => void handleSelectUser(uid)}
       />
-      {/* Dedicated Floating Bottom-Right Platform Help Bot */}
-      <PlatformWidget authToken={authToken} userId={userId} />
     </div>
   );
 };

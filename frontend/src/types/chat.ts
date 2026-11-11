@@ -1,4 +1,9 @@
-export type BotMode = 'generic' | 'sales';
+export type BotMode = 'generic' | 'sales' | 'platform';
+
+export interface SuggestedAction {
+  label: string;
+  prompt: string;
+}
 
 export type MessageRole = 'user' | 'assistant' | 'system';
 

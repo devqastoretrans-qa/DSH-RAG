@@ -451,4 +451,67 @@ describe('QA Vector 5: Server Error (500/422), Timeout, Retry & ErrorBoundary', 
     expect(screen.getByText('Simulated UI Crash')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Recover View/i })).toBeInTheDocument();
   });
+
+  it('switches to Platform Help side-by-side in top bar on the same page without floating popup', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/users')) return jsonResponse({ users: [{ user_id: '1836', name: 'Maya Lin' }] });
+      if (url.includes('/api/system/stats')) return jsonResponse({ documents_count: 10 });
+      if (url.includes('/api/auth/token')) return jsonResponse({ token: 'tok_plat' });
+      if (url.includes('/api/chat/sessions')) return jsonResponse({ sessions: [] });
+      if (url.includes('/api/platform-widget/context')) {
+        return jsonResponse({
+          success: true,
+          authenticated: true,
+          user_id: '1836',
+          user_first_name: 'Maya',
+          greeting_line: 'Hello Maya!',
+          current_page: '/',
+          suggested_actions: [
+            { label: 'How do I log in?', prompt: 'How do I log into my account?' },
+          ],
+        });
+      }
+      if (url.includes('/chat/stream')) {
+        const enc = new TextEncoder();
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              enc.encode(`data: ${JSON.stringify({ done: true, answer: 'Hello Maya!\n\n1. Open Login.' })}\n\n`)
+            );
+            controller.close();
+          },
+        });
+        return new Response(stream, { status: 200 });
+      }
+      return jsonResponse({});
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+    render(<App />);
+
+    // Floating corner launcher should NOT be rendered in Studio App
+    expect(screen.queryByRole('button', { name: /Platform Help chat widget/i })).not.toBeInTheDocument();
+
+    const platformBtn = await screen.findByRole('button', { name: /Platform Help/i });
+    fireEvent.click(platformBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Dr\. Sarah Hensley Platform Navigation Assistant/i)).toBeInTheDocument();
+      expect(screen.getByText(/Hello Maya!/i)).toBeInTheDocument();
+    });
+
+    const input = screen.getByPlaceholderText(/Ask about login, password reset/i);
+    fireEvent.change(input, { target: { value: 'How do I log in?' } });
+    fireEvent.keyDown(input, { key: 'Enter', shiftKey: false });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Open Login\./i)).toBeInTheDocument();
+    });
+
+    const streamCall = fetchMock.mock.calls.find(([u]) => String(u).includes('/chat/stream'));
+    expect(streamCall).toBeDefined();
+    const sentBody = JSON.parse(String(streamCall?.[1]?.body || '{}'));
+    expect(sentBody.mode).toBe('platform');
+  });
 });

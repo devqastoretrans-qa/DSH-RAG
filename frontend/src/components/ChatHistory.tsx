@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   Briefcase,
   Check,
+  Compass,
   MessageSquare,
   Pencil,
   Stethoscope,
@@ -144,7 +145,13 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
         <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
           {searchQuery.trim()
             ? 'No matching chats found.'
-            : `No ${activeMode === 'sales' ? 'Program Advisor' : 'Clinical Educator'} conversations yet.`}
+            : `No ${
+                activeMode === 'sales'
+                  ? 'Program Advisor'
+                  : activeMode === 'platform'
+                  ? 'Platform Help'
+                  : 'Clinical Educator'
+              } conversations yet.`}
         </p>
         {!searchQuery.trim() && (
           <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
@@ -266,6 +273,8 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
                           )}
                           {thread.mode === 'sales' ? (
                             <Briefcase className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                          ) : thread.mode === 'platform' ? (
+                            <Compass className="h-3.5 w-3.5 shrink-0 text-sky-500" />
                           ) : (
                             <Stethoscope className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
                           )}

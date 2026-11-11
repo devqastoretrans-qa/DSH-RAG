@@ -10,6 +10,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  Compass,
   Copy,
   Database,
   RotateCcw,
@@ -333,6 +334,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
   const isSales = message.mode === 'sales';
+  const isPlatform = message.mode === 'platform';
   const [expandLongPrompt, setExpandLongPrompt] = useState(false);
 
   const segments = useMemo(
@@ -425,12 +427,22 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
         className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border shadow-sm ${
           isSales
             ? 'border-amber-500/30 bg-amber-500/15 text-amber-600 dark:text-amber-300'
+            : isPlatform
+            ? 'border-sky-500/30 bg-sky-500/15 text-sky-600 dark:text-sky-300'
             : 'border-emerald-500/30 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
         }`}
-        title={isSales ? 'Program Advisor Assistant' : 'Clinical Educator Assistant'}
+        title={
+          isSales
+            ? 'Program Advisor Assistant'
+            : isPlatform
+            ? 'Platform Navigation Assistant'
+            : 'Clinical Educator Assistant'
+        }
       >
         {isSales ? (
           <Briefcase className="h-4 w-4" />
+        ) : isPlatform ? (
+          <Compass className="h-4 w-4" />
         ) : (
           <Bot className="h-4 w-4" />
         )}
@@ -533,10 +545,16 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
             className={
               isSales
                 ? 'text-amber-600 dark:text-amber-400'
+                : isPlatform
+                ? 'text-sky-600 dark:text-sky-400'
                 : 'text-emerald-600 dark:text-emerald-400'
             }
           >
-            {isSales ? 'Program Advisor' : 'Clinical Educator'}
+            {isSales
+              ? 'Program Advisor'
+              : isPlatform
+              ? 'Platform Help'
+              : 'Clinical Educator'}
           </span>
           {timeLabel && (
             <>

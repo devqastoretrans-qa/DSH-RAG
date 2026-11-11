@@ -261,6 +261,7 @@ class AskRequest(BaseModel):
     session_id: Optional[str] = Field(default=None, description="Allows associating the request with a particular session", json_schema_extra={"example": "sess_xyz789"})
     mode: Optional[str] = Field(default="generic", description="Response mode: 'generic' (clinical), 'sales', or 'platform'")
     folders: Optional[List[str]] = Field(default=None, description="Optional list of clinical subfolders to search ('journals', 'other', 'tools', 'reflections')")
+    current_page: Optional[str] = Field(default=None, max_length=256, description="Current page path for contextual Platform Navigation prompts")
 
 
 class SessionTokenRequest(BaseModel):
@@ -289,6 +290,7 @@ class ChatRequest(BaseModel):
     chat_history: Optional[List[Dict[str, str]]] = Field(default=None, description="Optional conversation turns passed directly from frontend")
     mode: Optional[str] = Field(default="generic", description="Bot lane: 'generic' (clinical), 'sales', or 'platform'")
     session_token: Optional[str] = Field(default=None, description="Temporary HMAC-SHA256 session token issued by WordPress")
+    current_page: Optional[str] = Field(default=None, max_length=256, description="Current page path for contextual Platform Navigation prompts")
 
 
 class ChatResetRequest(BaseModel):
@@ -1431,6 +1433,11 @@ async def ask_api_v1_stream(
             "backend": "Graceful Fallback"
         }
 
+    clean_current_page = (getattr(request, "current_page", None) or "").strip() or None
+    if clean_current_page and isinstance(user_profile, dict):
+        user_profile = dict(user_profile)
+        user_profile["current_page"] = clean_current_page
+
     # Check Semantic Cache for instant response (strictly bypassed on greetings & follow-ups)
     is_greeting = bool(re.match(r"^\s*(hi|hello|hey|greetings|howdy|good\s+(morning|afternoon|evening))\b", clean_query, re.I))
     cached_result = None
@@ -1463,7 +1470,8 @@ async def ask_api_v1_stream(
                 "cached": True,
                 "cache_similarity": cached_result.get("cache_similarity"),
                 "conversation_id": sid,
-                "session_id": sid
+                "session_id": sid,
+                "suggested_actions": _get_platform_suggested_actions(clean_current_page, query=clean_query) if req_mode == "platform" else []
             }
             if cached_ans and not cached_ans.startswith("Error"):
                 conv_memory.record_turn(
@@ -1536,7 +1544,8 @@ async def ask_api_v1_stream(
                     "disambiguation_options": disambiguation_options if 'disambiguation_options' in locals() else [],
                     "sources": sources,
                     "conversation_id": sid,
-                    "session_id": sid
+                    "session_id": sid,
+                    "suggested_actions": _get_platform_suggested_actions(clean_current_page, query=clean_query) if req_mode == "platform" else []
                 }
 
                 # Record turn in conversational memory
@@ -1776,7 +1785,8 @@ async def chat_stream_endpoint(
         session_id=sid,
         mode=req_mode,
         user_profile=safe_user_profile,
-        chat_history=safe_chat_history
+        chat_history=safe_chat_history,
+        current_page=request.current_page
     )
     return await ask_api_v1_stream(ask_req)
 

@@ -43,6 +43,8 @@ export const SourceAccordion: React.FC<SourceAccordionProps> = ({
   const accentClasses =
     mode === 'sales'
       ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/15'
+      : mode === 'platform'
+      ? 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300 hover:bg-sky-500/15'
       : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/15';
 
   return (

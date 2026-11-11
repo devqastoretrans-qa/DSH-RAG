@@ -48,6 +48,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const placeholder =
     activeMode === 'sales'
       ? 'Describe your relationship struggle or ask which course or masterclass fits...'
+      : activeMode === 'platform'
+      ? 'Ask about login, password reset, course dashboard, PDF workbooks, or billing...'
       : "Ask Dr. Sarah's Clinical Educator AI about attachment styles, somatic tools, or reflection...";
 
   return (
@@ -79,6 +81,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           className={`flex items-end gap-2 rounded-2xl border bg-slate-50 px-3 py-2 shadow-sm transition-colors focus-within:ring-2 dark:bg-[#131E32] ${
             activeMode === 'sales'
               ? 'border-amber-500/30 focus-within:border-amber-500 focus-within:ring-amber-500/20'
+              : activeMode === 'platform'
+              ? 'border-sky-500/30 focus-within:border-sky-500 focus-within:ring-sky-500/20'
               : 'border-slate-300 focus-within:border-emerald-500 focus-within:ring-emerald-500/20 dark:border-slate-700/80'
           }`}
         >
@@ -125,6 +129,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               className={`mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white shadow-sm transition-all disabled:cursor-not-allowed disabled:opacity-35 ${
                 activeMode === 'sales'
                   ? 'bg-amber-500 hover:bg-amber-400'
+                  : activeMode === 'platform'
+                  ? 'bg-sky-600 hover:bg-sky-500'
                   : 'bg-emerald-600 hover:bg-emerald-500'
               }`}
               title={isOverLimit ? 'Message exceeds 50,000 characters' : 'Send message'}
@@ -152,11 +158,15 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             className={
               activeMode === 'sales'
                 ? 'font-medium text-amber-600 dark:text-amber-400'
+                : activeMode === 'platform'
+                ? 'font-medium text-sky-600 dark:text-sky-400'
                 : 'font-medium text-emerald-600 dark:text-emerald-400'
             }
           >
             {activeMode === 'sales'
               ? 'Program Advisor Mode'
+              : activeMode === 'platform'
+              ? 'Platform Navigation Mode'
               : 'Clinical Educator Mode (0 Pitches)'}
           </span>
         </div>

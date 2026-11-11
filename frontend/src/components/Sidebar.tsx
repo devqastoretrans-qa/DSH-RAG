@@ -83,6 +83,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all active:scale-[0.98] ${
               activeMode === 'sales'
                 ? 'bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400'
+                : activeMode === 'platform'
+                ? 'bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-400'
                 : 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400'
             }`}
           >
@@ -126,6 +128,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               {activeMode === 'sales'
                 ? 'Program Advisor History'
+                : activeMode === 'platform'
+                ? 'Platform Help History'
                 : 'Clinical Educator History'}
             </span>
             <span className="font-mono text-[10px] text-slate-400">
