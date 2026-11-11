@@ -1587,6 +1587,29 @@ async def delete_chat_session_endpoint(
     })
 
 
+@app.delete(
+    "/api/chat/sessions",
+    tags=["Chat API"],
+    summary="Clear All Chat Sessions for Current Authenticated User"
+)
+async def delete_all_chat_sessions_endpoint(
+    mode: Optional[str] = None,
+    auth_claims: Dict[str, Any] = Depends(verify_chat_access)
+):
+    """
+    Deletes all chat sessions belonging strictly to the authenticated caller,
+    optionally scoped to a single bot mode ('generic' or 'sales').
+    """
+    current_uid = auth_claims["user_id"]
+    conv_memory = get_conversation_memory()
+    deleted_count = conv_memory.delete_all_sessions(user_id=current_uid, mode=mode)
+    return JSONResponse(status_code=200, content={
+        "success": True,
+        "deleted_count": deleted_count,
+        "mode": mode
+    })
+
+
 @app.get(
     "/api/chat/history",
     tags=["Chat API"],

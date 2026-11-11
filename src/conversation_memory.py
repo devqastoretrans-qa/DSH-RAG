@@ -574,6 +574,73 @@ class ConversationMemoryManager:
 
         return found
 
+    def delete_all_sessions(self, user_id: str, mode: Optional[str] = None) -> int:
+        """
+        Securely deletes all conversation sessions belonging strictly to user_id
+        (optionally filtered by bot mode). Never touches other users' records.
+        Returns the number of deleted turn rows (or sessions cleared in memory).
+        """
+        if not user_id:
+            return 0
+        uid = str(user_id).strip()
+        if uid.lower() in ("", "guest", "none", "null"):
+            return 0
+        clean_mode = str(mode).strip() if mode and str(mode).strip() else None
+
+        deleted = 0
+        if self.has_mysql:
+            try:
+                with self._get_mysql_conn() as conn:
+                    with conn.cursor() as cur:
+                        if clean_mode:
+                            cur.execute(
+                                "DELETE FROM conversation_turns WHERE user_id = %s AND mode = %s",
+                                (uid, clean_mode)
+                            )
+                        else:
+                            cur.execute(
+                                "DELETE FROM conversation_turns WHERE user_id = %s",
+                                (uid,)
+                            )
+                        deleted = max(deleted, cur.rowcount or 0)
+            except Exception as e:
+                logger.warning(f"[ConversationMemory] MySQL delete_all_sessions failed: {e}")
+
+        try:
+            with self._get_sqlite_conn() as conn:
+                cur = conn.cursor()
+                if clean_mode:
+                    cur.execute(
+                        "DELETE FROM conversation_turns WHERE user_id = ? AND mode = ?",
+                        (uid, clean_mode)
+                    )
+                else:
+                    cur.execute(
+                        "DELETE FROM conversation_turns WHERE user_id = ?",
+                        (uid,)
+                    )
+                deleted = max(deleted, cur.rowcount or 0)
+                conn.commit()
+        except Exception as e:
+            logger.error(f"[ConversationMemory] SQLite delete_all_sessions error: {e}")
+
+        prefix = f"{uid}::"
+        with self._lock:
+            to_remove = []
+            for k, history in self._sessions.items():
+                if not k.startswith(prefix):
+                    continue
+                if clean_mode:
+                    has_mode = any(t.get("mode") == clean_mode for t in history)
+                    if not has_mode and history:
+                        continue
+                to_remove.append(k)
+            for k in to_remove:
+                self._sessions.pop(k, None)
+                deleted = max(deleted, 1)
+
+        return deleted
+
     def get_recent_sessions(
         self,
         user_id: str,
@@ -611,13 +678,14 @@ class ConversationMemoryManager:
                                 conversation_id,
                                 user_id,
                                 mode,
+                                MIN(created_at) as created_at,
                                 MAX(created_at) as updated_at,
                                 COUNT(*) as message_count,
                                 (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.user_id = ct.user_id AND ct2.role = 'user' AND ct2.is_orphaned = 0 ORDER BY ct2.id ASC LIMIT 1) as title
                             FROM conversation_turns ct
                             {where_clause}
                             GROUP BY conversation_id, user_id, mode
-                            ORDER BY updated_at DESC
+                            ORDER BY MIN(created_at) ASC, MIN(id) ASC
                             LIMIT %s
                         """
                         cur.execute(sql, tuple(params))
@@ -642,13 +710,14 @@ class ConversationMemoryManager:
                             conversation_id,
                             user_id,
                             mode,
+                            MIN(created_at) as created_at,
                             MAX(created_at) as updated_at,
                             COUNT(*) as message_count,
                             (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.user_id = ct.user_id AND ct2.role = 'user' AND ct2.is_orphaned = 0 ORDER BY ct2.id ASC LIMIT 1) as title
                         FROM conversation_turns ct
                         {where_clause}
                         GROUP BY conversation_id, user_id, mode
-                        ORDER BY updated_at DESC
+                        ORDER BY MIN(created_at) ASC, MIN(id) ASC
                         LIMIT ?
                     """
                     cur.execute(sql, tuple(params))
@@ -657,8 +726,8 @@ class ConversationMemoryManager:
                 logger.error(f"[ConversationMemory] Error querying recent sessions from SQLite: {e}", exc_info=True)
                 rows = []
 
-        for row in rows:
-            cid, uid, mode, updated_at, count, raw_title = row
+        for idx, row in enumerate(rows, start=1):
+            cid, uid, mode, created_at, updated_at, count, raw_title = row
             raw_title_str = (raw_title or "").strip()
             if raw_title_str:
                 title = raw_title_str.split("\n")[0].strip()
@@ -670,8 +739,10 @@ class ConversationMemoryManager:
                 "session_id": cid,
                 "user_id": uid,
                 "mode": mode or "generic",
+                "chat_number": idx,
                 "title": title,
                 "message_count": count,
+                "created_at": created_at,
                 "updated_at": updated_at
             })
 

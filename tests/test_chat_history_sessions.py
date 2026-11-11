@@ -140,3 +140,52 @@ def test_read_only_history_not_rate_limited():
         client.delete(f"/api/chat/sessions/{sid}", headers=headers)
 
 
+def test_sequential_numbering_and_clear_all_sessions():
+    conv_memory = get_conversation_memory()
+    ts = int(time.time() * 1000)
+    uid = f"test_user_seq_{ts}"
+    other_uid = f"test_user_seq_other_{ts}"
+    s1 = f"test_seq_1_{ts}"
+    s2 = f"test_seq_2_{ts}"
+    sg = f"test_seq_gen_{ts}"
+    s_other = f"test_seq_other_{ts}"
+
+    token = create_session_token(user_id=uid)["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    other_token = create_session_token(user_id=other_uid)["token"]
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+
+    conv_memory.record_turn(uid, s1, "First sales chat", "Answer 1", [], mode="sales")
+    time.sleep(0.02)
+    conv_memory.record_turn(uid, s2, "Second sales chat", "Answer 2", [], mode="sales")
+    conv_memory.record_turn(uid, sg, "First clinical chat", "Clinical 1", [], mode="generic")
+    conv_memory.record_turn(other_uid, s_other, "Other user sales", "Other answer", [], mode="sales")
+
+    try:
+        # 1. Verify chronological 1st, 2nd numbering
+        res = client.get("/api/chat/sessions?mode=sales", headers=headers)
+        assert res.status_code == 200
+        sessions = res.json()["sessions"]
+        assert [s["session_id"] for s in sessions] == [s1, s2]
+        assert [s["chat_number"] for s in sessions] == [1, 2]
+
+        # 2. Unauthenticated clear returns 401
+        assert client.delete("/api/chat/sessions?mode=sales").status_code == 401
+
+        # 3. Clear only active user's sales sessions
+        res_clr = client.delete("/api/chat/sessions?mode=sales", headers=headers)
+        assert res_clr.status_code == 200
+        assert res_clr.json()["success"] is True
+
+        # Sales sessions cleared, generic preserved, other user untouched
+        assert client.get("/api/chat/sessions?mode=sales", headers=headers).json()["sessions"] == []
+        gen_sessions = client.get("/api/chat/sessions?mode=generic", headers=headers).json()["sessions"]
+        assert len(gen_sessions) == 1 and gen_sessions[0]["session_id"] == sg and gen_sessions[0]["chat_number"] == 1
+        other_sessions = client.get("/api/chat/sessions?mode=sales", headers=other_headers).json()["sessions"]
+        assert len(other_sessions) == 1 and other_sessions[0]["session_id"] == s_other
+    finally:
+        client.delete("/api/chat/sessions", headers=headers)
+        client.delete("/api/chat/sessions", headers=other_headers)
+
+
+

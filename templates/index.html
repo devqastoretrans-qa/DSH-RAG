@@ -412,6 +412,40 @@
             opacity: 0.8;
         }
 
+        .history-session-num {
+            font-family: var(--font-mono);
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--brand-gold);
+            flex-shrink: 0;
+            min-width: 1.3rem;
+        }
+
+        .history-header-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .history-clear-btn {
+            background: none;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 0.65rem;
+            font-family: var(--font-mono);
+            padding: 0.12rem 0.4rem;
+            border-radius: 4px;
+            text-transform: uppercase;
+            transition: all 0.15s ease;
+        }
+
+        .history-clear-btn:hover {
+            color: var(--brand-coral);
+            border-color: rgba(244, 63, 94, 0.4);
+            background: rgba(244, 63, 94, 0.1);
+        }
+
         .history-session-title {
             overflow: hidden;
             text-overflow: ellipsis;
@@ -1974,9 +2008,13 @@
                 </div>
                 <div class="history-section-header">
                     <span id="historySectionTitle">Clinical Chats</span>
-                    <button onclick="loadChatSessions()"
-                        style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.75rem;"
-                        title="Refresh Chat History">🔄</button>
+                    <div class="history-header-actions">
+                        <button class="history-clear-btn" onclick="clearAllBotSessions()"
+                            title="Remove all past chats in this bot">Clear</button>
+                        <button onclick="loadChatSessions()"
+                            style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.75rem;"
+                            title="Refresh Chat History">🔄</button>
+                    </div>
                 </div>
                 <div class="history-sessions-list" id="historySessionsList">
                     <div class="history-empty-hint">Loading past conversations...</div>
@@ -2654,15 +2692,13 @@
                 if (res.ok) {
                     const data = await res.json();
                     usersCatalog = data.users || [];
-                    const select = document.getElementById('personaSelect');
+                    const select = docu'personaSelect');
 
                     if (usersCatalog.length > 0) {
                         select.innerHTML = '';
                         // Group: Real WooCommerce Students
                         const optGroupWC = document.createElement('optgroup');
-                        optGroupWC.label = `WordPress WooCommerce Students (${usersCatalog.length})`;
-
-                        usersCatalog.forEach(u => {
+                        optGroupWC.label = `WordPress WooCommerce Students (${usersC                   usersCatalog.forEach(u => {
                             const opt = document.createElement('option');
                             opt.value = u.user_id;
                             const pCount = (u.all_purchases || []).length;
@@ -2711,7 +2747,7 @@
         async function onCustomerSelect(userId) {
             currentUserId = userId;
 
-            // Cleanly purge all previous user chat state and DOM
+     eanly purge all previous user chat state and DOM
             sessionStorage.clear();
             botChannels['generic'].chatHtml = null;
             botChannels['generic'].hasMessages = false;
@@ -2724,7 +2760,7 @@
 
             const user = usersCatalog.find(u => String(u.user_id) === String(userId));
 
-            const avatarEl = document.getElementById('customerAvatar');
+            constdocument.getElementById('customerAvatar');
             const nameEl = document.getElementById('customerName');
             const emailEl = document.getElementById('customerEmail');
             const attachEl = document.getElementById('customerAttachment');
@@ -2738,11 +2774,10 @@
                 nameEl.textContent = user.name || user.email;
                 emailEl.textContent = user.email || 'No email registered';
 
-                const style = user.attachment_style || (userId === '1836' ? 'Anxious-Preoccupied' : 'Relationship Student');
+                const style =_style || (userId === '1836' ? 'Anxious-Preoccupied' : 'Relationship Student');
                 attachEl.textContent = style;
 
-                const purchases = user.all_purchases || [];
-                countTag.textContent = `${purchases.length} item${purchases.length === 1 ? '' : 's'}`;
+                const purchases = user.all_pu               countTag.textContent = `${purchases.length} item${purchases.length === 1 ? '' : 's'}`;
 
                 if (purchases.length > 0) {
                     productsContainer.innerHTML = purchases.map(p => `
@@ -2825,8 +2860,8 @@
                     <h2>Dr. Sarah Hensley Program Advisor</h2>
                     <p>
                         ${isNewSession
-                        ? `New advisor session initialized (<code>${botChannels['sales'].sessionId}</code>). Multi-turn conversation memory cleared.`
-                        : `Personalized course guidance tailored to your attachment style and relationship stage. Find the right masterclass ($97), bundle, or coaching roadmap.`}
+                        ? `New advisor session initialized (<o                        ssionId}</code>). Multi-turn conversation memory cleared.`
+                        : `Personalized course guidance tailored t                         lationship stage. Find the right masterclass ($97), bundle, or coaching roadmap.`}
                     </p>
                     <div class="starter-chips-grid">
                         <div class="starter-chip sales-theme" onclick="runPresetQuery('Which masterclass should I start with if I struggle with anxious spiraling?', 'sales')">
@@ -2855,8 +2890,8 @@
                     <h2>Dr. Sarah Hensley Clinical Educator</h2>
                     <p>
                         ${isNewSession
-                        ? `New clinical session initialized (<code>${botChannels['generic'].sessionId}</code>). Multi-turn conversation memory cleared.`
-                        : `Evidence-based clinical guidance on attachment styles, subconscious core wounds, and nervous system regulation with <b>zero sales pitches</b>.`}
+                        ? `New clinical session initialized (<code>${boC                        }</code>). Multi-turn conversation memory cleared.`
+                        : `Evidence-based clinical guidance on attachment stl                        , and nervous system regulation with <b>zero sales pitches</b>.`}
                     </p>
                     <div class="starter-chips-grid">
                         <div class="starter-chip" onclick="runPresetQuery('What is the 1:1:1 journal reflection method for emotional regulation?', 'generic')">
@@ -2987,8 +3022,7 @@
                                 const payload = JSON.parse(line.substring(6));
 
                                 if (payload.token) {
-                                    if (isFirstToken) {
-                                        botBubble.innerHTML = '';
+                                                                botBubble.innerHTML = '';
                                         isFirstToken = false;
                                     }
                                     accumulatedTokens += payload.token;
@@ -2999,8 +3033,7 @@
                                     renderFinalBotMessage(botBubble, finalAns, payload);
 
                                     // Update Inspector Tabs
-                                    if (payload.sources) {
-                                        activeChannel.sources = payload.sources;
+                                    if (payload.sour           activeChannel.sources = payload.sources;
                                         renderSourcesInspector(payload.sources);
                                     }
                                     activeChannel.hasMessages = true;
@@ -3229,7 +3262,7 @@
             renderWelcomeHeroForMode(currentMode, true);
             updateChannelHeader();
             renderSourcesInspector([]);
-            await refreshMemoryTurns();
+            awaitryTurns();
             await loadChatSessions();
             if (chatInput) {
                 chatInput.focus();
@@ -3275,13 +3308,13 @@
 
                 const activeSid = activeChannel ? activeChannel.sessionId : '';
 
-                listEl.innerHTML = sessions.map(s => {
+                listEl.innerHTML = sessions.map((s, idx) => {
                     const isActive = (s.session_id === activeSid) ? 'active' : '';
+                    const chatNum = s.chat_number || (idx + 1);
                     const titleText = escapeHtml(s.title || 'Conversation');
 
                     let icon = '💬';
-                    if (s.mode === 'sales') icon = '💼';
-                    else if (s.mode === 'platform') icon = '🌐';
+                    if (s.mode === 'sales') icon = '�    else if (s.mode === 'platform') icon = '🌐';
                     else if (s.mode === 'owner') icon = '👑';
                     else if (s.mode === 'learning') icon = '📚';
                     else if (s.mode === 'coaching') icon = '🤝';
@@ -3291,8 +3324,9 @@
                     const safeMode = escapeHtml(s.mode || 'generic');
 
                     return `
-                        <div class="history-session-item ${isActive}" id="hist_item_${safeSid}" onclick="loadPastSession('${safeSid}', '${safeMode}')" title="${titleText}">
+                        <div class="history-session-item ${isActive}" id="hist_item_${safeSid}" onclick="loadPastSession('${safeSid}', '${safeMode}')" title="${chatNum}. ${titleText}">
                             <div class="history-session-info">
+                                <span class="history-session-num">${chatNum}.</span>
                                 <span class="history-session-icon">${icon}</span>
                                 <span class="history-session-title">${titleText}</span>
                             </div>
@@ -3395,6 +3429,23 @@
             }
         }
 
+        async function clearAllBotSessions() {
+            const activeChannel = botChannels[currentMode];
+            const modeLabel = activeChannel ? activeChannel.name : currentMode;
+            if (!confirm(`Remove all past ${modeLabel} conversations? Your next chat will start as #1.`)) return;
+
+            try {
+                const res = await fetch(`/api/chat/sessions?mode=${encodeURIComponent(currentMode)}`, {
+                    method: 'DELETE',
+                    headers: getAuthHeaders()
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                await startNewChat();
+            } catch (err) {
+                console.error('Failed to clear sessions:', err);
+            }
+        }
+
 
         // 10. Switch Inspector Tabs
         function switchInspectorTab(tabId) {
@@ -3446,7 +3497,7 @@
             }
         }
 
-        document.addEventListener('keydown', (e) => {
+        documeistener('keydown', (e) => {
             if (e.key === 'Escape') {
                 closeDatabaseViewer();
             }
@@ -3465,8 +3516,7 @@
 
             // Adjust toolbar & footer
             const searchInput = document.getElementById('dbSearchInput');
-            if (searchInput) searchInput.style.display = 'none';
-            const actionBtns = document.querySelectorAll('#dbActionsToolbar .db-action-btn');
+            if (searchInput) searchInput.style.display                           const actionBtns = document.querySelect                        sToolbar .db-action-btn');
             actionBtns.forEach(b => b.style.display = 'none');
 
             const statsText = document.getElementById('dbTableStatsText');
@@ -3526,11 +3576,8 @@
 
                 if (res.status === 401) {
                     sessionStorage.removeItem('dsh_admin_api_key');
-                    const retryKey = prompt("❌ Invalid or expired Admin API Key. Please re-enter your key:");
-                    if (retryKey && retryKey.trim()) {
-                        sessionStorage.setItem('dsh_admin_api_key', retryKey.trim());
-                        res = await fetch(`/api/database/table/${currentDbTable}?limit=250`, {
-                            headers: { 'X-API-Key': retryKey.trim() }
+                    const retryKey = prompt("❌ Invalid or expired Admin API Key. Please re-enter your key:")      if (retryKey && retryKey.trim()) {
+                        sessionStorage.setItem('dsh_admin_api_key', ret                           res = await fetch(`/api/database/table/${current                                           headers: { 'X-API-Key': retryKey.trim() }
                         });
                     }
                 }
@@ -3621,8 +3668,7 @@
             link.click();
         }
 
-        // Utilities
-        function handleKeyDown(e) {
+        // Utiliti   ction handleKeyDown(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 submitMessage();
