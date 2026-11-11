@@ -577,10 +577,12 @@ class ConversationMemoryManager:
     def get_recent_sessions(
         self,
         user_id: str,
-        limit: int = 50
+        limit: int = 50,
+        mode: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Returns a list of recent conversation sessions strictly for the authenticated user_id.
+        Optionally filters by bot mode (e.g., 'generic' or 'sales').
         Excludes orphaned/unowned records and never leaks another user's sessions.
         Includes session_id, user_id, title (derived from first user query), last updated timestamp, and turn count.
         """
@@ -591,13 +593,20 @@ class ConversationMemoryManager:
             return []
 
         clean_uid = str(user_id).strip()
+        clean_mode = str(mode).strip() if mode and str(mode).strip() else None
 
         # 1. Attempt MySQL query if enabled
         if self.has_mysql:
             try:
                 with self._get_mysql_conn() as conn:
                     with conn.cursor() as cur:
-                        sql = """
+                        where_clause = "WHERE user_id = %s AND is_orphaned = 0"
+                        params: List[Any] = [clean_uid]
+                        if clean_mode:
+                            where_clause += " AND mode = %s"
+                            params.append(clean_mode)
+                        params.append(limit)
+                        sql = f"""
                             SELECT 
                                 conversation_id,
                                 user_id,
@@ -606,12 +615,12 @@ class ConversationMemoryManager:
                                 COUNT(*) as message_count,
                                 (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.user_id = ct.user_id AND ct2.role = 'user' AND ct2.is_orphaned = 0 ORDER BY ct2.id ASC LIMIT 1) as title
                             FROM conversation_turns ct
-                            WHERE user_id = %s AND is_orphaned = 0
+                            {where_clause}
                             GROUP BY conversation_id, user_id, mode
                             ORDER BY updated_at DESC
                             LIMIT %s
                         """
-                        cur.execute(sql, (clean_uid, limit))
+                        cur.execute(sql, tuple(params))
                         rows = cur.fetchall()
             except Exception as e:
                 logger.warning(f"[ConversationMemory] MySQL recent sessions lookup failed, falling back to SQLite: {e}")
@@ -622,7 +631,13 @@ class ConversationMemoryManager:
             try:
                 with self._get_sqlite_conn() as conn:
                     cur = conn.cursor()
-                    sql = """
+                    where_clause = "WHERE user_id = ? AND is_orphaned = 0"
+                    params = [clean_uid]
+                    if clean_mode:
+                        where_clause += " AND mode = ?"
+                        params.append(clean_mode)
+                    params.append(limit)
+                    sql = f"""
                         SELECT 
                             conversation_id,
                             user_id,
@@ -631,12 +646,12 @@ class ConversationMemoryManager:
                             COUNT(*) as message_count,
                             (SELECT content FROM conversation_turns ct2 WHERE ct2.conversation_id = ct.conversation_id AND ct2.user_id = ct.user_id AND ct2.role = 'user' AND ct2.is_orphaned = 0 ORDER BY ct2.id ASC LIMIT 1) as title
                         FROM conversation_turns ct
-                        WHERE user_id = ? AND is_orphaned = 0
+                        {where_clause}
                         GROUP BY conversation_id, user_id, mode
                         ORDER BY updated_at DESC
                         LIMIT ?
                     """
-                    cur.execute(sql, (clean_uid, limit))
+                    cur.execute(sql, tuple(params))
                     rows = cur.fetchall()
             except Exception as e:
                 logger.error(f"[ConversationMemory] Error querying recent sessions from SQLite: {e}", exc_info=True)
@@ -662,9 +677,16 @@ class ConversationMemoryManager:
 
         return sessions
 
-    def get_session_turns(self, user_id: str, conversation_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+    def get_session_turns(
+        self,
+        user_id: str,
+        conversation_id: str,
+        limit: int = 50,
+        mode: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """
         Retrieves all persistent message turns for a given (user_id, conversation_id) from MySQL or SQLite.
+        Optionally filters by bot mode ('generic' or 'sales').
         Strictly scopes lookup to the authenticated user and ignores orphaned records.
         """
         turns = []
@@ -675,18 +697,25 @@ class ConversationMemoryManager:
 
         clean_uid = str(user_id).strip()
         clean_cid = str(conversation_id).strip()
+        clean_mode = str(mode).strip() if mode and str(mode).strip() else None
 
         if self.has_mysql:
             try:
                 with self._get_mysql_conn() as conn:
                     with conn.cursor() as cur:
-                        cur.execute("""
+                        where_clause = "WHERE user_id = %s AND conversation_id = %s AND is_orphaned = 0"
+                        params: List[Any] = [clean_uid, clean_cid]
+                        if clean_mode:
+                            where_clause += " AND mode = %s"
+                            params.append(clean_mode)
+                        params.append(limit)
+                        cur.execute(f"""
                             SELECT role, content, mode, created_at
                             FROM conversation_turns
-                            WHERE user_id = %s AND conversation_id = %s AND is_orphaned = 0
+                            {where_clause}
                             ORDER BY created_at ASC, id ASC
                             LIMIT %s
-                        """, (clean_uid, clean_cid, limit))
+                        """, tuple(params))
                         rows = cur.fetchall()
             except Exception as e:
                 logger.warning(f"[ConversationMemory] MySQL session turns lookup failed, falling back to SQLite: {e}")
@@ -696,13 +725,19 @@ class ConversationMemoryManager:
             try:
                 with self._get_sqlite_conn() as conn:
                     cur = conn.cursor()
-                    cur.execute("""
+                    where_clause = "WHERE user_id = ? AND conversation_id = ? AND is_orphaned = 0"
+                    params = [clean_uid, clean_cid]
+                    if clean_mode:
+                        where_clause += " AND mode = ?"
+                        params.append(clean_mode)
+                    params.append(limit)
+                    cur.execute(f"""
                         SELECT role, content, mode, created_at
                         FROM conversation_turns
-                        WHERE user_id = ? AND conversation_id = ? AND is_orphaned = 0
+                        {where_clause}
                         ORDER BY created_at ASC, id ASC
                         LIMIT ?
-                    """, (clean_uid, clean_cid, limit))
+                    """, tuple(params))
                     rows = cur.fetchall()
             except Exception as e:
                 logger.error(f"[ConversationMemory] Error loading session turns from SQLite: {e}", exc_info=True)

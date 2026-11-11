@@ -1540,15 +1540,17 @@ async def chat_reset_endpoint(
 )
 async def list_chat_sessions_endpoint(
     limit: int = 50,
+    mode: Optional[str] = None,
     auth_claims: Dict[str, Any] = Depends(verify_chat_access)
 ):
     """
-    Returns recent conversation sessions strictly for the authenticated user_id.
+    Returns recent conversation sessions strictly for the authenticated user_id,
+    optionally filtered by bot mode ('generic' or 'sales').
     Derives user_id solely from the verified token; ignores client query parameters.
     """
     current_uid = auth_claims["user_id"]
     conv_memory = get_conversation_memory()
-    sessions = conv_memory.get_recent_sessions(user_id=current_uid, limit=limit)
+    sessions = conv_memory.get_recent_sessions(user_id=current_uid, limit=limit, mode=mode)
     return JSONResponse(status_code=200, content={
         "success": True,
         "count": len(sessions),
@@ -1592,17 +1594,19 @@ async def delete_chat_session_endpoint(
 )
 async def get_chat_history_endpoint(
     session_id: str,
+    mode: Optional[str] = None,
     auth_claims: Dict[str, Any] = Depends(verify_chat_access)
 ):
     """
-    Returns recent multi-turn conversation turns for the active session.
+    Returns recent multi-turn conversation turns for the active session,
+    optionally filtered by bot mode ('generic' or 'sales').
     Strictly verifies ownership: Returns 404 if session belongs to another user or does not exist.
     """
     current_uid = auth_claims["user_id"]
     conv_memory = get_conversation_memory()
 
-    turns = conv_memory.get_session_turns(user_id=current_uid, conversation_id=session_id, limit=60)
-    if not turns:
+    turns = conv_memory.get_session_turns(user_id=current_uid, conversation_id=session_id, limit=60, mode=mode)
+    if not turns and not mode:
         history = conv_memory.get_chat_history(user_id=current_uid, conversation_id=session_id, max_turns=30)
         if history:
             turns = history

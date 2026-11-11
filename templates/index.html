@@ -23,7 +23,7 @@
             --bg-surface: #131E32;
             --bg-surface-elevated: #1B2942;
             --bg-glass: rgba(19, 30, 50, 0.75);
-            
+
             --border-subtle: rgba(255, 255, 255, 0.08);
             --border-accent: rgba(203, 180, 144, 0.25);
             --border-hover: rgba(255, 255, 255, 0.16);
@@ -34,7 +34,7 @@
             --brand-emerald: #10B981;
             --brand-emerald-dark: #064E3B;
             --brand-emerald-glow: rgba(16, 185, 129, 0.2);
-            
+
             --brand-coral: #F43F5E;
             --brand-blue: #38BDF8;
 
@@ -63,7 +63,8 @@
             padding: 0;
         }
 
-        html, body {
+        html,
+        body {
             height: 100%;
             height: 100dvh;
             overflow: hidden;
@@ -80,8 +81,8 @@
             height: 100%;
             height: 100dvh;
             background: radial-gradient(circle at 15% 10%, rgba(16, 185, 129, 0.06), transparent 30%),
-                        radial-gradient(circle at 85% 85%, rgba(197, 168, 128, 0.05), transparent 35%),
-                        var(--bg-base);
+                radial-gradient(circle at 85% 85%, rgba(197, 168, 128, 0.05), transparent 35%),
+                var(--bg-base);
         }
 
         /* =========================================================================
@@ -171,8 +172,17 @@
         }
 
         @keyframes pulse-glow {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(1.25); }
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.5;
+                transform: scale(1.25);
+            }
         }
 
         /* Mode Switcher In Header */
@@ -762,7 +772,7 @@
 
         .welcome-hero.sales-theme {
             background: radial-gradient(circle at 50% 0%, rgba(197, 168, 128, 0.12), transparent 70%),
-                        linear-gradient(180deg, var(--bg-surface) 0%, rgba(19, 30, 50, 0.5) 100%);
+                linear-gradient(180deg, var(--bg-surface) 0%, rgba(19, 30, 50, 0.5) 100%);
             border-color: rgba(197, 168, 128, 0.3);
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4), 0 0 25px rgba(197, 168, 128, 0.08);
         }
@@ -860,8 +870,15 @@
         }
 
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(6px); }
-            to { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(6px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .message-row.user-row {
@@ -903,7 +920,10 @@
         }
 
         /* Bubble Markdown Styling */
-        .bot-bubble h1, .bot-bubble h2, .bot-bubble h3, .bot-bubble h4 {
+        .bot-bubble h1,
+        .bot-bubble h2,
+        .bot-bubble h3,
+        .bot-bubble h4 {
             font-family: var(--font-heading);
             color: var(--brand-gold-bright);
             margin-top: 0.9rem;
@@ -925,7 +945,8 @@
             margin-bottom: 0;
         }
 
-        .bot-bubble ul, .bot-bubble ol {
+        .bot-bubble ul,
+        .bot-bubble ol {
             margin-left: 1.25rem;
             margin-bottom: 0.75rem;
         }
@@ -1043,8 +1064,16 @@
         }
 
         @keyframes blink {
-            0%, 50% { opacity: 1; }
-            51%, 100% { opacity: 0; }
+
+            0%,
+            50% {
+                opacity: 1;
+            }
+
+            51%,
+            100% {
+                opacity: 0;
+            }
         }
 
         /* Chat Input Controls */
@@ -1822,6 +1851,7 @@
             .workspace {
                 grid-template-columns: 260px 280px 1fr 0px;
             }
+
             .panel-inspector {
                 display: none;
             }
@@ -1831,9 +1861,11 @@
             .workspace {
                 grid-template-columns: 240px 1fr 0px;
             }
+
             .panel-customer {
                 display: none;
             }
+
             .panel-inspector {
                 display: none;
             }
@@ -1843,12 +1875,15 @@
             .workspace {
                 grid-template-columns: 1fr;
             }
+
             .panel-history {
                 display: none;
             }
+
             .panel-customer {
                 display: none;
             }
+
             .starter-chips-grid {
                 grid-template-columns: 1fr;
             }
@@ -1885,7 +1920,8 @@
             <!-- Mode Selector In Center -->
             <div class="header-center">
                 <div class="mode-pill-toggle">
-                    <button class="mode-pill-btn active clinical" id="btnModeClinical" onclick="switchStudioMode('generic')">
+                    <button class="mode-pill-btn active clinical" id="btnModeClinical"
+                        onclick="switchStudioMode('generic')">
                         🩺 Clinical Educator
                     </button>
                     <button class="mode-pill-btn sales" id="btnModeSales" onclick="switchStudioMode('sales')">
@@ -1896,19 +1932,23 @@
 
             <!-- Header Actions -->
             <div class="header-actions">
-                <button class="btn-action-icon" id="btnToggleHistory" onclick="toggleHistorySidebar()" title="Toggle Past Chats Sidebar">
+                <button class="btn-action-icon" id="btnToggleHistory" onclick="toggleHistorySidebar()"
+                    title="Toggle Past Chats Sidebar">
                     📑 Past Chats
                 </button>
-                <button class="btn-action-icon db-btn" onclick="openDatabaseViewer()" title="View Live MySQL Database Tables in Visual Format">
+                <button class="btn-action-icon db-btn" onclick="openDatabaseViewer()"
+                    title="View Live MySQL Database Tables in Visual Format">
                     🗄️ Database Tables
                 </button>
                 <button class="btn-action-icon" onclick="startNewChat()" title="Start New Chat & Clear Session Turns">
                     🔄 New Chat
                 </button>
-                <button class="btn-action-icon" id="btnToggleInspector" onclick="toggleInspector()" title="Toggle Telemetry & Inspection Drawer">
+                <button class="btn-action-icon" id="btnToggleInspector" onclick="toggleInspector()"
+                    title="Toggle Telemetry & Inspection Drawer">
                     📊 Inspector
                 </button>
-                <a href="/docs" target="_blank" class="btn-action-icon" style="text-decoration:none;" title="Open Swagger API Documentation">
+                <a href="/docs" target="_blank" class="btn-action-icon" style="text-decoration:none;"
+                    title="Open Swagger API Documentation">
                     ⚡ API Docs
                 </a>
             </div>
@@ -1924,7 +1964,8 @@
             <aside class="panel-history" id="panelHistory">
                 <div class="history-top-bar">
                     <button class="btn-new-chat" id="btnSidebarNewChat" onclick="startNewChat()">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                             <line x1="12" y1="5" x2="12" y2="19"></line>
                             <line x1="5" y1="12" x2="19" y2="12"></line>
                         </svg>
@@ -1932,8 +1973,10 @@
                     </button>
                 </div>
                 <div class="history-section-header">
-                    <span>Recent Chats</span>
-                    <button onclick="loadChatSessions()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.75rem;" title="Refresh Chat History">🔄</button>
+                    <span id="historySectionTitle">Clinical Chats</span>
+                    <button onclick="loadChatSessions()"
+                        style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.75rem;"
+                        title="Refresh Chat History">🔄</button>
                 </div>
                 <div class="history-sessions-list" id="historySessionsList">
                     <div class="history-empty-hint">Loading past conversations...</div>
@@ -1944,7 +1987,7 @@
                  LEFT PANEL: CUSTOMER & PERSONA CONTROL CENTER
                  =============================================================== -->
             <aside class="panel-customer">
-                <div {% if is_production %}style="display: none;"{% endif %}>
+                <div {% if is_production %}style="display: none;" {% endif %}>
                     <div class="panel-heading">
                         <span>Select Customer Profile</span>
                         <span id="customerCountBadge" style="color:var(--brand-gold);">40 Users</span>
@@ -2001,7 +2044,8 @@
                     </div>
 
                     <div class="guardrail-callout" id="guardrailNotice">
-                        🛡️ <b>Unowned Course Guardrail Active:</b> The sales bot detects these 3 owned courses and will recommend the next advanced curriculum tier.
+                        🛡️ <b>Unowned Course Guardrail Active:</b> The sales bot detects these 3 owned courses and will
+                        recommend the next advanced curriculum tier.
                     </div>
                 </div>
 
@@ -2009,32 +2053,39 @@
                 <div>
                     <div class="panel-heading">Quick Test Presets</div>
                     <div class="test-presets">
-                        <button class="preset-btn" onclick="runPresetQuery('How can I calm my nervous system when I fear my partner is pulling away?', 'generic')">
+                        <button class="preset-btn"
+                            onclick="runPresetQuery('How can I calm my nervous system when I fear my partner is pulling away?', 'generic')">
                             <span class="preset-badge">🩺 Clinical Isolation Test</span>
-                            <span class="preset-text">Calm nervous system in abandonment panic (Asserts 0 pitches)</span>
+                            <span class="preset-text">Calm nervous system in abandonment panic (Asserts 0
+                                pitches)</span>
                         </button>
 
-                        <button class="preset-btn" onclick="runPresetQuery('What course or masterclass does Dr. Sarah offer to heal anxious attachment?', 'sales')">
+                        <button class="preset-btn"
+                            onclick="runPresetQuery('What course or masterclass does Dr. Sarah offer to heal anxious attachment?', 'sales')">
                             <span class="preset-badge">💼 Sales Recommendation Test</span>
                             <span class="preset-text">Recommend Anxious Attachment Masterclass ($97)</span>
                         </button>
 
-                        <button class="preset-btn" onclick="runPresetQuery('I want to get back together with my ex or fix my breakup. What program do you recommend?', 'sales')">
+                        <button class="preset-btn"
+                            onclick="runPresetQuery('I want to get back together with my ex or fix my breakup. What program do you recommend?', 'sales')">
                             <span class="preset-badge">🛡️ Owned Course Guardrail Test</span>
                             <span class="preset-text">Test User 1836 (Bypasses already owned Ex-Back course)</span>
                         </button>
 
-                        <button class="preset-btn" onclick="runPresetQuery('My partner is Dismissive Avoidant and shuts down in conflict.', 'generic')">
+                        <button class="preset-btn"
+                            onclick="runPresetQuery('My partner is Dismissive Avoidant and shuts down in conflict.', 'generic')">
                             <span class="preset-badge">🧠 Memory Step 1</span>
                             <span class="preset-text">Establish partner's avoidant style</span>
                         </button>
 
-                        <button class="preset-btn" onclick="runPresetQuery('Which attachment style did I say my partner had?', 'generic')">
+                        <button class="preset-btn"
+                            onclick="runPresetQuery('Which attachment style did I say my partner had?', 'generic')">
                             <span class="preset-badge">🧠 Memory Step 2 (Recall)</span>
                             <span class="preset-text">Tests entity stitching from past turns</span>
                         </button>
 
-                        <button class="preset-btn" onclick="runPresetQuery('I feel so hopeless and I want to kill myself', 'generic')">
+                        <button class="preset-btn"
+                            onclick="runPresetQuery('I feel so hopeless and I want to kill myself', 'generic')">
                             <span class="preset-badge">🚨 Crisis Safety Interception</span>
                             <span class="preset-text">Deterministic 988 Lifeline regex interception</span>
                         </button>
@@ -2064,25 +2115,34 @@
                         <div class="hero-emblem">🩺</div>
                         <h2>Dr. Sarah Hensley Clinical Educator</h2>
                         <p>
-                            Evidence-based clinical guidance on attachment styles, subconscious core wounds, and nervous system regulation with <b>zero sales pitches</b>.
+                            Evidence-based clinical guidance on attachment styles, subconscious core wounds, and nervous
+                            system regulation with <b>zero sales pitches</b>.
                         </p>
 
                         <div class="starter-chips-grid">
-                            <div class="starter-chip" onclick="runPresetQuery('What is the 1:1:1 journal reflection method for emotional regulation?', 'generic')">
+                            <div class="starter-chip"
+                                onclick="runPresetQuery('What is the 1:1:1 journal reflection method for emotional regulation?', 'generic')">
                                 <span class="chip-category">📓 Clinical Tool</span>
-                                <span class="chip-question">What is the 1:1:1 journal reflection method for emotional regulation?</span>
+                                <span class="chip-question">What is the 1:1:1 journal reflection method for emotional
+                                    regulation?</span>
                             </div>
-                            <div class="starter-chip" onclick="runPresetQuery('How does the SOLACE communication tool resolve high-conflict fights?', 'generic')">
+                            <div class="starter-chip"
+                                onclick="runPresetQuery('How does the SOLACE communication tool resolve high-conflict fights?', 'generic')">
                                 <span class="chip-category">🤝 Communication</span>
-                                <span class="chip-question">How does the SOLACE communication tool resolve high-conflict fights?</span>
+                                <span class="chip-question">How does the SOLACE communication tool resolve high-conflict
+                                    fights?</span>
                             </div>
-                            <div class="starter-chip" onclick="runPresetQuery('What are the core differences between anxious and avoidant attachment?', 'generic')">
+                            <div class="starter-chip"
+                                onclick="runPresetQuery('What are the core differences between anxious and avoidant attachment?', 'generic')">
                                 <span class="chip-category">🩺 Attachment Theory</span>
-                                <span class="chip-question">What are the core differences between anxious and avoidant attachment?</span>
+                                <span class="chip-question">What are the core differences between anxious and avoidant
+                                    attachment?</span>
                             </div>
-                            <div class="starter-chip" onclick="runPresetQuery('How can I calm acute nervous system hyperarousal during relationship anxiety?', 'generic')">
+                            <div class="starter-chip"
+                                onclick="runPresetQuery('How can I calm acute nervous system hyperarousal during relationship anxiety?', 'generic')">
                                 <span class="chip-category">🧘 Somatic Practice</span>
-                                <span class="chip-question">How can I calm acute nervous system hyperarousal during relationship anxiety?</span>
+                                <span class="chip-question">How can I calm acute nervous system hyperarousal during
+                                    relationship anxiety?</span>
                             </div>
                         </div>
                     </div>
@@ -2091,15 +2151,12 @@
                 <!-- Bottom Chat Input Bar -->
                 <div class="chat-input-bar">
                     <div class="input-box-wrapper">
-                        <textarea 
-                            class="chat-textarea" 
-                            id="chatInputText" 
-                            rows="1" 
+                        <textarea class="chat-textarea" id="chatInputText" rows="1"
                             placeholder="Ask Dr. Sarah's AI about attachment styles, somatic tools, or programs..."
-                            onkeydown="handleKeyDown(event)"
-                            oninput="autoResizeTextarea(this)"></textarea>
+                            onkeydown="handleKeyDown(event)" oninput="autoResizeTextarea(this)"></textarea>
                         <button class="btn-send" id="btnSendMessage" onclick="submitMessage()" title="Send Message">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                                 <line x1="22" y1="2" x2="11" y2="13"></line>
                                 <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
                             </svg>
@@ -2117,7 +2174,8 @@
                  =============================================================== -->
             <aside class="panel-inspector" id="inspectorDrawer">
                 <div class="inspector-tabs">
-                    <button class="tab-btn active" id="tabBtnSources" onclick="switchInspectorTab('sources')">📚 Sources</button>
+                    <button class="tab-btn active" id="tabBtnSources" onclick="switchInspectorTab('sources')">📚
+                        Sources</button>
                     <button class="tab-btn" id="tabBtnMemory" onclick="switchInspectorTab('memory')">🧠 Memory</button>
                     <button class="tab-btn" id="tabBtnStats" onclick="switchInspectorTab('stats')">📊 Telemetry</button>
                 </div>
@@ -2131,7 +2189,8 @@
                         </div>
                         <div id="chunksContainer" style="display:flex; flex-direction:column; gap:0.65rem;">
                             <div style="font-size:0.75rem; color:var(--text-muted); font-style:italic;">
-                                Ask a question to view the exact Qdrant INT8 dense-sparse chunks and cross-encoder re-ranking scores.
+                                Ask a question to view the exact Qdrant INT8 dense-sparse chunks and cross-encoder
+                                re-ranking scores.
                             </div>
                         </div>
                     </div>
@@ -2140,11 +2199,13 @@
                     <div class="tab-pane" id="paneMemory">
                         <div class="panel-heading">
                             <span>MySQL Stored Turns</span>
-                            <button onclick="refreshMemoryTurns()" style="background:none; border:none; color:var(--brand-emerald); cursor:pointer; font-size:0.7rem;">Refresh</button>
+                            <button onclick="refreshMemoryTurns()"
+                                style="background:none; border:none; color:var(--brand-emerald); cursor:pointer; font-size:0.7rem;">Refresh</button>
                         </div>
                         <div id="memoryTurnsContainer" style="display:flex; flex-direction:column; gap:0.65rem;">
                             <div style="font-size:0.75rem; color:var(--text-muted); font-style:italic;">
-                                Active session turns will appear here directly from MySQL <code>conversation_turns</code>.
+                                Active session turns will appear here directly from MySQL
+                                <code>conversation_turns</code>.
                             </div>
                         </div>
                     </div>
@@ -2172,7 +2233,8 @@
                         </div>
 
                         <div class="guardrail-callout" style="margin-top:0.5rem;">
-                            💾 <b>MySQL Low-Memory Profile:</b> Memory capped at ~196 MB RSS with a 2.0 GB EBS swap safeguard ensuring zero OOM crashes.
+                            💾 <b>MySQL Low-Memory Profile:</b> Memory capped at ~196 MB RSS with a 2.0 GB EBS swap
+                            safeguard ensuring zero OOM crashes.
                         </div>
                     </div>
                 </div>
@@ -2190,7 +2252,8 @@
                 <div class="db-modal-title">
                     <span>🗄️ MySQL Database Explorer</span>
                     <span class="db-modal-tag" id="dbModalStatusTag">MySQL 8.4 Connected</span>
-                    <span style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">DB: <code>rag_users</code></span>
+                    <span style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">DB:
+                        <code>rag_users</code></span>
                 </div>
                 <button class="db-modal-close" onclick="closeDatabaseViewer()" title="Close (ESC)">✕</button>
             </div>
@@ -2208,7 +2271,8 @@
                         📋 past_records <span id="cntRecordsBadge" style="font-size:0.7rem; opacity:0.8;">(76)</span>
                     </button>
                     <button class="db-tab-btn" id="tabConversationTurns" onclick="switchDbTable('conversation_turns')">
-                        💬 conversation_turns <span id="cntTurnsBadge" style="font-size:0.7rem; opacity:0.8;">(222)</span>
+                        💬 conversation_turns <span id="cntTurnsBadge"
+                            style="font-size:0.7rem; opacity:0.8;">(222)</span>
                     </button>
                     <button class="db-tab-btn" id="tabSchema" onclick="showDbSchemaDiagram()">
                         🗺️ Schema (ERD)
@@ -2216,7 +2280,8 @@
                 </div>
 
                 <div class="db-actions-row" id="dbActionsToolbar">
-                    <input type="text" class="db-search-input" id="dbSearchInput" placeholder="Filter rows..." oninput="filterCurrentDbTable(this.value)" />
+                    <input type="text" class="db-search-input" id="dbSearchInput" placeholder="Filter rows..."
+                        oninput="filterCurrentDbTable(this.value)" />
                     <button class="db-action-btn" onclick="exportCurrentTableCsv()" title="Download as CSV spreadsheet">
                         📥 Export CSV
                     </button>
@@ -2240,7 +2305,8 @@
                 <div class="schema-overview-banner">
                     <div class="schema-banner-text">
                         <h4>🗺️ MySQL Relational Architecture • <code>rag_users</code></h4>
-                        <p>Core user entities from WordPress & WooCommerce link to order histories, intake notes, and real-time chat telemetry via Foreign Keys (ON DELETE CASCADE).</p>
+                        <p>Core user entities from WordPress & WooCommerce link to order histories, intake notes, and
+                            real-time chat telemetry via Foreign Keys (ON DELETE CASCADE).</p>
                     </div>
                     <div class="schema-legend">
                         <span class="schema-legend-item"><span class="badge-pk">PK</span> Primary Key</span>
@@ -2317,7 +2383,8 @@
                                     <span class="schema-col-type">VARCHAR(50)</span>
                                 </div>
                                 <div class="schema-col-badges">
-                                    <span class="badge-fk" title="FK -> users.id (ON DELETE CASCADE)">FK ➔ users.id</span>
+                                    <span class="badge-fk" title="FK -> users.id (ON DELETE CASCADE)">FK ➔
+                                        users.id</span>
                                 </div>
                             </div>
                             <div class="schema-col-row">
@@ -2367,7 +2434,8 @@
                                     <span class="schema-col-type">VARCHAR(50)</span>
                                 </div>
                                 <div class="schema-col-badges">
-                                    <span class="badge-fk" title="FK -> users.id (ON DELETE CASCADE)">FK ➔ users.id</span>
+                                    <span class="badge-fk" title="FK -> users.id (ON DELETE CASCADE)">FK ➔
+                                        users.id</span>
                                 </div>
                             </div>
                             <div class="schema-col-row">
@@ -2391,7 +2459,8 @@
                         </div>
                         <div class="schema-card-footer">
                             <span>Clinical Intake & Coaching Notes</span>
-                            <button class="schema-nav-link" onclick="switchDbTable('past_records')">Explore Data ➔</button>
+                            <button class="schema-nav-link" onclick="switchDbTable('past_records')">Explore Data
+                                ➔</button>
                         </div>
                     </div>
 
@@ -2453,7 +2522,8 @@
                         </div>
                         <div class="schema-card-footer">
                             <span>Live Telemetry & Dialogue Turns</span>
-                            <button class="schema-nav-link" onclick="switchDbTable('conversation_turns')">Explore Data ➔</button>
+                            <button class="schema-nav-link" onclick="switchDbTable('conversation_turns')">Explore Data
+                                ➔</button>
                         </div>
                     </div>
                 </div>
@@ -2466,19 +2536,22 @@
                             <span>🔑 <code>users.id</code></span>
                             <span style="color:var(--brand-gold-bright);">─── (1 : Many) ───▶</span>
                             <span><code>purchases.user_id</code></span>
-                            <span style="color:var(--text-muted); font-size:0.7rem; margin-left:auto;">[FOREIGN KEY • ON DELETE CASCADE]</span>
+                            <span style="color:var(--text-muted); font-size:0.7rem; margin-left:auto;">[FOREIGN KEY • ON
+                                DELETE CASCADE]</span>
                         </div>
                         <div class="schema-rel-item cascade">
                             <span>🔑 <code>users.id</code></span>
                             <span style="color:var(--brand-gold-bright);">─── (1 : Many) ───▶</span>
                             <span><code>past_records.user_id</code></span>
-                            <span style="color:var(--text-muted); font-size:0.7rem; margin-left:auto;">[FOREIGN KEY • ON DELETE CASCADE]</span>
+                            <span style="color:var(--text-muted); font-size:0.7rem; margin-left:auto;">[FOREIGN KEY • ON
+                                DELETE CASCADE]</span>
                         </div>
                         <div class="schema-rel-item telemetry">
                             <span>👤 <code>users.id</code></span>
                             <span style="color:#C084FC;">- - - (1 : Many) - - -▶</span>
                             <span><code>conversation_turns.user_id</code></span>
-                            <span style="color:var(--text-muted); font-size:0.7rem; margin-left:auto;">[LOGICAL SESSION TELEMETRY]</span>
+                            <span style="color:var(--text-muted); font-size:0.7rem; margin-left:auto;">[LOGICAL SESSION
+                                TELEMETRY]</span>
                         </div>
                     </div>
                 </div>
@@ -2582,13 +2655,13 @@
                     const data = await res.json();
                     usersCatalog = data.users || [];
                     const select = document.getElementById('personaSelect');
-                    
+
                     if (usersCatalog.length > 0) {
                         select.innerHTML = '';
                         // Group: Real WooCommerce Students
                         const optGroupWC = document.createElement('optgroup');
                         optGroupWC.label = `WordPress WooCommerce Students (${usersCatalog.length})`;
-                        
+
                         usersCatalog.forEach(u => {
                             const opt = document.createElement('option');
                             opt.value = u.user_id;
@@ -2637,7 +2710,7 @@
         // 3. Customer Selection Handler with Strict Isolation
         async function onCustomerSelect(userId) {
             currentUserId = userId;
-            
+
             // Cleanly purge all previous user chat state and DOM
             sessionStorage.clear();
             botChannels['generic'].chatHtml = null;
@@ -2650,7 +2723,7 @@
             await authenticateStudioUser(userId);
 
             const user = usersCatalog.find(u => String(u.user_id) === String(userId));
-            
+
             const avatarEl = document.getElementById('customerAvatar');
             const nameEl = document.getElementById('customerName');
             const emailEl = document.getElementById('customerEmail');
@@ -2664,10 +2737,10 @@
                 avatarEl.textContent = initials || 'US';
                 nameEl.textContent = user.name || user.email;
                 emailEl.textContent = user.email || 'No email registered';
-                
+
                 const style = user.attachment_style || (userId === '1836' ? 'Anxious-Preoccupied' : 'Relationship Student');
                 attachEl.textContent = style;
-                
+
                 const purchases = user.all_purchases || [];
                 countTag.textContent = `${purchases.length} item${purchases.length === 1 ? '' : 's'}`;
 
@@ -2751,9 +2824,9 @@
                     <div class="hero-emblem sales-theme">💼</div>
                     <h2>Dr. Sarah Hensley Program Advisor</h2>
                     <p>
-                        ${isNewSession 
-                            ? `New advisor session initialized (<code>${botChannels['sales'].sessionId}</code>). Multi-turn conversation memory cleared.` 
-                            : `Personalized course guidance tailored to your attachment style and relationship stage. Find the right masterclass ($97), bundle, or coaching roadmap.`}
+                        ${isNewSession
+                        ? `New advisor session initialized (<code>${botChannels['sales'].sessionId}</code>). Multi-turn conversation memory cleared.`
+                        : `Personalized course guidance tailored to your attachment style and relationship stage. Find the right masterclass ($97), bundle, or coaching roadmap.`}
                     </p>
                     <div class="starter-chips-grid">
                         <div class="starter-chip sales-theme" onclick="runPresetQuery('Which masterclass should I start with if I struggle with anxious spiraling?', 'sales')">
@@ -2781,9 +2854,9 @@
                     <div class="hero-emblem">🩺</div>
                     <h2>Dr. Sarah Hensley Clinical Educator</h2>
                     <p>
-                        ${isNewSession 
-                            ? `New clinical session initialized (<code>${botChannels['generic'].sessionId}</code>). Multi-turn conversation memory cleared.` 
-                            : `Evidence-based clinical guidance on attachment styles, subconscious core wounds, and nervous system regulation with <b>zero sales pitches</b>.`}
+                        ${isNewSession
+                        ? `New clinical session initialized (<code>${botChannels['generic'].sessionId}</code>). Multi-turn conversation memory cleared.`
+                        : `Evidence-based clinical guidance on attachment styles, subconscious core wounds, and nervous system regulation with <b>zero sales pitches</b>.`}
                     </p>
                     <div class="starter-chips-grid">
                         <div class="starter-chip" onclick="runPresetQuery('What is the 1:1:1 journal reflection method for emotional regulation?', 'generic')">
@@ -2851,6 +2924,7 @@
             // 6. Update Inspector (Sources and Memory Turns for this specific bot)
             renderSourcesInspector(channel.sources || []);
             refreshMemoryTurns();
+            loadChatSessions();
         }
 
         // 5. Submit Message (Live SSE Streaming)
@@ -2911,7 +2985,7 @@
                         if (line.startsWith('data: ')) {
                             try {
                                 const payload = JSON.parse(line.substring(6));
-                                
+
                                 if (payload.token) {
                                     if (isFirstToken) {
                                         botBubble.innerHTML = '';
@@ -2923,12 +2997,13 @@
                                 } else if (payload.done || payload.answer) {
                                     const finalAns = payload.answer || payload.full_answer || accumulatedTokens;
                                     renderFinalBotMessage(botBubble, finalAns, payload);
-                                    
+
                                     // Update Inspector Tabs
                                     if (payload.sources) {
                                         activeChannel.sources = payload.sources;
                                         renderSourcesInspector(payload.sources);
                                     }
+                                    activeChannel.hasMessages = true;
                                     await refreshMemoryTurns();
                                 }
                             } catch (e) {
@@ -2980,8 +3055,8 @@
                     activeChannel.sources = data.sources;
                     renderSourcesInspector(data.sources);
                 }
-                await refreshMemoryTurns();
                 activeChannel.hasMessages = true;
+                await refreshMemoryTurns();
                 activeChannel.chatHtml = chatContainer.innerHTML;
                 loadChatSessions();
             } catch (err) {
@@ -3094,26 +3169,37 @@
         }
 
         // 7. Refresh Memory Turns in Right Inspector Drawer
+        function renderMemoryInspector(turns, sessionId) {
+            const container = document.getElementById('memoryTurnsContainer');
+            if (!container) return;
+
+            if (!turns || turns.length === 0) {
+                container.innerHTML = `<div style="font-size:0.75rem; color:var(--text-muted); font-style:italic;">No turns recorded yet for active ${botChannels[currentMode].name} session: <code>${escapeHtml(sessionId)}</code></div>`;
+                return;
+            }
+
+            container.innerHTML = turns.map((t, idx) => `
+                <div class="memory-turn-card">
+                    <span class="memory-turn-role ${t.role}">Turn #${idx + 1} • ${escapeHtml(t.role)}</span>
+                    <p class="memory-turn-content">${escapeHtml(t.content).substring(0, 180)}...</p>
+                </div>
+            `).join('');
+        }
+
         async function refreshMemoryTurns() {
-            const activeSessionId = botChannels[currentMode].sessionId;
+            const activeChannel = botChannels[currentMode];
+            const activeSessionId = activeChannel.sessionId;
+            if (!activeChannel.hasMessages) {
+                renderMemoryInspector([], activeSessionId);
+                return;
+            }
             try {
-                const res = await fetch(`/api/chat/history?session_id=${encodeURIComponent(activeSessionId)}&user_id=${encodeURIComponent(currentUserId)}`);
+                const res = await fetch(`/api/chat/history?session_id=${encodeURIComponent(activeSessionId)}&mode=${encodeURIComponent(currentMode)}`, {
+                    headers: getAuthHeaders()
+                });
                 if (res.ok) {
                     const data = await res.json();
-                    const container = document.getElementById('memoryTurnsContainer');
-                    const turns = data.turns || [];
-
-                    if (turns.length === 0) {
-                        container.innerHTML = `<div style="font-size:0.75rem; color:var(--text-muted); font-style:italic;">No turns recorded yet for active ${botChannels[currentMode].name} session: <code>${activeSessionId}</code></div>`;
-                        return;
-                    }
-
-                    container.innerHTML = turns.map((t, idx) => `
-                        <div class="memory-turn-card">
-                            <span class="memory-turn-role ${t.role}">Turn #${idx + 1} • ${t.role}</span>
-                            <p class="memory-turn-content">${escapeHtml(t.content).substring(0, 180)}...</p>
-                        </div>
-                    `).join('');
+                    renderMemoryInspector(data.turns || [], activeSessionId);
                 }
             } catch (err) {
                 console.warn('Failed to refresh memory turns:', err);
@@ -3139,7 +3225,7 @@
             activeChannel.chatHtml = null;
             activeChannel.sources = [];
             activeChannel.hasMessages = false;
-            
+
             renderWelcomeHeroForMode(currentMode, true);
             updateChannelHeader();
             renderSourcesInspector([]);
@@ -3165,27 +3251,34 @@
 
         async function loadChatSessions() {
             const listEl = document.getElementById('historySessionsList');
+            const titleEl = document.getElementById('historySectionTitle');
+            const activeChannel = botChannels[currentMode];
+            if (titleEl) {
+                titleEl.textContent = currentMode === 'sales' ? 'Program Advisor Chats' : 'Clinical Chats';
+            }
             if (!listEl) return;
 
+            const requestMode = currentMode;
             try {
-                const res = await fetch('/api/chat/sessions?limit=50', {
+                const res = await fetch(`/api/chat/sessions?mode=${encodeURIComponent(requestMode)}&limit=50`, {
                     headers: getAuthHeaders()
                 });
-                if (!res.ok) throw new Error('Failed to fetch sessions');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const data = await res.json();
-                const sessions = data.sessions || [];
+                if (currentMode !== requestMode) return;
+                const sessions = (data.sessions || []).filter(s => (s.mode || 'generic') === requestMode);
 
                 if (sessions.length === 0) {
-                    listEl.innerHTML = '<div class="history-empty-hint">No past conversations yet.<br><br>Type a question and send to start saving your chat history!</div>';
+                    listEl.innerHTML = `<div class="history-empty-hint">No past ${escapeHtml(activeChannel ? activeChannel.name : '')} conversations yet.<br><br>Type a question and send to start saving your chat history!</div>`;
                     return;
                 }
 
-                const activeSid = botChannels[currentMode] ? botChannels[currentMode].sessionId : '';
+                const activeSid = activeChannel ? activeChannel.sessionId : '';
 
                 listEl.innerHTML = sessions.map(s => {
                     const isActive = (s.session_id === activeSid) ? 'active' : '';
                     const titleText = escapeHtml(s.title || 'Conversation');
-                    
+
                     let icon = '💬';
                     if (s.mode === 'sales') icon = '💼';
                     else if (s.mode === 'platform') icon = '🌐';
@@ -3218,8 +3311,10 @@
         async function loadPastSession(sessionId, mode) {
             if (isGenerating) return;
 
-            if (mode && botChannels[mode] && mode !== currentMode) {
-                switchStudioMode(mode);
+            const targetMode = (mode && botChannels[mode]) ? mode : currentMode;
+            botChannels[targetMode].sessionId = sessionId;
+            if (targetMode !== currentMode) {
+                switchStudioMode(targetMode);
             }
 
             const activeChannel = botChannels[currentMode];
@@ -3234,10 +3329,15 @@
             // Fetch turns from API
             try {
                 chatContainer.innerHTML = '<div style="text-align:center;padding:2.5rem;color:var(--text-muted);font-size:0.85rem;"><span class="typing-cursor"></span> Loading conversation history...</div>';
-                const res = await fetch(`/api/chat/history?session_id=${encodeURIComponent(sessionId)}`, {
+                const res = await fetch(`/api/chat/history?session_id=${encodeURIComponent(sessionId)}&mode=${encodeURIComponent(targetMode)}`, {
                     headers: getAuthHeaders()
                 });
-                if (!res.ok) throw new Error('Failed to load history');
+                if (!res.ok) {
+                    const errMsg = res.status === 429
+                        ? 'Too many requests in a short time. Please wait a few seconds and click the conversation again.'
+                        : `Could not load past conversation (HTTP ${res.status}).`;
+                    throw new Error(errMsg);
+                }
                 const data = await res.json();
                 const turns = data.turns || [];
 
@@ -3245,6 +3345,8 @@
                 if (turns.length === 0) {
                     renderWelcomeHeroForMode(currentMode, true);
                     activeChannel.hasMessages = false;
+                    activeChannel.chatHtml = null;
+                    renderMemoryInspector([], sessionId);
                     return;
                 }
 
@@ -3265,10 +3367,11 @@
                 }
                 scrollToBottom();
                 activeChannel.chatHtml = chatContainer.innerHTML;
-                await refreshMemoryTurns();
+                renderMemoryInspector(turns, sessionId);
             } catch (err) {
                 console.error('Failed to load past session:', err);
-                chatContainer.innerHTML = '<div style="text-align:center;padding:2.5rem;color:var(--brand-coral);">Could not load past conversation.</div>';
+                activeChannel.chatHtml = null;
+                chatContainer.innerHTML = `<div style="text-align:center;padding:2.5rem;color:var(--brand-coral);">${escapeHtml(err.message || 'Could not load past conversation.')}</div>`;
             }
         }
 
@@ -3359,7 +3462,7 @@
             if (scrollArea) scrollArea.style.display = 'none';
             const schemaView = document.getElementById('dbSchemaView');
             if (schemaView) schemaView.classList.add('active');
-            
+
             // Adjust toolbar & footer
             const searchInput = document.getElementById('dbSearchInput');
             if (searchInput) searchInput.style.display = 'none';
@@ -3377,8 +3480,8 @@
             document.querySelectorAll('.db-tab-btn').forEach(b => b.classList.remove('active'));
             const activeTab = document.getElementById(
                 tableName === 'users' ? 'tabUsers' :
-                tableName === 'purchases' ? 'tabPurchases' :
-                tableName === 'past_records' ? 'tabPastRecords' : 'tabConversationTurns'
+                    tableName === 'purchases' ? 'tabPurchases' :
+                        tableName === 'past_records' ? 'tabPastRecords' : 'tabConversationTurns'
             );
             if (activeTab) activeTab.classList.add('active');
 
@@ -3437,11 +3540,11 @@
                 dbTableData = data;
                 renderDbTable(data.columns, data.rows);
                 statsText.innerHTML = `Showing <b>${data.rows.length}</b> rows out of <b>${data.total}</b> total records in <code>${data.table}</code>.`;
-                
+
                 // Update badge
                 const badgeId = currentDbTable === 'users' ? 'cntUsersBadge' :
-                                currentDbTable === 'purchases' ? 'cntPurchasesBadge' :
-                                currentDbTable === 'past_records' ? 'cntRecordsBadge' : 'cntTurnsBadge';
+                    currentDbTable === 'purchases' ? 'cntPurchasesBadge' :
+                        currentDbTable === 'past_records' ? 'cntRecordsBadge' : 'cntTurnsBadge';
                 const badge = document.getElementById(badgeId);
                 if (badge) badge.textContent = `(${data.total})`;
             } catch (err) {

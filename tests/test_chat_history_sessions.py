@@ -52,3 +52,91 @@ def test_chat_sessions_endpoints():
     res_after = client.get("/api/chat/sessions", headers=headers)
     assert not any(s["session_id"] == test_sid for s in res_after.json()["sessions"])
 
+
+def test_chat_sessions_mode_isolation():
+    conv_memory = get_conversation_memory()
+    ts = int(time.time() * 1000)
+    generic_sid = f"test_generic_mode_{ts}"
+    sales_sid = f"test_sales_mode_{ts}"
+    uid = f"test_user_mode_{ts}"
+
+    token = create_session_token(user_id=uid)["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    conv_memory.record_turn(
+        user_id=uid,
+        conversation_id=generic_sid,
+        user_query="Explain anxious attachment calmly.",
+        assistant_answer="Anxious attachment relates to heightened threat sensitivity.",
+        retrieved_chunks=[],
+        mode="generic"
+    )
+    conv_memory.record_turn(
+        user_id=uid,
+        conversation_id=sales_sid,
+        user_query="Which course helps with breakup recovery?",
+        assistant_answer="The Anxious Attachment Masterclass ($97) covers this.",
+        retrieved_chunks=[],
+        mode="sales"
+    )
+
+    try:
+        # 1. Generic filter only returns generic session
+        res_gen = client.get("/api/chat/sessions?mode=generic", headers=headers)
+        assert res_gen.status_code == 200
+        gen_sids = {s["session_id"] for s in res_gen.json()["sessions"]}
+        assert generic_sid in gen_sids
+        assert sales_sid not in gen_sids
+
+        # 2. Sales filter only returns sales session
+        res_sales = client.get("/api/chat/sessions?mode=sales", headers=headers)
+        assert res_sales.status_code == 200
+        sales_sids = {s["session_id"] for s in res_sales.json()["sessions"]}
+        assert sales_sid in sales_sids
+        assert generic_sid not in sales_sids
+
+        # 3. Unfiltered returns both for backward compatibility
+        res_all = client.get("/api/chat/sessions", headers=headers)
+        assert res_all.status_code == 200
+        all_sids = {s["session_id"] for s in res_all.json()["sessions"]}
+        assert generic_sid in all_sids
+        assert sales_sid in all_sids
+
+        # 4. Mode-scoped history lookup
+        res_mismatch = client.get(f"/api/chat/history?session_id={sales_sid}&mode=generic", headers=headers)
+        assert res_mismatch.status_code == 404
+        res_match = client.get(f"/api/chat/history?session_id={sales_sid}&mode=sales", headers=headers)
+        assert res_match.status_code == 200
+    finally:
+        client.delete(f"/api/chat/sessions/{generic_sid}", headers=headers)
+        client.delete(f"/api/chat/sessions/{sales_sid}", headers=headers)
+
+
+def test_read_only_history_not_rate_limited():
+    conv_memory = get_conversation_memory()
+    ts = int(time.time() * 1000)
+    sid = f"test_ratelimit_read_{ts}"
+    uid = f"test_user_rl_{ts}"
+
+    token = create_session_token(user_id=uid)["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    conv_memory.record_turn(
+        user_id=uid,
+        conversation_id=sid,
+        user_query="Quick check turn",
+        assistant_answer="Recorded answer",
+        retrieved_chunks=[],
+        mode="sales"
+    )
+
+    try:
+        for _ in range(20):
+            r_sess = client.get("/api/chat/sessions?mode=sales", headers=headers)
+            assert r_sess.status_code == 200
+            r_hist = client.get(f"/api/chat/history?session_id={sid}&mode=sales", headers=headers)
+            assert r_hist.status_code == 200
+    finally:
+        client.delete(f"/api/chat/sessions/{sid}", headers=headers)
+
+

@@ -264,21 +264,22 @@ async def verify_chat_access(request: Request) -> Dict[str, Any]:
         )
     claims["user_id"] = str(sub).strip()
 
-    # C. Apply In-App Rate Limiting for Session Tokens
-    client_ip = (
-        request.headers.get("x-forwarded-for", "").split(",")[0].strip() or
-        request.headers.get("x-real-ip", "").strip() or
-        (request.client.host if request.client else "unknown_ip")
-    )
-    rate_key = f"{client_ip}:{claims.get('sid') or claims.get('sub', 'guest')}"
-    is_limited, retry_after = chat_rate_limiter.is_limited(rate_key)
-    if is_limited:
-        logger.warning(f"[Session Auth] Rate limit exceeded for {rate_key}. Retry-After: {retry_after}s")
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Rate limit exceeded. Maximum 15 messages per minute allowed.",
-            headers={"Retry-After": str(retry_after)}
+    # C. Apply In-App Rate Limiting for Session Tokens (skip read-only history/session lookups)
+    if not (request.method == "GET" and request.url.path in ("/api/chat/sessions", "/api/chat/history")):
+        client_ip = (
+            request.headers.get("x-forwarded-for", "").split(",")[0].strip() or
+            request.headers.get("x-real-ip", "").strip() or
+            (request.client.host if request.client else "unknown_ip")
         )
+        rate_key = f"{client_ip}:{claims.get('sid') or claims.get('sub', 'guest')}"
+        is_limited, retry_after = chat_rate_limiter.is_limited(rate_key)
+        if is_limited:
+            logger.warning(f"[Session Auth] Rate limit exceeded for {rate_key}. Retry-After: {retry_after}s")
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Rate limit exceeded. Maximum 15 messages per minute allowed.",
+                headers={"Retry-After": str(retry_after)}
+            )
 
     claims["auth_type"] = "session_token"
     claims["is_admin"] = False
