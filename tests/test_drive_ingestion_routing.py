@@ -193,6 +193,38 @@ def test_relevance_gate_bypasses_for_follow_up_and_chat_history():
         assert "Active follow-up response" in res["answer"]
 
 
+def test_clinical_nervous_system_query_bypasses_false_refusal():
+    """Ensure genuine clinical regulation/abandonment queries are not rejected as out-of-scope."""
+    from src.generator import OpenAIGeneratorService
+    gen = OpenAIGeneratorService(api_key="mock-test-key")
+
+    low_chunks = [
+        {
+            "id": "c1",
+            "document_name": "Fast Down Shift FAQ",
+            "text": "Use the Fast Down Shift tool to calm nervous system activation and abandonment panic.",
+            "vector_score": 0.15,
+            "rerank_score": 0.01,
+            "score": 0.01
+        }
+    ]
+
+    mock_client = MagicMock()
+    mock_choice = MagicMock()
+    mock_choice.message.content = "Practice the Fast Down Shift protocol to regulate your nervous system."
+    mock_client.chat.completions.create.return_value.choices = [mock_choice]
+
+    with patch.object(OpenAIGeneratorService, 'client', mock_client):
+        res = gen.generate_answer(
+            query="How can I calm acute nervous system hyperarousal when I feel abandonment panic?",
+            retrieved_chunks=low_chunks,
+            mode="generic"
+        )
+
+        assert res.get("out_of_domain") is not True
+        assert "Fast Down Shift" in res["answer"]
+
+
 def test_wc_rest_api_sync_ignores_refunded_and_cancelled_orders():
     """DEF-07A: Verify _get_profile_from_woocommerce only grants ownership for active orders."""
     from src.user_db import UserDatabaseManager

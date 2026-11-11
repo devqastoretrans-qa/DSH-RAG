@@ -55,6 +55,11 @@ SLANG_EXPANSIONS = {
     r"\bcore[-_\s]?wound(s)?\b": "fear of abandonment fear of engulfment core shame rejection sensitivity defectiveness",
     r"\b(anxious[-_\s]?avoidant\s+trap|anxious[-_\s]?avoidant\s+dynamic)\b": "pursue withdraw cycle intermittent reinforcement polarity trap attachment dysregulation",
     r"\bsecure[-_\s]?attachment\b": "earned secure emotional regulation effective direct communication healthy boundaries safety",
+
+    # 7. Nervous System Regulation, Somatic Grounding & Abandonment Panic
+    r"\b(hyper[-_\s]?arousal|nervous[-_\s]?system|flooded|fight[-_\s]?or[-_\s]?flight|flight[-_\s]?or[-_\s]?fight|activated)\b": "fast down shift calm nervous system grounding emotional regulation 1 1 1 protocol somatic soothing trigger",
+    r"\b(abandonment|panic(king)?|spiraling|spiral|calm\s+(down|my)|down[-_\s]?regulat(e|ion)|sooth(e|ing)|somatic)\b": "fast down shift trigger regulation anxious attachment fear abandonment reassurance grounding 1 1 1 protocol",
+    r"\b(anxious|avoidant|fearful|disorganized|dismissive)\b": "attachment style personal attachment needs triggers patterns emotional regulation",
 }
 
 

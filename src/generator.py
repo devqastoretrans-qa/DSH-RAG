@@ -112,6 +112,11 @@ OFF_TOPIC_REGEX = re.compile(
     re.IGNORECASE
 )
 
+CLINICAL_DOMAIN_REGEX = re.compile(
+    r"\b(attachment|anxious|avoidant|fearful|dismissive|abandonment|nervous\s+system|hyperarousal|hyper[-_\s]?vigilan|somatic|emotional\s+regulation|down[-_\s]?regulat|calm|sooth|grounding|panic|trigger|triggers|solace|dare\s+soft|1[:\-\s]*1[:\-\s]*1|boundary|repair\s+script|relationship|partner|intimacy|protest\s+behavior|deactivat|hyperactivat|core\s+wound|rumination|enmesh|codependen|conflict)\b",
+    re.IGNORECASE
+)
+
 
 class OpenAIGeneratorService:
     """
@@ -540,6 +545,7 @@ class OpenAIGeneratorService:
         has_rerank_scores = any("rerank_score" in c for c in retrieved_chunks)
 
         has_sales_match = (mode == "sales" and bool(re.search(r"\b(course|program|class|masterclass|pricing|price|cost|buy|enroll|session|consult|workbook|book|recommend|help|anxious|avoidant|attachment|relationship|ex|breakup|dating|partner|spiral|text)\b", query, re.I)))
+        has_clinical_domain_match = bool(CLINICAL_DOMAIN_REGEX.search(query))
 
         # DEF-06: Calibrated thresholds prevent off-topic prompts from leaking into LLM synthesis
         min_vector_threshold = float(os.getenv("RAG_MIN_VECTOR_SCORE", "0.35"))
@@ -549,7 +555,7 @@ class OpenAIGeneratorService:
         is_low_confidence = (max_vector_score < min_vector_threshold and max_rerank_score < min_rerank_threshold)
         is_hard_irrelevant = (has_rerank_scores and max_rerank_score < strict_rerank_floor and max_vector_score < 0.50)
 
-        if not is_follow_up and not chat_history and not has_sales_match and (is_low_confidence or is_hard_irrelevant):
+        if not is_follow_up and not chat_history and not has_sales_match and not has_clinical_domain_match and (is_low_confidence or is_hard_irrelevant):
             chit_chat = self._get_chit_chat_reply(query, user_context=user_context, mode=mode)
             if chit_chat:
                 return {
@@ -776,6 +782,7 @@ class OpenAIGeneratorService:
             return
 
         has_sales_match = (mode == "sales" and bool(re.search(r"\b(course|program|class|masterclass|pricing|price|cost|buy|enroll|session|consult|workbook|book|recommend|help|anxious|avoidant|attachment|relationship|ex|breakup|dating|partner|spiral|text)\b", query, re.I)))
+        has_clinical_domain_match = bool(CLINICAL_DOMAIN_REGEX.search(query))
 
         # DEF-06: Calibrated thresholds prevent off-topic prompts from leaking into LLM synthesis
         min_vector_threshold = float(os.getenv("RAG_MIN_VECTOR_SCORE", "0.35"))
@@ -785,7 +792,7 @@ class OpenAIGeneratorService:
         is_low_confidence = (max_vector_score < min_vector_threshold and max_rerank_score < min_rerank_threshold)
         is_hard_irrelevant = (has_rerank_scores and max_rerank_score < strict_rerank_floor and max_vector_score < 0.50)
 
-        if not is_follow_up and not chat_history and not has_sales_match and (is_low_confidence or is_hard_irrelevant):
+        if not is_follow_up and not chat_history and not has_sales_match and not has_clinical_domain_match and (is_low_confidence or is_hard_irrelevant):
             chit_chat = self._get_chit_chat_reply(query, user_context=user_context, mode=mode)
             if chit_chat:
                 yield {"token": chit_chat, "done": False}
