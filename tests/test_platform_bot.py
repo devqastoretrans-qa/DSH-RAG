@@ -536,5 +536,41 @@ def test_platform_bot_out_of_scope_with_history_and_empty_stream(monkeypatch):
     assert "exclusive Dr. Sarah Hensley" in fallback_done["full_answer"]
 
 
+def test_owner_mode_greeting_and_out_of_scope(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key")
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    gen = OpenAIGeneratorService(api_key="sk-test-key")
+
+    hi_res = gen.generate_answer(
+        query="hi",
+        retrieved_chunks=[],
+        user_context={"first_name": "Maya"},
+        mode="owner",
+    )
+    assert "Maya" in hi_res["answer"]
+    assert "Dr. Sarah Hensley" in hi_res["answer"]
+
+    oos_res = gen.generate_answer(
+        query="who is virat kohli",
+        retrieved_chunks=[
+            {
+                "document_id": "doc_c1",
+                "document_name": "SOLACE",
+                "text": "Attachment details",
+                "vector_score": 0.04,
+                "rerank_score": 0.0,
+                "score": 0.0,
+            }
+        ],
+        user_context={"first_name": "Maya"},
+        mode="owner",
+    )
+    assert oos_res["out_of_domain"] is True
+    assert "Owner Agent" in oos_res["answer"]
+    assert "Dr. Sarah Hensley" in oos_res["answer"]
+
+
+
 
 

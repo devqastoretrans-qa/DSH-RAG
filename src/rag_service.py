@@ -371,6 +371,12 @@ def execute_rag_pipeline(
                     f"I am Doctor Sarah Hensley's **Platform Navigation Assistant**.{course_mention}\n\n"
                     "I can help you locate pages in your membership portal, reset your password, find your enrolled courses and workbooks, manage billing settings, or reach support. What would you like help finding?"
                 )
+            elif mode == "owner":
+                greeting_text = (
+                    f"Hi {greeting_name}! I'm **Dr. Sarah Hensley**.{course_mention}\n\n"
+                    f"{attach_mention}In my 15+ years of clinical practice in attachment theory and subconscious relational reprogramming, I work with clients to uncover hidden relationship patterns and build earned security. "
+                    "What relationship dynamic or question would you like to talk through?"
+                )
             else:
                 greeting_text = (
                     f"Hi {greeting_name}! I am Doctor Sarah Hensley's Relationship Science AI Assistant.{course_mention}\n\n"
@@ -382,6 +388,12 @@ def execute_rag_pipeline(
                 f"{plat_salutation}\n\n"
                 f"Welcome to Dr. Sarah Hensley's Membership Portal Guide.{course_mention} "
                 "Ask me how to sign in, reset your password, find an enrolled course or workbook, update billing details, or contact support."
+            )
+        elif mode == "owner":
+            greeting_text = (
+                f"Hi {greeting_name}!\n\n"
+                f"I'm **Dr. Sarah Hensley**.{course_mention}\n\n"
+                f"{attach_mention}In my clinical practice and attachment work, we uncover what drives relationship triggers underneath the surface and build real emotional security. How can I support you today?"
             )
         elif mode == "sales":
             if course_mention:

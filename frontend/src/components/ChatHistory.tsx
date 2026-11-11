@@ -3,6 +3,7 @@ import {
   Briefcase,
   Check,
   Compass,
+  Crown,
   MessageSquare,
   Pencil,
   Stethoscope,
@@ -150,6 +151,8 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
                   ? 'Program Advisor'
                   : activeMode === 'platform'
                   ? 'Platform Help'
+                  : activeMode === 'owner'
+                  ? 'Owner Agent'
                   : 'Clinical Educator'
               } conversations yet.`}
         </p>
@@ -275,6 +278,8 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
                             <Briefcase className="h-3.5 w-3.5 shrink-0 text-amber-500" />
                           ) : thread.mode === 'platform' ? (
                             <Compass className="h-3.5 w-3.5 shrink-0 text-sky-500" />
+                          ) : thread.mode === 'owner' ? (
+                            <Crown className="h-3.5 w-3.5 shrink-0 text-violet-500" />
                           ) : (
                             <Stethoscope className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
                           )}

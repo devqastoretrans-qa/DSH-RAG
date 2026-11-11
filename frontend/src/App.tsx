@@ -3,6 +3,7 @@ import {
   ArrowDown,
   Briefcase,
   Compass,
+  Crown,
   Moon,
   PanelLeft,
   SlidersHorizontal,
@@ -35,6 +36,7 @@ const STORAGE_KEYS = {
   sessionGeneric: 'studio_active_session_generic',
   sessionSales: 'studio_active_session_sales',
   sessionPlatform: 'studio_active_session_platform',
+  sessionOwner: 'studio_active_session_owner',
 } as const;
 
 const REQUEST_TIMEOUT_MS = 15000;
@@ -46,6 +48,8 @@ function createSessionId(mode: BotMode): string {
       ? 'sess_sales_'
       : mode === 'platform'
       ? 'sess_platform_'
+      : mode === 'owner'
+      ? 'sess_owner_'
       : 'sess_clinical_';
   const rand =
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -57,6 +61,7 @@ function createSessionId(mode: BotMode): string {
 function getDefaultTitle(mode: BotMode): string {
   if (mode === 'sales') return 'New Program Advisor Chat';
   if (mode === 'platform') return 'New Platform Help Chat';
+  if (mode === 'owner') return 'New Owner Agent Chat';
   return 'New Clinical Chat';
 }
 
@@ -67,6 +72,8 @@ function getStoredSessionId(mode: BotMode): string | null {
         ? STORAGE_KEYS.sessionSales
         : mode === 'platform'
         ? STORAGE_KEYS.sessionPlatform
+        : mode === 'owner'
+        ? STORAGE_KEYS.sessionOwner
         : STORAGE_KEYS.sessionGeneric;
     const saved = sessionStorage.getItem(key);
     return saved && saved.trim() ? saved.trim() : null;
@@ -82,6 +89,8 @@ function persistSessionId(mode: BotMode, sessionId: string): void {
         ? STORAGE_KEYS.sessionSales
         : mode === 'platform'
         ? STORAGE_KEYS.sessionPlatform
+        : mode === 'owner'
+        ? STORAGE_KEYS.sessionOwner
         : STORAGE_KEYS.sessionGeneric;
     sessionStorage.setItem(key, sessionId);
   } catch {
@@ -186,6 +195,34 @@ const QUICK_PRESETS: QuickPromptPreset[] = [
     prompt: 'How do I check my billing receipts or contact support?',
     mode: 'platform',
   },
+  {
+    id: 'owner_trap',
+    category: 'Dr. Sarah Voice',
+    label: 'Anxious-avoidant trap',
+    prompt: 'In your clinical experience, why do anxious and avoidant partners keep triggering each other?',
+    mode: 'owner',
+  },
+  {
+    id: 'owner_wounds',
+    category: 'Core Wounds',
+    label: 'Heal abandonment core wounds',
+    prompt: 'How do you help clients reprogram deep subconscious abandonment wounds so they feel safe in love?',
+    mode: 'owner',
+  },
+  {
+    id: 'owner_conflict',
+    category: 'Relationship Repair',
+    label: 'When a partner shuts down',
+    prompt: 'When my partner shuts down during conflict, what is the healthiest way for me to respond?',
+    mode: 'owner',
+  },
+  {
+    id: 'owner_security',
+    category: 'Earned Security',
+    label: 'What earned security feels like',
+    prompt: 'What does earning secure attachment actually look and feel like in everyday relationships?',
+    mode: 'owner',
+  },
 ];
 
 interface ChannelBuffer {
@@ -198,7 +235,7 @@ export const App: React.FC = () => {
   const initialMode: BotMode = (() => {
     try {
       const m = sessionStorage.getItem(STORAGE_KEYS.mode);
-      if (m === 'sales' || m === 'platform') return m;
+      if (m === 'sales' || m === 'platform' || m === 'owner') return m;
       return 'generic';
     } catch {
       return 'generic';
@@ -237,9 +274,11 @@ export const App: React.FC = () => {
     const genSid = getStoredSessionId('generic') || createSessionId('generic');
     const salesSid = getStoredSessionId('sales') || createSessionId('sales');
     const platSid = getStoredSessionId('platform') || createSessionId('platform');
+    const ownerSid = getStoredSessionId('owner') || createSessionId('owner');
     persistSessionId('generic', genSid);
     persistSessionId('sales', salesSid);
     persistSessionId('platform', platSid);
+    persistSessionId('owner', ownerSid);
     return {
       generic: {
         sessionId: genSid,
@@ -256,6 +295,11 @@ export const App: React.FC = () => {
         messages: [],
         title: getDefaultTitle('platform'),
       },
+      owner: {
+        sessionId: ownerSid,
+        messages: [],
+        title: getDefaultTitle('owner'),
+      },
     };
   });
 
@@ -265,6 +309,7 @@ export const App: React.FC = () => {
     generic: [],
     sales: [],
     platform: [],
+    owner: [],
   });
   const [platformGreeting, setPlatformGreeting] = useState('Hi there!');
   const [platformActions, setPlatformActions] = useState<SuggestedAction[]>([]);
@@ -547,18 +592,21 @@ export const App: React.FC = () => {
         sessionStorage.removeItem(STORAGE_KEYS.sessionGeneric);
         sessionStorage.removeItem(STORAGE_KEYS.sessionSales);
         sessionStorage.removeItem(STORAGE_KEYS.sessionPlatform);
+        sessionStorage.removeItem(STORAGE_KEYS.sessionOwner);
         sessionStorage.removeItem(STORAGE_KEYS.token);
       } catch {
         // ignore
       }
       setUserId(nextUserId);
-      setThreadsByMode({ generic: [], sales: [], platform: [] });
+      setThreadsByMode({ generic: [], sales: [], platform: [], owner: [] });
       const genSid = createSessionId('generic');
       const salesSid = createSessionId('sales');
       const platSid = createSessionId('platform');
+      const ownerSid = createSessionId('owner');
       persistSessionId('generic', genSid);
       persistSessionId('sales', salesSid);
       persistSessionId('platform', platSid);
+      persistSessionId('owner', ownerSid);
       setChannels({
         generic: {
           sessionId: genSid,
@@ -574,6 +622,11 @@ export const App: React.FC = () => {
           sessionId: platSid,
           messages: [],
           title: getDefaultTitle('platform'),
+        },
+        owner: {
+          sessionId: ownerSid,
+          messages: [],
+          title: getDefaultTitle('owner'),
         },
       });
       const tok = await authenticateUser(nextUserId);
@@ -1274,6 +1327,9 @@ export const App: React.FC = () => {
       }
       return QUICK_PRESETS.filter((p) => p.mode === 'platform');
     }
+    if (activeMode === 'owner') {
+      return QUICK_PRESETS.filter((p) => p.mode === 'owner');
+    }
     return QUICK_PRESETS.filter(
       (p) => p.mode === activeMode || p.mode === 'generic'
     );
@@ -1376,6 +1432,19 @@ export const App: React.FC = () => {
                 <span className="hidden sm:inline">Platform Help</span>
                 <span className="sm:hidden">Platform</span>
               </button>
+              <button
+                type="button"
+                onClick={() => handleModeSwitch('owner')}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
+                  activeMode === 'owner'
+                    ? 'bg-violet-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+              >
+                <Crown className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Owner Agent</span>
+                <span className="sm:hidden">Owner</span>
+              </button>
             </div>
 
             <div
@@ -1446,6 +1515,8 @@ export const App: React.FC = () => {
                       ? 'border-amber-500/30 bg-amber-500/15 text-amber-500'
                       : activeMode === 'platform'
                       ? 'border-sky-500/30 bg-sky-500/15 text-sky-500'
+                      : activeMode === 'owner'
+                      ? 'border-violet-500/30 bg-violet-500/15 text-violet-500'
                       : 'border-emerald-500/30 bg-emerald-500/15 text-emerald-500'
                   }`}
                 >
@@ -1453,6 +1524,8 @@ export const App: React.FC = () => {
                     <Briefcase className="h-7 w-7" />
                   ) : activeMode === 'platform' ? (
                     <Compass className="h-7 w-7" />
+                  ) : activeMode === 'owner' ? (
+                    <Crown className="h-7 w-7" />
                   ) : (
                     <Stethoscope className="h-7 w-7" />
                   )}
@@ -1463,6 +1536,8 @@ export const App: React.FC = () => {
                     ? 'Dr. Sarah Hensley Program Advisor'
                     : activeMode === 'platform'
                     ? 'Dr. Sarah Hensley Platform Navigation Assistant'
+                    : activeMode === 'owner'
+                    ? 'Dr. Sarah Hensley — Owner Agent'
                     : 'Dr. Sarah Hensley Clinical Educator'}
                 </h2>
                 <p className="mt-2 max-w-lg text-sm leading-relaxed text-slate-500 dark:text-slate-400">
@@ -1470,6 +1545,8 @@ export const App: React.FC = () => {
                     ? 'Personalized guidance for $97 masterclasses, curriculum roadmaps, and coaching bundles tailored to your attachment profile.'
                     : activeMode === 'platform'
                     ? `${platformGreeting} Step-by-step help with website login, password reset, course dashboards, PDF workbooks, billing, and account support.`
+                    : activeMode === 'owner'
+                    ? "Speak directly with Dr. Sarah Hensley's first-person founder voice grounded in her clinical attachment frameworks and subconscious relational reprogramming work."
                     : 'Evidence-based clinical guidance on attachment styles, subconscious core wounds, and nervous system regulation with zero sales pitches.'}
                 </p>
 

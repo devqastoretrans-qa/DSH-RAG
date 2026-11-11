@@ -514,4 +514,53 @@ describe('QA Vector 5: Server Error (500/422), Timeout, Retry & ErrorBoundary', 
     const sentBody = JSON.parse(String(streamCall?.[1]?.body || '{}'));
     expect(sentBody.mode).toBe('platform');
   });
+
+  it('switches to Owner Agent side-by-side in top bar and streams with mode owner', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/users')) return jsonResponse({ users: [{ user_id: '1836', name: 'Maya Lin' }] });
+      if (url.includes('/api/system/stats')) return jsonResponse({ documents_count: 10 });
+      if (url.includes('/api/auth/token')) return jsonResponse({ token: 'tok_owner' });
+      if (url.includes('/api/chat/sessions')) return jsonResponse({ sessions: [] });
+      if (url.includes('/api/platform-widget/context')) {
+        return jsonResponse({ success: true, greeting_line: 'Hello Maya!', suggested_actions: [] });
+      }
+      if (url.includes('/chat/stream')) {
+        const enc = new TextEncoder();
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              enc.encode(`data: ${JSON.stringify({ done: true, answer: "Hello Maya! In my clinical practice, core wounds shape our triggers." })}\n\n`)
+            );
+            controller.close();
+          },
+        });
+        return new Response(stream, { status: 200 });
+      }
+      return jsonResponse({});
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+    render(<App />);
+
+    const ownerBtn = await screen.findByRole('button', { name: /Owner Agent/i });
+    fireEvent.click(ownerBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Dr\. Sarah Hensley — Owner Agent/i)).toBeInTheDocument();
+    });
+
+    const input = screen.getByPlaceholderText(/Ask Dr\. Sarah Hensley \(Founder Voice\)/i);
+    fireEvent.change(input, { target: { value: 'Why do attachment wounds trigger?' } });
+    fireEvent.keyDown(input, { key: 'Enter', shiftKey: false });
+
+    await waitFor(() => {
+      expect(screen.getByText(/In my clinical practice, core wounds shape our triggers/i)).toBeInTheDocument();
+    });
+
+    const streamCall = fetchMock.mock.calls.find(([u]) => String(u).includes('/chat/stream'));
+    expect(streamCall).toBeDefined();
+    const sentBody = JSON.parse(String(streamCall?.[1]?.body || '{}'));
+    expect(sentBody.mode).toBe('owner');
+  });
 });

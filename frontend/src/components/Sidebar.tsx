@@ -85,6 +85,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 ? 'bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400'
                 : activeMode === 'platform'
                 ? 'bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-400'
+                : activeMode === 'owner'
+                ? 'bg-gradient-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-400'
                 : 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400'
             }`}
           >
@@ -130,6 +132,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 ? 'Program Advisor History'
                 : activeMode === 'platform'
                 ? 'Platform Help History'
+                : activeMode === 'owner'
+                ? 'Owner Agent History'
                 : 'Clinical Educator History'}
             </span>
             <span className="font-mono text-[10px] text-slate-400">

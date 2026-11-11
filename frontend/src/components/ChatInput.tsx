@@ -50,6 +50,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       ? 'Describe your relationship struggle or ask which course or masterclass fits...'
       : activeMode === 'platform'
       ? 'Ask about login, password reset, course dashboard, PDF workbooks, or billing...'
+      : activeMode === 'owner'
+      ? 'Ask Dr. Sarah Hensley (Founder Voice) about attachment styles, emotional healing, or relationships...'
       : "Ask Dr. Sarah's Clinical Educator AI about attachment styles, somatic tools, or reflection...";
 
   return (
@@ -83,6 +85,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               ? 'border-amber-500/30 focus-within:border-amber-500 focus-within:ring-amber-500/20'
               : activeMode === 'platform'
               ? 'border-sky-500/30 focus-within:border-sky-500 focus-within:ring-sky-500/20'
+              : activeMode === 'owner'
+              ? 'border-violet-500/30 focus-within:border-violet-500 focus-within:ring-violet-500/20'
               : 'border-slate-300 focus-within:border-emerald-500 focus-within:ring-emerald-500/20 dark:border-slate-700/80'
           }`}
         >
@@ -131,6 +135,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                   ? 'bg-amber-500 hover:bg-amber-400'
                   : activeMode === 'platform'
                   ? 'bg-sky-600 hover:bg-sky-500'
+                  : activeMode === 'owner'
+                  ? 'bg-violet-600 hover:bg-violet-500'
                   : 'bg-emerald-600 hover:bg-emerald-500'
               }`}
               title={isOverLimit ? 'Message exceeds 50,000 characters' : 'Send message'}
@@ -160,6 +166,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 ? 'font-medium text-amber-600 dark:text-amber-400'
                 : activeMode === 'platform'
                 ? 'font-medium text-sky-600 dark:text-sky-400'
+                : activeMode === 'owner'
+                ? 'font-medium text-violet-600 dark:text-violet-400'
                 : 'font-medium text-emerald-600 dark:text-emerald-400'
             }
           >
@@ -167,6 +175,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               ? 'Program Advisor Mode'
               : activeMode === 'platform'
               ? 'Platform Navigation Mode'
+              : activeMode === 'owner'
+              ? 'Owner Agent Mode (Founder Voice)'
               : 'Clinical Educator Mode (0 Pitches)'}
           </span>
         </div>

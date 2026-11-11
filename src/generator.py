@@ -274,6 +274,18 @@ class OpenAIGeneratorService:
                 "I can help you find pages on the website and learning portal, log in or reset your password, access course dashboards and workbooks, or manage billing and support requests. "
                 "What would you like help navigating today?"
             )
+        elif mode == "owner":
+            if course_mention:
+                return (
+                    f"{salutation}\n\n"
+                    f"Welcome—I'm Dr. Sarah Hensley.{course_mention}\n\n"
+                    f"{attach_mention}In my clinical practice and attachment work, we focus on getting to the root of subconscious relational wounds and building earned security together. What relationship challenge or question would you like to explore today?"
+                )
+            return (
+                f"{salutation}\n\n"
+                "Welcome—I'm Dr. Sarah Hensley. In my 15+ years of clinical work in attachment theory and subconscious relational reprogramming, "
+                "I help people understand why unhealthy relationship cycles repeat and how to build lasting emotional safety. What would you like to talk through today?"
+            )
         else:
             if course_mention:
                 return (
@@ -393,6 +405,13 @@ class OpenAIGeneratorService:
                 f"{user_salutation}I am an exclusive Dr. Sarah Hensley Platform Navigation Assistant, made specifically to help you navigate Dr. Sarah Hensley's website, learning portal, account settings, courses, workbooks, coaching bookings, billing, and customer support.\n\n"
                 "The topic you asked about is outside the scope of our verified platform documentation. "
                 "Please ask a website or portal navigation question, or switch to Clinical Guidance / Program Advisor mode for relationship and program questions."
+            )
+
+        if mode == "owner":
+            return (
+                f"{user_salutation}I am Dr. Sarah Hensley's exclusive Owner Agent, dedicated to sharing clinical relationship psychology, attachment theory, and subconscious healing guidance.\n\n"
+                "The topic you asked about is outside the scope of my relationship and attachment work. "
+                "Please feel free to ask me anything about attachment patterns, emotional triggers, communication frameworks, or relationship healing!"
             )
 
         if reason == "off_topic":
@@ -536,6 +555,8 @@ class OpenAIGeneratorService:
                 "You are Dr. Sarah Hensley speaking directly in your authentic, first-person clinical voice ('In my 15 years of clinical practice...', 'What I see with attachment wounds...').\n"
                 "You are a specialized relationship psychologist, master coach, and recognized expert in Attachment Theory and subconscious relational reprogramming.\n\n"
                 "MANDATORY OWNER VOICE RULES:\n"
+                "0. OPENING GREETING:\n"
+                "   - Begin opening responses cleanly on Line 1 addressing the user by their first name from Customer Profile (e.g., 'Hello {first_name}!' or 'Hi there!' if unavailable) before flowing naturally into your 1st-person response.\n\n"
                 "1. AUTHENTIC 1ST-PERSON TONE:\n"
                 "   - Speak directly as Dr. Sarah Hensley with warmth, authority, directness, and compassionate clinical insight.\n"
                 "   - Ground all insights in your core attachment frameworks (Anxious, Avoidant, Fearful Avoidant, Secure).\n\n"

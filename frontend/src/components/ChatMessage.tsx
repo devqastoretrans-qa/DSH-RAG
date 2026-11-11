@@ -12,6 +12,7 @@ import {
   ChevronUp,
   Compass,
   Copy,
+  Crown,
   Database,
   RotateCcw,
   Sparkles,
@@ -335,6 +336,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   const isSystem = message.role === 'system';
   const isSales = message.mode === 'sales';
   const isPlatform = message.mode === 'platform';
+  const isOwner = message.mode === 'owner';
   const [expandLongPrompt, setExpandLongPrompt] = useState(false);
 
   const segments = useMemo(
@@ -429,6 +431,8 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
             ? 'border-amber-500/30 bg-amber-500/15 text-amber-600 dark:text-amber-300'
             : isPlatform
             ? 'border-sky-500/30 bg-sky-500/15 text-sky-600 dark:text-sky-300'
+            : isOwner
+            ? 'border-violet-500/30 bg-violet-500/15 text-violet-600 dark:text-violet-300'
             : 'border-emerald-500/30 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
         }`}
         title={
@@ -436,6 +440,8 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
             ? 'Program Advisor Assistant'
             : isPlatform
             ? 'Platform Navigation Assistant'
+            : isOwner
+            ? 'Owner Agent (Founder Voice)'
             : 'Clinical Educator Assistant'
         }
       >
@@ -443,6 +449,8 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           <Briefcase className="h-4 w-4" />
         ) : isPlatform ? (
           <Compass className="h-4 w-4" />
+        ) : isOwner ? (
+          <Crown className="h-4 w-4" />
         ) : (
           <Bot className="h-4 w-4" />
         )}
@@ -547,6 +555,8 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                 ? 'text-amber-600 dark:text-amber-400'
                 : isPlatform
                 ? 'text-sky-600 dark:text-sky-400'
+                : isOwner
+                ? 'text-violet-600 dark:text-violet-400'
                 : 'text-emerald-600 dark:text-emerald-400'
             }
           >
@@ -554,6 +564,8 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
               ? 'Program Advisor'
               : isPlatform
               ? 'Platform Help'
+              : isOwner
+              ? 'Owner Agent'
               : 'Clinical Educator'}
           </span>
           {timeLabel && (
