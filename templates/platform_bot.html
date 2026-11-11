@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Platform Help Bot — Dr. Sarah Hensley Portal Assistant</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+      background: radial-gradient(circle at top left, #0f172a, #020617 70%);
+      color: #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+    .card {
+      max-width: 720px;
+      width: 100%;
+      background: rgba(15, 23, 42, 0.88);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 20px;
+      padding: 28px 30px;
+      box-shadow: 0 24px 60px rgba(2, 6, 23, 0.65);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 12px;
+      border-radius: 9999px;
+      background: rgba(16, 185, 129, 0.14);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      color: #6ee7b7;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 14px;
+    }
+    h1 {
+      margin: 0 0 10px 0;
+      font-size: 26px;
+      color: #f8fafc;
+    }
+    p {
+      margin: 0 0 16px 0;
+      line-height: 1.6;
+      color: #94a3b8;
+      font-size: 14.5px;
+    }
+    .box {
+      background: #020617;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin: 16px 0;
+    }
+    .box-label {
+      font-size: 11.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #34d399;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12.5px;
+      color: #cbd5e1;
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    ul {
+      margin: 10px 0 0 0;
+      padding-left: 20px;
+      color: #cbd5e1;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+    a {
+      color: #34d399;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="badge">Dedicated Platform Navigation Bot</div>
+    <h1>Platform Help Chatbot (Bottom-Right Widget)</h1>
+    <p>
+      The dedicated <strong>Platform Help Assistant</strong> is active in the bottom-right corner of this page.
+      It searches strictly the <code>platform_guide</code> knowledge base and answers only website, account login, password reset, course dashboard, workbook download, and billing navigation questions.
+    </p>
+
+    <div class="box">
+      <div class="box-label">1-Line Embed Snippet for WordPress / Any Website Page</div>
+      <pre>&lt;script src="https://agent.doctorsarahhensley.com/platform-widget.js" defer&gt;&lt;/script&gt;</pre>
+    </div>
+
+    <div class="box">
+      <div class="box-label">Isolated Scope &amp; Endpoints</div>
+      <ul>
+        <li>Widget Script: <a href="/platform-widget.js">/platform-widget.js</a></li>
+        <li>Widget Chat Endpoint: <code>POST /api/platform-widget/chat</code> (locked to <code>mode="platform"</code>)</li>
+        <li>Full Clinical / Advisor Studio: <a href="/">/</a></li>
+      </ul>
+    </div>
+  </main>
+
+  <script src="/platform-widget.js" data-open="true" defer></script>
+</body>
+</html>
+

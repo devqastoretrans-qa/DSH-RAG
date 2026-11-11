@@ -185,6 +185,8 @@ class SlidingWindowRateLimiter:
 
 # Default singleton rate limiter: 15 messages per 60 seconds per client
 chat_rate_limiter = SlidingWindowRateLimiter(max_requests=15, window_seconds=60)
+# Dedicated public Platform Widget rate limiter: 20 navigation queries per 60 seconds per IP
+platform_widget_rate_limiter = SlidingWindowRateLimiter(max_requests=20, window_seconds=60)
 
 
 async def verify_chat_access(request: Request) -> Dict[str, Any]:

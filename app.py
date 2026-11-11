@@ -46,7 +46,8 @@ from src.session_auth import (
     create_session_token,
     verify_session_token,
     verify_chat_access,
-    chat_rate_limiter
+    chat_rate_limiter,
+    platform_widget_rate_limiter
 )
 
 logger = logging.getLogger("rag_app")
@@ -955,6 +956,150 @@ async def platform_agent_endpoint(
     return await _handle_agent_chat_endpoint(
         request, mode="platform", agent_name="Platform Agent (Navigation)", auth_claims=auth_claims
     )
+
+
+class PlatformWidgetChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=1000, description="Website or portal navigation question")
+    session_id: Optional[str] = Field(default=None, max_length=64, description="Ephemeral widget session ID")
+
+
+@app.get(
+    "/platform-widget.js",
+    tags=["Platform Widget"],
+    summary="Embeddable Floating Bottom-Right Platform Chatbot Script",
+    include_in_schema=False
+)
+async def serve_platform_widget_js():
+    """Serves the self-contained Shadow DOM floating Platform Help widget for website embedding."""
+    widget_path = BASE_DIR / "static" / "platform-widget.js"
+    if not widget_path.is_file():
+        raise HTTPException(status_code=404, detail="Platform widget script not found.")
+    return FileResponse(
+        str(widget_path),
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache"}
+    )
+
+
+@app.get(
+    "/platform-bot",
+    response_class=HTMLResponse,
+    tags=["Platform Widget"],
+    summary="Dedicated Platform Chatbot Preview & Embed Instructions",
+    include_in_schema=False
+)
+async def serve_platform_bot_page(request: Request):
+    """Renders a dedicated standalone page hosting the bottom-right floating Platform Bot widget."""
+    return templates.TemplateResponse(
+        request=request,
+        name="platform_bot.html",
+        context={"is_production": IS_PROD}
+    )
+
+
+@app.post(
+    "/api/platform-widget/chat",
+    tags=["Platform Widget"],
+    summary="Public Rate-Limited Endpoint for Bottom-Right Platform Help Widget"
+)
+async def platform_widget_chat_endpoint(
+    body: PlatformWidgetChatRequest,
+    request: Request
+):
+    """
+    Strictly scoped Platform Navigation widget endpoint for the floating bottom-right website bot.
+    - Hard-locked to mode='platform' (queries only the platform_guide collection).
+    - Safe for unauthenticated website visitors (e.g., login/password reset help) with zero PII lookup.
+    - Protected by per-IP sliding-window rate limiting; uses verified server-side user profile only when a valid token is supplied.
+    """
+    clean_msg = body.message.strip()
+    if not clean_msg:
+        raise HTTPException(status_code=400, detail="message is required")
+
+    raw_sid = (body.session_id or "").strip()
+    safe_sid = re.sub(r"[^a-zA-Z0-9_-]", "", raw_sid)[:64]
+    sid = safe_sid or f"plat_{uuid.uuid4().hex[:16]}"
+
+    uid = None
+    visitor_profile: Optional[Dict[str, Any]] = None
+
+    auth_header = request.headers.get("Authorization", "").strip()
+    candidate_token = None
+    if auth_header.lower().startswith("bearer "):
+        candidate_token = auth_header[7:].strip()
+    elif "x-session-token" in request.headers:
+        candidate_token = request.headers.get("x-session-token", "").strip()
+    elif "x-api-key" in request.headers:
+        candidate_token = request.headers.get("x-api-key", "").strip()
+
+    if candidate_token:
+        master_key = os.getenv("RAG_API_KEY", "").strip()
+        if master_key and secrets.compare_digest(candidate_token.encode("utf-8"), master_key.encode("utf-8")):
+            uid = request.headers.get("x-target-user-id", "").strip() or "admin"
+        else:
+            try:
+                claims = verify_session_token(candidate_token)
+                sub = str(claims.get("sub") or "").strip()
+                if sub and sub.lower() not in ("guest", "none", "null"):
+                    uid = sub
+            except ValueError:
+                pass
+
+    if not uid:
+        client_ip = (
+            request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+            or request.headers.get("x-real-ip", "").strip()
+            or (request.client.host if request.client else "unknown_ip")
+        )
+        is_limited, retry_after = platform_widget_rate_limiter.is_limited(client_ip)
+        if is_limited:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Rate limit exceeded for platform widget. Please wait a moment and try again.",
+                headers={"Retry-After": str(retry_after)}
+            )
+        uid = f"plat_visitor_{sid}"
+        visitor_profile = {
+            "user_id": uid,
+            "name": "Website Visitor",
+            "first_name": "there",
+            "courses_purchased": [],
+            "books_purchased": [],
+            "all_purchases": [],
+            "owned_products": [],
+            "past_records": [],
+            "has_history": False,
+        }
+
+    try:
+        rag_res = await run_in_threadpool(
+            execute_rag_pipeline,
+            query=clean_msg,
+            user_id=uid,
+            top_k=5,
+            generate_answer=True,
+            mode="platform",
+            conversation_id=sid,
+            user_profile=visitor_profile,
+            chat_history=None
+        )
+        return {
+            "success": True,
+            "mode": "platform",
+            "session_id": sid,
+            "question": clean_msg,
+            "answer": rag_res.get("answer"),
+            "answer_html": rag_res.get("answer_html"),
+            "sources": rag_res.get("sources", []),
+            "ai_model": rag_res.get("ai_model"),
+            "duration_ms": rag_res.get("duration_ms")
+        }
+    except Exception as e:
+        logger.error(f"[Platform Widget] Error: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": "Platform assistant is temporarily unavailable."}
+        )
 
 
 @app.post(

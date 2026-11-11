@@ -25,6 +25,7 @@ import { ChatMessage } from './components/ChatMessage';
 import { ChatInput } from './components/ChatInput';
 import { ProfileSettingsModal } from './components/ProfileSettingsModal';
 import { ToastContainer } from './components/ToastContainer';
+import { PlatformWidget } from './components/PlatformWidget';
 
 const STORAGE_KEYS = {
   token: 'studio_chat_token',
@@ -1411,6 +1412,8 @@ export const App: React.FC = () => {
         onToggleTheme={() => setIsDark((prev) => !prev)}
         onSelectUser={(uid) => void handleSelectUser(uid)}
       />
+      {/* Dedicated Floating Bottom-Right Platform Help Bot */}
+      <PlatformWidget authToken={authToken} />
     </div>
   );
 };

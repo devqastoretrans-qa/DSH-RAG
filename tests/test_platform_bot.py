@@ -334,3 +334,45 @@ def test_chat_and_sessions_endpoints_support_platform_mode():
             search_query=None,
         )
 
+
+def test_floating_platform_widget_routes_and_sandboxed_chat():
+    from src.session_auth import platform_widget_rate_limiter
+
+    platform_widget_rate_limiter.reset()
+    client = TestClient(app)
+
+    res_js = client.get("/platform-widget.js")
+    assert res_js.status_code == 200
+    assert "javascript" in res_js.headers.get("content-type", "")
+    assert "dsh-platform-bot-host" in res_js.text
+    assert "/api/platform-widget/chat" in res_js.text
+
+    res_page = client.get("/platform-bot")
+    assert res_page.status_code == 200
+    assert "Platform Help" in res_page.text
+    assert "/platform-widget.js" in res_page.text
+
+    with patch("app.execute_rag_pipeline") as mock_rag:
+        mock_rag.return_value = {
+            "question": "How do I reset my password?",
+            "answer": "Click Forgot Password on the login page.",
+            "answer_html": "<p>Click Forgot Password on the login page.</p>",
+            "sources": [],
+            "ai_model": "gpt-4o-mini",
+            "duration_ms": 9.1,
+        }
+        res_chat = client.post(
+            "/api/platform-widget/chat",
+            json={"session_id": "plat_demo_1", "message": "How do I reset my password?"},
+        )
+        assert res_chat.status_code == 200
+        payload = res_chat.json()
+        assert payload["success"] is True
+        assert payload["mode"] == "platform"
+        assert payload["session_id"] == "plat_demo_1"
+        assert "Forgot Password" in payload["answer"]
+        assert mock_rag.call_args.kwargs["mode"] == "platform"
+        assert mock_rag.call_args.kwargs["user_id"] == "plat_visitor_plat_demo_1"
+        assert mock_rag.call_args.kwargs["user_profile"]["has_history"] is False
+
+
