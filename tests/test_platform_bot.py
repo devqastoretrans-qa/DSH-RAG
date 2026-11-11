@@ -461,4 +461,80 @@ def test_floating_platform_widget_routes_and_sandboxed_chat():
             assert mock_rag.call_args.kwargs["user_profile"]["first_name"] == "Maya"
 
 
+def test_platform_bot_out_of_scope_with_history_and_empty_stream(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key")
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    gen = OpenAIGeneratorService(api_key="sk-test-key")
+    mock_client = MagicMock()
+    gen._client = mock_client
+
+    low_relevance_chunk = [
+        {
+            "document_id": "doc_5da4ef5b",
+            "document_name": "DSH PLATFORM USER GUIDE",
+            "text": "Platform navigation details",
+            "vector_score": 0.0378,
+            "rerank_score": 0.0,
+            "score": 0.0,
+        }
+    ]
+    prior_history = [
+        {"role": "user", "content": "Where do I log in?"},
+        {"role": "assistant", "content": "Hello Test2011! Go to /login."},
+    ]
+
+    # Turn 2+ off-topic query ("who is virat kohli") triggers deterministic guardrail without calling LLM
+    stream_events = list(
+        gen.generate_answer_stream(
+            query="who is virat kohli",
+            retrieved_chunks=low_relevance_chunk,
+            user_context={"first_name": "Test2011"},
+            mode="platform",
+            chat_history=prior_history,
+        )
+    )
+    done_ev = [ev for ev in stream_events if ev.get("done")][-1]
+    assert "exclusive Dr. Sarah Hensley" in done_ev["full_answer"]
+    assert "Platform Navigation Assistant" in done_ev["full_answer"]
+    mock_client.chat.completions.create.assert_not_called()
+
+    # Non-stream generate_answer also returns exclusive Dr. Sarah Hensley guardrail
+    sync_res = gen.generate_answer(
+        query="who is virat kohli",
+        retrieved_chunks=low_relevance_chunk,
+        user_context={"first_name": "Test2011"},
+        mode="platform",
+        chat_history=prior_history,
+    )
+    assert sync_res["out_of_domain"] is True
+    assert "exclusive Dr. Sarah Hensley" in sync_res["answer"]
+
+    # Safety net when mocked LLM stream returns empty delta content (never emits blank answer)
+    mock_client.chat.completions.create.return_value = iter(
+        [SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=None))])]
+    )
+    fallback_events = list(
+        gen.generate_answer_stream(
+            query="Where is my account login?",
+            retrieved_chunks=[
+                {
+                    "document_id": "doc_p1",
+                    "document_name": "DSH PLATFORM USER GUIDE",
+                    "text": "Login at /login",
+                    "vector_score": 0.85,
+                    "rerank_score": 0.85,
+                    "score": 0.85,
+                }
+            ],
+            user_context={"first_name": "Maya"},
+            mode="platform",
+        )
+    )
+    fallback_done = [ev for ev in fallback_events if ev.get("done")][-1]
+    assert fallback_done["full_answer"].strip() != ""
+    assert "exclusive Dr. Sarah Hensley" in fallback_done["full_answer"]
+
+
+
 

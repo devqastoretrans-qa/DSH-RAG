@@ -118,7 +118,7 @@ CLINICAL_DOMAIN_REGEX = re.compile(
 )
 
 PLATFORM_DOMAIN_REGEX = re.compile(
-    r"\b(login|log\s*in|sign\s*in|sign\s*up|password|reset|forgot|account|profile|dashboard|portal|website|site|menu|button|page|link|url|tab|billing|invoice|receipt|subscription|cancel|refund|payment|card|checkout|workbook|download|pdf|video|audio|module|lesson|course|access|enroll|certificate|support|ticket|contact|email|browser|mobile|app|error|navigate|setting|settings|member|membership|community|group\s*call|zoom|where\s+(?:is|can\s+i\s+find)|how\s+(?:do|can)\s+i)\b",
+    r"\b(login|log\s*in|sign\s*in|sign\s*up|password|reset|forgot|account|profile|dashboard|portal|website|site|menu|button|page|link|url|tab|billing|invoice|receipt|subscription|cancel|refund|return|payment|afterpay|klarna|insurance|hsa|card|checkout|workbook|download|pdf|ebook|ebooks|video|audio|module|lesson|course|courses|access|enroll|certificate|support|ticket|contact|email|phone|browser|mobile|app|error|navigate|setting|settings|member|membership|community|forum|forums|group\s*call|hybrid|cohort|couples|coach|coaching|reschedule|replay|replays|webinar|podcast|affiliate|onboarding|testimonials|zoom|where\s+(?:is|can\s+i\s+find)|how\s+(?:do|can)\s+i)\b",
     re.IGNORECASE
 )
 
@@ -379,18 +379,18 @@ class OpenAIGeneratorService:
         if mode == "platform":
             if reason == "empty":
                 return (
-                    f"{user_salutation}I could not find verified portal documentation matching your question in the Platform Guide knowledge base.\n\n"
-                    "I can help with website and learning portal navigation (logging in, resetting your password, finding your course dashboard, downloading workbooks, and managing billing or support) based on published portal guides. "
+                    f"{user_salutation}I am an exclusive Dr. Sarah Hensley Platform Navigation Assistant, made specifically to help you navigate Dr. Sarah Hensley's website, learning portal, account settings, courses, workbooks, coaching bookings, billing, and customer support.\n\n"
+                    "I could not find verified portal documentation matching your question in the Platform Guide knowledge base. "
                     "If you need relationship psychology guidance or course recommendations instead, please switch to Clinical Guidance or Program Advisor mode."
                 )
             if reason == "off_topic":
                 return (
-                    f"{user_salutation}I am Dr. Sarah Hensley's Platform Navigation Assistant, dedicated exclusively to helping you navigate the website, learning portal, account settings, and course access.\n\n"
-                    "The topic you asked about (technical development, financial trading, or non-portal inquiries) is outside the scope of platform navigation support. "
-                    "Please feel free to ask how to log in, reset your password, find your dashboard, download workbooks, or manage billing and support!"
+                    f"{user_salutation}I am an exclusive Dr. Sarah Hensley Platform Navigation Assistant, made specifically to help you navigate Dr. Sarah Hensley's website, learning portal, account settings, courses, workbooks, coaching bookings, billing, and customer support.\n\n"
+                    "Your question is outside the scope of platform and portal navigation support. "
+                    "Please feel free to ask how to log in, reset your password, find your dashboard, download workbooks, book coaching, or manage billing and support!"
                 )
             return (
-                f"{user_salutation}I am Dr. Sarah Hensley's Platform Navigation Assistant, focused exclusively on navigating the website, learning portal, account settings, workbooks, and billing.\n\n"
+                f"{user_salutation}I am an exclusive Dr. Sarah Hensley Platform Navigation Assistant, made specifically to help you navigate Dr. Sarah Hensley's website, learning portal, account settings, courses, workbooks, coaching bookings, billing, and customer support.\n\n"
                 "The topic you asked about is outside the scope of our verified platform documentation. "
                 "Please ask a website or portal navigation question, or switch to Clinical Guidance / Program Advisor mode for relationship and program questions."
             )
@@ -696,7 +696,7 @@ class OpenAIGeneratorService:
         is_low_confidence = (max_vector_score < min_vector_threshold and max_rerank_score < min_rerank_threshold)
         is_hard_irrelevant = (has_rerank_scores and max_rerank_score < strict_rerank_floor and max_vector_score < 0.50)
 
-        if not is_follow_up and not chat_history and not has_domain_match and (is_low_confidence or is_hard_irrelevant):
+        if not is_follow_up and not has_domain_match and (is_hard_irrelevant or (not chat_history and is_low_confidence)):
             chit_chat = self._get_chit_chat_reply(query, user_context=user_context, mode=mode)
             if chit_chat:
                 return {
@@ -781,17 +781,9 @@ class OpenAIGeneratorService:
                 messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content": user_prompt})
 
-        # DEF-08: Lane-specific dynamic max_tokens ceiling (Expanded headroom: 400 / 1200 / 1200)
-        is_short_query = len(query.split()) <= 6 and any(
-            w in query.lower() for w in ["what is", "define", "meaning", "who is", "cost", "price", "how much"]
-        )
+        # DEF-08: Ensure reasoning models (Groq gpt-oss-120b) never exhaust max_tokens before emitting content
         default_ceiling = int(os.getenv("MAX_OUTPUT_TOKENS", "1200"))
-        if is_short_query:
-            effective_max_tokens = min(400, default_ceiling)
-        elif mode == "sales":
-            effective_max_tokens = max(1200, default_ceiling)
-        else:
-            effective_max_tokens = max(1200, default_ceiling)
+        effective_max_tokens = max(1200, default_ceiling) if mode == "sales" else max(800, default_ceiling)
 
         used_model = self.model
         try:
@@ -832,7 +824,9 @@ class OpenAIGeneratorService:
                     "error": str(e)
                 }
 
-        if generated_text:
+        if not generated_text or not generated_text.strip():
+            generated_text = self._build_out_of_scope_reply(user_salutation, mode, reason="out_of_scope")
+        else:
             generated_text = strip_citation_markers(generated_text)
             generated_text = clean_trailing_truncation(generated_text)
             generated_text = re.sub(r'\bscripted\s+script\b', 'script', generated_text, flags=re.I)
@@ -927,7 +921,7 @@ class OpenAIGeneratorService:
         is_low_confidence = (max_vector_score < min_vector_threshold and max_rerank_score < min_rerank_threshold)
         is_hard_irrelevant = (has_rerank_scores and max_rerank_score < strict_rerank_floor and max_vector_score < 0.50)
 
-        if not is_follow_up and not chat_history and not has_domain_match and (is_low_confidence or is_hard_irrelevant):
+        if not is_follow_up and not has_domain_match and (is_hard_irrelevant or (not chat_history and is_low_confidence)):
             chit_chat = self._get_chit_chat_reply(query, user_context=user_context, mode=mode)
             if chit_chat:
                 yield {"token": chit_chat, "done": False}
@@ -1001,17 +995,9 @@ class OpenAIGeneratorService:
                 messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content": user_prompt})
 
-        # DEF-08: Lane-specific dynamic max_tokens ceiling (Expanded headroom: 400 / 1200 / 1200)
-        is_short_query = len(query.split()) <= 6 and any(
-            w in query.lower() for w in ["what is", "define", "meaning", "who is", "cost", "price", "how much"]
-        )
+        # DEF-08: Ensure reasoning models (Groq gpt-oss-120b) never exhaust max_tokens before emitting content
         default_ceiling = int(os.getenv("MAX_OUTPUT_TOKENS", "1200"))
-        if is_short_query:
-            effective_max_tokens = min(400, default_ceiling)
-        elif mode == "sales":
-            effective_max_tokens = max(1200, default_ceiling)
-        else:
-            effective_max_tokens = max(1200, default_ceiling)
+        effective_max_tokens = max(1200, default_ceiling) if mode == "sales" else max(800, default_ceiling)
 
         # Try primary stream, fallback to secondary if connection fails
         stream_client = self.client
@@ -1067,15 +1053,19 @@ class OpenAIGeneratorService:
             final_ans = clean_trailing_truncation(final_ans)
             final_ans = re.sub(r'\bscripted\s+script\b', 'script', final_ans, flags=re.I)
             final_ans = re.sub(r'(\n\s*[-*•]\s*)$', '', final_ans.rstrip())
-            # Layer 2 Deterministic Salutation Guardrail for streaming
-            final_ans = self._apply_salutation_guardrail(
-                final_ans,
-                greeting_name=greeting_name,
-                mode=mode,
-                is_follow_up=is_follow_up,
-                chat_history=chat_history,
-                query=query,
-            )
+            if not final_ans.strip():
+                final_ans = self._build_out_of_scope_reply(user_salutation, mode, reason="out_of_scope")
+                yield {"token": final_ans, "done": False}
+            else:
+                # Layer 2 Deterministic Salutation Guardrail for streaming
+                final_ans = self._apply_salutation_guardrail(
+                    final_ans,
+                    greeting_name=greeting_name,
+                    mode=mode,
+                    is_follow_up=is_follow_up,
+                    chat_history=chat_history,
+                    query=query,
+                )
 
             yield {
                 "token": "",
