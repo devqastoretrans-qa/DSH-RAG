@@ -32,6 +32,15 @@ def test_clean_text_for_speech_truncates_at_sentence_boundary():
     assert cleaned.endswith(".")
 
 
+def test_clean_text_for_speech_does_not_truncate_by_default(monkeypatch):
+    monkeypatch.delenv("TTS_MAX_CHARS", raising=False)
+    long_text = ("Sentence one. " * 220) + "Final closing paragraph."
+    assert len(long_text) > 2500
+    cleaned = clean_text_for_speech(long_text)
+    assert cleaned.endswith("Final closing paragraph.")
+    assert len(cleaned) > 2500
+
+
 @pytest.fixture
 def tts_client(monkeypatch):
     monkeypatch.setenv("RAG_API_KEY", "test_tts_secret_key")

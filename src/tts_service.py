@@ -19,7 +19,7 @@ import requests
 
 DEFAULT_ELEVENLABS_MODEL = "eleven_flash_v2_5"
 DEFAULT_OUTPUT_FORMAT = "mp3_44100_128"
-DEFAULT_TTS_MAX_CHARS = 2500
+DEFAULT_TTS_MAX_CHARS = 0
 DEFAULT_TTS_CACHE_MAX_ITEMS = 64
 
 _MD_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)")
@@ -55,7 +55,9 @@ def get_elevenlabs_model_id() -> str:
 def get_tts_max_chars() -> int:
     try:
         val = int(os.getenv("TTS_MAX_CHARS", str(DEFAULT_TTS_MAX_CHARS)))
-        return max(200, min(val, 10000))
+        if val <= 0:
+            return 0
+        return max(200, min(val, 40000))
     except ValueError:
         return DEFAULT_TTS_MAX_CHARS
 
@@ -106,7 +108,7 @@ def clean_text_for_speech(text: str, max_chars: Optional[int] = None) -> str:
     cleaned = re.sub(r"\.{2,}", ".", cleaned)
     cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
 
-    if len(cleaned) <= limit:
+    if limit <= 0 or len(cleaned) <= limit:
         return cleaned
 
     # Truncate cleanly at a sentence or word boundary within limit
