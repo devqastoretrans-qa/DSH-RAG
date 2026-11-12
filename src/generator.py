@@ -461,9 +461,10 @@ class OpenAIGeneratorService:
         if mode == "platform":
             safe_first = cls._extract_greeting_name(user_context)
             name_val = safe_first if safe_first != "there" else ""
+            display_name = name_val or '(unavailable / unauthenticated -> use "Hello!" or "Hi there!")'
             lines = [
                 "=== VERIFIED PLATFORM USER CONTEXT ===",
-                f"• Logged-In User First Name ({{user_first_name}}): {name_val or '(unavailable / unauthenticated -> use \"Hello!\" or \"Hi there!\")'}",
+                f"• Logged-In User First Name ({{user_first_name}}): {display_name}",
             ]
             if current_page:
                 lines.append(f"• Active Website Page (current_page): {current_page}")
