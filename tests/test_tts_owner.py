@@ -111,3 +111,56 @@ def test_tts_stream_synthesizes_and_caches_owner_audio(tts_client):
         assert r2.headers.get("X-TTS-Cache") == "HIT"
         assert r2.content == b"ID3_FAKE_MP3_CHUNK_DATA"
         assert mock_post.call_count == 1
+
+
+def test_tts_stream_falls_back_to_edge_tts_on_quota_error(tts_client):
+    el_resp = MagicMock()
+    el_resp.status_code = 401
+    el_resp.text = '{"detail":{"status":"quota_exceeded","message":"Credits exhausted"}}'
+
+    fake_comm = MagicMock()
+    fake_comm.stream_sync.return_value = [
+        {"type": "audio", "data": b"EDGE_MP3_1_"},
+        {"type": "audio", "data": b"EDGE_MP3_2"},
+    ]
+
+    with patch("src.tts_service.requests.post", return_value=el_resp), \
+         patch("edge_tts.Communicate", return_value=fake_comm) as mock_edge:
+        r1 = tts_client.post(
+            "/api/v1/tts/stream",
+            headers={"X-API-Key": "test_tts_secret_key"},
+            json={"text": "Testing fallback voice.", "mode": "owner"},
+        )
+        assert r1.status_code == 200
+        assert r1.headers["content-type"].startswith("audio/mpeg")
+        assert r1.headers.get("X-TTS-Cache") == "MISS"
+        assert r1.content == b"EDGE_MP3_1_EDGE_MP3_2"
+        assert mock_edge.call_count == 1
+
+        # Second call serves edge-tts audio from cache
+        r2 = tts_client.post(
+            "/api/v1/tts/stream",
+            headers={"X-API-Key": "test_tts_secret_key"},
+            json={"text": "Testing fallback voice.", "mode": "owner"},
+        )
+        assert r2.status_code == 200
+        assert r2.headers.get("X-TTS-Cache") == "HIT"
+        assert r2.content == b"EDGE_MP3_1_EDGE_MP3_2"
+        assert mock_edge.call_count == 1
+
+
+def test_tts_stream_direct_edge_provider_without_elevenlabs_key(tts_client, monkeypatch):
+    monkeypatch.setenv("TTS_PROVIDER", "edge")
+    monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
+
+    fake_comm = MagicMock()
+    fake_comm.stream_sync.return_value = [{"type": "audio", "data": b"DIRECT_EDGE_MP3"}]
+
+    with patch("edge_tts.Communicate", return_value=fake_comm):
+        resp = tts_client.post(
+            "/api/v1/tts/stream",
+            headers={"X-API-Key": "test_tts_secret_key"},
+            json={"text": "Direct edge provider test.", "mode": "owner"},
+        )
+        assert resp.status_code == 200
+        assert resp.content == b"DIRECT_EDGE_MP3"

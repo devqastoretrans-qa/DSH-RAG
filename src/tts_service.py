@@ -21,6 +21,7 @@ DEFAULT_ELEVENLABS_MODEL = "eleven_flash_v2_5"
 DEFAULT_OUTPUT_FORMAT = "mp3_44100_128"
 DEFAULT_TTS_MAX_CHARS = 0
 DEFAULT_TTS_CACHE_MAX_ITEMS = 64
+DEFAULT_EDGE_TTS_VOICE = "en-US-AvaNeural"
 
 _MD_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)")
 _BARE_URL_RE = re.compile(r"https?://\S+")
@@ -50,6 +51,19 @@ def get_elevenlabs_api_key() -> str:
 
 def get_elevenlabs_model_id() -> str:
     return os.getenv("ELEVENLABS_MODEL_ID", DEFAULT_ELEVENLABS_MODEL).strip() or DEFAULT_ELEVENLABS_MODEL
+
+
+def get_tts_provider() -> str:
+    provider = os.getenv("TTS_PROVIDER", "auto").strip().lower()
+    return provider if provider in ("auto", "elevenlabs", "edge") else "auto"
+
+
+def is_edge_fallback_enabled() -> bool:
+    return os.getenv("TTS_EDGE_FALLBACK", "true").strip().lower() in ("1", "true", "yes", "on")
+
+
+def get_edge_tts_voice() -> str:
+    return os.getenv("EDGE_TTS_VOICE", DEFAULT_EDGE_TTS_VOICE).strip() or DEFAULT_EDGE_TTS_VOICE
 
 
 def get_tts_max_chars() -> int:
@@ -156,13 +170,58 @@ class ElevenLabsTTSService:
             while len(self._cache) > self._max_cache_items:
                 self._cache.popitem(last=False)
 
+    def _prepare_edge_stream(self, speech_text: str) -> Tuple[Iterator[bytes], bool]:
+        """Synthesize MP3 audio via free Microsoft Edge Neural TTS (edge-tts)."""
+        edge_voice = get_edge_tts_voice()
+        edge_model = "edge-tts"
+        key = self._cache_key(edge_voice, edge_model, speech_text)
+
+        cached = self.get_cached_audio(edge_voice, edge_model, speech_text)
+        if cached is not None:
+            def _cached_iter() -> Iterator[bytes]:
+                yield cached
+            return _cached_iter(), True
+
+        try:
+            import edge_tts
+        except ImportError as exc:
+            raise TTSConfigurationError("edge-tts package is not installed.") from exc
+
+        communicate = edge_tts.Communicate(speech_text, voice=edge_voice)
+
+        def _stream_and_cache() -> Iterator[bytes]:
+            chunks = []
+            try:
+                for chunk in communicate.stream_sync():
+                    if chunk.get("type") == "audio" and chunk.get("data"):
+                        data = chunk["data"]
+                        chunks.append(data)
+                        yield data
+            except Exception as exc:
+                if not chunks:
+                    raise TTSUpstreamError(f"Edge TTS synthesis failed: {exc}") from exc
+            if chunks:
+                self._put_cached_audio(key, b"".join(chunks))
+
+        return _stream_and_cache(), False
+
     def prepare_stream(
         self, raw_text: str, mode: str = "owner"
     ) -> Tuple[Iterator[bytes], bool]:
         """
-        Validate configuration, sanitize text, check cache, and open ElevenLabs stream.
+        Validate configuration, sanitize text, check cache, and open TTS stream.
+        Uses ElevenLabs by default and automatically falls back to free edge-tts
+        when ElevenLabs credits/quota are exhausted (or when TTS_PROVIDER=edge).
         Returns (audio_chunk_iterator, cache_hit).
         """
+        speech_text = clean_text_for_speech(raw_text)
+        if not speech_text:
+            raise ValueError("No speakable text remains after cleaning.")
+
+        provider = get_tts_provider()
+        if provider == "edge":
+            return self._prepare_edge_stream(speech_text)
+
         api_key = get_elevenlabs_api_key()
         if not api_key:
             raise TTSConfigurationError("ElevenLabs is not configured (missing ELEVENLABS_API_KEY).")
@@ -172,10 +231,6 @@ class ElevenLabsTTSService:
             raise TTSConfigurationError(
                 f"No ElevenLabs voice ID configured for mode '{mode}' (set ELEVENLABS_OWNER_VOICE_ID)."
             )
-
-        speech_text = clean_text_for_speech(raw_text)
-        if not speech_text:
-            raise ValueError("No speakable text remains after cleaning.")
 
         model_id = get_elevenlabs_model_id()
         key = self._cache_key(voice_id, model_id, speech_text)
@@ -214,12 +269,18 @@ class ElevenLabsTTSService:
                 timeout=(10, 45),
             )
         except requests.RequestException as exc:
+            if provider == "auto" and is_edge_fallback_enabled():
+                return self._prepare_edge_stream(speech_text)
             raise TTSUpstreamError(f"Failed to connect to ElevenLabs: {exc}") from exc
 
         if resp.status_code >= 400:
             detail = resp.text[:300] if resp.text else f"HTTP {resp.status_code}"
+            status_code = resp.status_code
             resp.close()
-            raise TTSUpstreamError(f"ElevenLabs API error ({resp.status_code}): {detail}")
+            is_quota_or_auth = status_code in (401, 402, 429) or "quota" in detail.lower() or "credit" in detail.lower()
+            if provider == "auto" and is_edge_fallback_enabled() and is_quota_or_auth:
+                return self._prepare_edge_stream(speech_text)
+            raise TTSUpstreamError(f"ElevenLabs API error ({status_code}): {detail}")
 
         def _stream_and_cache() -> Iterator[bytes]:
             chunks = []
