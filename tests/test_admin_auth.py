@@ -134,10 +134,10 @@ def test_public_routes_remain_unauthenticated(client):
     )
     assert reset_resp_auth.status_code in (200, 404)
 
-    # 3. Permissive migration mode (ENFORCE_CHAT_AUTH=false) keeps existing widget functional
+    # 3. Chat endpoints remain protected even when ENFORCE_CHAT_AUTH=false
     os.environ["ENFORCE_CHAT_AUTH"] = "false"
     reset_resp_perm = client.post("/chat/reset", json={"session_id": "test_session_123"})
-    assert reset_resp_perm.status_code in (200, 404)
+    assert reset_resp_perm.status_code == 401
 
     # UI root remains accessible
     ui_resp = client.get("/")
