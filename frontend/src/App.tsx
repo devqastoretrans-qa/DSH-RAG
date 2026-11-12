@@ -1389,8 +1389,8 @@ export const App: React.FC = () => {
       {/* Right Main Chat Column */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Sticky Top Bar */}
-        <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 bg-white/85 px-3 py-2.5 backdrop-blur-md dark:border-slate-800/80 dark:bg-[#0B1120]/90 sm:px-5">
-          <div className="flex min-w-0 items-center gap-2.5">
+        <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 bg-white/85 px-3 py-2.5 backdrop-blur-md dark:border-slate-800/80 dark:bg-[#0B1120]/90 sm:px-5 xl:flex-nowrap">
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
             <button
               type="button"
               onClick={() => setSidebarOpen((prev) => !prev)}
@@ -1414,7 +1414,7 @@ export const App: React.FC = () => {
           </div>
 
           {/* Bot Mode Pills + Message Role/Context Filter + Theme Toggle */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             <div className="inline-flex rounded-xl border border-slate-200 bg-slate-100 p-0.5 dark:border-slate-800 dark:bg-slate-900">
               <button
                 type="button"

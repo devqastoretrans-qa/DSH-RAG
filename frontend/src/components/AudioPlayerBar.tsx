@@ -271,19 +271,9 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
       });
 
       if (!res.ok) {
-        // Fallback to browser Web Speech if backend TTS is unavailable/unconfigured
-        if (res.status === 400 || res.status === 503) {
-          startWebSpeech(0);
-          return;
-        }
-        let errMsg = `Voice synthesis failed (${res.status})`;
-        try {
-          const j = (await res.json()) as { detail?: string; error?: string };
-          errMsg = j.detail || j.error || errMsg;
-        } catch {
-          // ignore
-        }
-        throw new Error(errMsg);
+        // Fallback to browser Web Speech if backend TTS is unavailable/unconfigured/throttled
+        startWebSpeech(0);
+        return;
       }
 
       const blob = await res.blob();
@@ -308,7 +298,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
       audio.onended = () => resetToIdle();
       audio.onerror = () => {
         resetToIdle(false);
-        onError?.('Could not play generated voice audio.');
+        startWebSpeech(0);
       };
 
       setStatus('playing');
@@ -317,7 +307,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
       const e = err as Error;
       if (e.name === 'AbortError') return;
       resetToIdle(false);
-      onError?.(e.message || 'Unable to generate voice audio.');
+      startWebSpeech(0);
     }
   }, [buildAuthHeaders, messageId, onError, resetToIdle, startWebSpeech, text]);
 
