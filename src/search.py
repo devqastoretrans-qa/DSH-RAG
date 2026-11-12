@@ -321,7 +321,10 @@ def search_similar_chunks(
         clinical_candidates = [
             c for c in candidates
             if c.get("category") not in excluded_cats
-            and not any(k in (c.get("document_name") or c.get("filename") or "").lower() for k in ("sales", "catalog", "pricing", "checkout"))
+            and (
+                (mode == "owner" and (c.get("category") == "owner" or c.get("collection_key") == "owner"))
+                or not any(k in (c.get("document_name") or c.get("filename") or "").lower() for k in ("sales", "catalog", "pricing", "checkout"))
+            )
         ]
         if clinical_candidates:
             candidates = clinical_candidates

@@ -271,3 +271,53 @@ def test_drive_service_mock_and_env_owner_folder(monkeypatch):
     assert len(owner_files) == 1
     assert owner_files[0]["category"] == "owner"
 
+
+def test_owner_search_allows_owner_docs_with_catalog_in_filename():
+    def fake_search_similar(query_vector, top_k=10, collection_name=None, query_filter=None):
+        if collection_name == "owner_voice":
+            return [{
+                "id": "own_pod_1",
+                "score": 0.91,
+                "document_id": "doc_efe857f7",
+                "document_name": "DSH_OWNER_PODCAST_EPISODES_CATALOG.pdf",
+                "filename": "DSH_OWNER_PODCAST_EPISODES_CATALOG.pdf",
+                "text": "Episode 17 explores self-compassion, internalized shame, and how your inner critic shapes relationships.",
+                "category": "owner",
+                "status": "READY",
+            }]
+        if collection_name == "clinical_knowledge_other":
+            return [{
+                "id": "leak_cat",
+                "score": 0.95,
+                "document_id": "doc_sales_leak",
+                "document_name": "Sales_Programs_Catalog.pdf",
+                "filename": "Sales_Programs_Catalog.pdf",
+                "text": "Enroll now for $499",
+                "category": "clinical",
+                "status": "READY",
+            }]
+        return []
+
+    mock_embedder = MagicMock()
+    mock_embedder.embed_query.return_value = [0.1] * 384
+
+    mock_qdrant = MagicMock()
+    mock_qdrant.collection_name = "documents"
+    mock_qdrant.search_similar.side_effect = fake_search_similar
+
+    mock_reranker = MagicMock()
+    mock_reranker.rerank.side_effect = lambda query, candidate_chunks, top_k=5: [
+        {**c, "rerank_score": 0.95 - idx * 0.1, "vector_score": c["score"]}
+        for idx, c in enumerate(candidate_chunks[:top_k])
+    ]
+
+    with patch("src.search.get_embedding_service", return_value=mock_embedder), \
+         patch("src.search.get_qdrant_service", return_value=mock_qdrant), \
+         patch("src.search.get_reranker_service", return_value=mock_reranker):
+        res = search_similar_chunks("self-compassion and shame episode 17", top_k=5, mode="owner")
+
+    doc_names = [r["document_name"] for r in res["results"]]
+    assert "DSH_OWNER_PODCAST_EPISODES_CATALOG.pdf" in doc_names
+    assert "Sales_Programs_Catalog.pdf" not in doc_names
+
+
