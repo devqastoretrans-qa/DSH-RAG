@@ -126,18 +126,18 @@ def test_public_routes_remain_unauthenticated(client):
     reset_resp_unauth = client.post("/chat/reset", json={"session_id": "test_session_123"})
     assert reset_resp_unauth.status_code == 401
 
-    # 2. Reset with API key succeeds in strict mode
+    # 2. Reset with API key passes auth in strict mode (200 if session exists, 404 if not)
     reset_resp_auth = client.post(
         "/chat/reset",
         json={"session_id": "test_session_123"},
         headers={"Authorization": f"Bearer {TEST_API_KEY}"}
     )
-    assert reset_resp_auth.status_code == 200
+    assert reset_resp_auth.status_code in (200, 404)
 
     # 3. Permissive migration mode (ENFORCE_CHAT_AUTH=false) keeps existing widget functional
     os.environ["ENFORCE_CHAT_AUTH"] = "false"
     reset_resp_perm = client.post("/chat/reset", json={"session_id": "test_session_123"})
-    assert reset_resp_perm.status_code == 200
+    assert reset_resp_perm.status_code in (200, 404)
 
     # UI root remains accessible
     ui_resp = client.get("/")
