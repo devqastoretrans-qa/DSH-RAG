@@ -214,7 +214,7 @@ class ElevenLabsTTSService:
         when ElevenLabs credits/quota are exhausted (or when TTS_PROVIDER=edge).
         Returns (audio_chunk_iterator, cache_hit).
         """
-        speech_text = clean_text_for_speech(raw_text)
+        speech_text = clean_text_for_speech(raw_text, max_chars=0)
         if not speech_text:
             raise ValueError("No speakable text remains after cleaning.")
 
