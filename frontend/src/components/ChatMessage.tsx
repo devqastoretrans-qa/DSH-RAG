@@ -14,22 +14,21 @@ import {
   Copy,
   Crown,
   Database,
-  Loader2,
   RotateCcw,
   Sparkles,
-  Square,
   User,
-  Volume2,
 } from 'lucide-react';
 import type { ChatMessage as ChatMessageType } from '../types/chat';
+import { AudioPlayerBar } from './AudioPlayerBar';
 import { SourceAccordion } from './SourceAccordion';
 
 export interface ChatMessageProps {
   message: ChatMessageType;
   userInitials?: string;
   onRetry?: (message: ChatMessageType) => void;
-  ttsState?: 'idle' | 'loading' | 'playing';
-  onToggleSpeak?: (message: ChatMessageType) => void;
+  buildAuthHeaders?: (tokenOverride?: string, extra?: Record<string, string>) => Record<string, string>;
+  autoPlayAudio?: boolean;
+  onAudioError?: (detail: string) => void;
 }
 
 interface ContentSegment {
@@ -336,8 +335,9 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   message,
   userInitials = 'U',
   onRetry,
-  ttsState = 'idle',
-  onToggleSpeak,
+  buildAuthHeaders,
+  autoPlayAudio = false,
+  onAudioError,
 }) => {
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
@@ -553,6 +553,19 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           {Array.isArray(message.sources) && message.sources.length > 0 && (
             <SourceAccordion sources={message.sources} mode={message.mode} />
           )}
+
+          {!message.isStreaming &&
+            !message.isError &&
+            message.content.trim().length > 0 && (
+              <AudioPlayerBar
+                messageId={message.id}
+                text={message.content}
+                mode={message.mode}
+                buildAuthHeaders={buildAuthHeaders}
+                autoPlay={autoPlayAudio}
+                onError={onAudioError}
+              />
+            )}
         </div>
 
         <div className="mt-1.5 flex flex-wrap items-center gap-2 px-1 font-mono text-[11px] text-slate-400 dark:text-slate-500">
@@ -592,47 +605,6 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
               Stopped
             </span>
           )}
-          {isOwner &&
-            !message.isStreaming &&
-            !message.isError &&
-            message.content.trim().length > 0 &&
-            onToggleSpeak && (
-              <button
-                type="button"
-                onClick={() => onToggleSpeak(message)}
-                className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors ${
-                  ttsState === 'playing'
-                    ? 'border-violet-500/50 bg-violet-500/15 text-violet-700 hover:bg-violet-500/25 dark:text-violet-300'
-                    : ttsState === 'loading'
-                    ? 'border-violet-400/40 bg-violet-500/10 text-violet-600 dark:text-violet-300'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-violet-400/50 hover:text-violet-700 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300 dark:hover:text-violet-300'
-                }`}
-                title={
-                  ttsState === 'playing'
-                    ? 'Stop voice playback'
-                    : ttsState === 'loading'
-                    ? 'Generating Dr. Sarah voice...'
-                    : 'Listen to Dr. Sarah speak this reply'
-                }
-              >
-                {ttsState === 'loading' ? (
-                  <>
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    <span>Loading...</span>
-                  </>
-                ) : ttsState === 'playing' ? (
-                  <>
-                    <Square className="h-2.5 w-2.5 fill-current" />
-                    <span>Stop</span>
-                  </>
-                ) : (
-                  <>
-                    <Volume2 className="h-3 w-3" />
-                    <span>Listen</span>
-                  </>
-                )}
-              </button>
-            )}
         </div>
       </div>
     </div>

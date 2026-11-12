@@ -27,6 +27,7 @@ import type {
 } from './types/chat';
 import { Sidebar } from './components/Sidebar';
 import { ChatMessage } from './components/ChatMessage';
+import { stopActiveAudioPlayback } from './components/AudioPlayerBar';
 import { ChatInput } from './components/ChatInput';
 import { ProfileSettingsModal } from './components/ProfileSettingsModal';
 import { ToastContainer } from './components/ToastContainer';
@@ -322,14 +323,10 @@ export const App: React.FC = () => {
   const [showScrollBottomBtn, setShowScrollBottomBtn] = useState(false);
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
   const [autoReadOwner, setAutoReadOwner] = useState(false);
-  const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
-  const [speakingStatus, setSpeakingStatus] = useState<'idle' | 'loading' | 'playing'>('idle');
+  const [autoPlayMsgId, setAutoPlayMsgId] = useState<string | null>(null);
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const ttsAbortRef = useRef<AbortController | null>(null);
-  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
-  const ttsUrlRef = useRef<string | null>(null);
   const autoReadOwnerRef = useRef(autoReadOwner);
   autoReadOwnerRef.current = autoReadOwner;
   const activeRequestSeqRef = useRef(0);
@@ -402,105 +399,14 @@ export const App: React.FC = () => {
     setIsStreaming(false);
   }, []);
 
-  const stopVoicePlayback = useCallback(() => {
-    if (ttsAbortRef.current) {
-      ttsAbortRef.current.abort();
-      ttsAbortRef.current = null;
-    }
-    if (ttsAudioRef.current) {
-      ttsAudioRef.current.pause();
-      ttsAudioRef.current.src = '';
-      ttsAudioRef.current = null;
-    }
-    if (ttsUrlRef.current) {
-      URL.revokeObjectURL(ttsUrlRef.current);
-      ttsUrlRef.current = null;
-    }
-    setSpeakingMsgId(null);
-    setSpeakingStatus('idle');
+  useEffect(() => {
+    stopActiveAudioPlayback();
+    setAutoPlayMsgId(null);
+  }, [activeMode]);
+
+  useEffect(() => {
+    return () => stopActiveAudioPlayback();
   }, []);
-
-  const speakMessage = useCallback(
-    async (msg: Pick<ChatMessageType, 'id' | 'content' | 'mode'>) => {
-      if ((msg.mode || activeMode) !== 'owner' || !msg.content.trim()) return;
-      if (speakingMsgId === msg.id && speakingStatus !== 'idle') {
-        stopVoicePlayback();
-        return;
-      }
-
-      stopVoicePlayback();
-      const controller = new AbortController();
-      ttsAbortRef.current = controller;
-      setSpeakingMsgId(msg.id);
-      setSpeakingStatus('loading');
-
-      try {
-        const res = await fetch('/api/v1/tts/stream', {
-          method: 'POST',
-          headers: buildAuthHeaders(undefined, {
-            'Content-Type': 'application/json',
-          }),
-          body: JSON.stringify({
-            text: msg.content,
-            mode: 'owner',
-            message_id: msg.id,
-          }),
-          signal: controller.signal,
-        });
-
-        if (!res.ok) {
-          let errMsg = `Voice synthesis failed (${res.status})`;
-          try {
-            const errJson = (await res.json()) as { detail?: string; error?: string };
-            const msgText = errJson?.detail || errJson?.error;
-            if (msgText) errMsg = msgText;
-          } catch {
-            // ignore non-JSON error
-          }
-          throw new Error(errMsg);
-        }
-
-        const audioBlob = await res.blob();
-        if (controller.signal.aborted) return;
-
-        const audioUrl = URL.createObjectURL(audioBlob);
-        ttsUrlRef.current = audioUrl;
-        const audio = new Audio(audioUrl);
-        ttsAudioRef.current = audio;
-
-        audio.onended = () => stopVoicePlayback();
-        audio.onerror = () => {
-          stopVoicePlayback();
-          pushToast({
-            type: 'error',
-            title: 'Audio Playback Error',
-            message: 'Could not play the generated voice clip.',
-          });
-        };
-
-        setSpeakingStatus('playing');
-        await audio.play();
-      } catch (err) {
-        const errObj = err as Error;
-        if (errObj.name === 'AbortError') return;
-        stopVoicePlayback();
-        pushToast({
-          type: 'error',
-          title: 'Voice Unavailable',
-          message: errObj.message || 'Unable to generate Dr. Sarah voice audio.',
-        });
-      }
-    },
-    [activeMode, buildAuthHeaders, pushToast, speakingMsgId, speakingStatus, stopVoicePlayback]
-  );
-
-  useEffect(() => {
-    stopVoicePlayback();
-  }, [activeMode, stopVoicePlayback]);
-
-  useEffect(() => {
-    return () => stopVoicePlayback();
-  }, [stopVoicePlayback]);
 
   const fetchWithTimeout = useCallback(
     async (
@@ -1235,11 +1141,7 @@ export const App: React.FC = () => {
             }));
 
             if (targetMode === 'owner' && autoReadOwnerRef.current && finalAns.trim()) {
-              void speakMessage({
-                id: assistantMsgId,
-                content: finalAns,
-                mode: 'owner',
-              });
+              setAutoPlayMsgId(assistantMsgId);
             }
           }
         };
@@ -1324,11 +1226,7 @@ export const App: React.FC = () => {
               : [],
           }));
           if (targetMode === 'owner' && autoReadOwnerRef.current && (data.answer || '').trim()) {
-            void speakMessage({
-              id: assistantMsgId,
-              content: data.answer || '',
-              mode: 'owner',
-            });
+            setAutoPlayMsgId(assistantMsgId);
           }
         } else if (!receivedDonePayload) {
           updateAssistantMsg((m) => ({ ...m, isStreaming: false }));
@@ -1578,7 +1476,10 @@ export const App: React.FC = () => {
                 onClick={() => {
                   const next = !autoReadOwner;
                   setAutoReadOwner(next);
-                  if (!next) stopVoicePlayback();
+                  if (!next) {
+                    setAutoPlayMsgId(null);
+                    stopActiveAudioPlayback();
+                  }
                 }}
                 className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-xs font-medium transition-colors ${
                   autoReadOwner
@@ -1734,8 +1635,15 @@ export const App: React.FC = () => {
                     message={msg}
                     userInitials={userInitials}
                     onRetry={handleRetryMessage}
-                    ttsState={speakingMsgId === msg.id ? speakingStatus : 'idle'}
-                    onToggleSpeak={speakMessage}
+                    buildAuthHeaders={buildAuthHeaders}
+                    autoPlayAudio={autoPlayMsgId === msg.id}
+                    onAudioError={(detail) =>
+                      pushToast({
+                        type: 'error',
+                        title: 'Voice Unavailable',
+                        message: detail,
+                      })
+                    }
                   />
                 ))}
               </div>
