@@ -1286,6 +1286,70 @@ async def coaching_agent_endpoint(
     )
 
 
+class TTSSpeakRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=25000, description="Assistant text to synthesize into speech")
+    mode: Optional[str] = Field(default="owner", description="Agent mode (demo scoped to 'owner' unless TTS_ALL_MODES=true)")
+    message_id: Optional[str] = Field(default=None, description="Optional client message ID for tracing")
+
+
+@app.post(
+    "/api/v1/tts/stream",
+    tags=["Voice TTS"],
+    summary="Stream ElevenLabs Speech Audio (Phase 1 - Owner Bot Demo)"
+)
+async def stream_tts_endpoint(
+    request: Request,
+    payload: TTSSpeakRequest,
+    auth_claims: Dict[str, Any] = Depends(verify_chat_access)
+):
+    """
+    Streams MP3 speech audio from ElevenLabs for Owner Agent responses.
+    Protected by chat access auth + IP rate limiter; caches generated clips in memory.
+    """
+    from src.tts_service import (
+        TTSConfigurationError,
+        TTSUpstreamError,
+        get_tts_service,
+        is_tts_all_modes_enabled,
+    )
+
+    client_ip = request.client.host if request.client else "unknown"
+    is_limited, retry_after = chat_rate_limiter.is_limited(client_ip)
+    if is_limited:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Rate limit exceeded for voice synthesis. Please wait a moment and try again.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    req_mode = (payload.mode or "owner").strip().lower()
+    if req_mode != "owner" and not is_tts_all_modes_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Voice synthesis is currently enabled only for the Owner Agent demo.",
+        )
+
+    tts = get_tts_service()
+    try:
+        audio_iter, cache_hit = await run_in_threadpool(tts.prepare_stream, payload.text, req_mode)
+    except TTSConfigurationError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except TTSUpstreamError as exc:
+        logger.error(f"[TTS] Upstream ElevenLabs error for user '{auth_claims.get('user_id')}': {exc}")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+
+    return StreamingResponse(
+        audio_iter,
+        media_type="audio/mpeg",
+        headers={
+            "Cache-Control": "no-store",
+            "X-TTS-Cache": "HIT" if cache_hit else "MISS",
+        },
+    )
+
+
 
 @app.post(
     "/api/v1/ask/stream",

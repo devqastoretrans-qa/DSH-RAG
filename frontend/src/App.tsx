@@ -9,6 +9,8 @@ import {
   SlidersHorizontal,
   Stethoscope,
   Sun,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import type {
   BotMode,
@@ -319,9 +321,17 @@ export const App: React.FC = () => {
   const [isStreaming, setIsStreaming] = useState(false);
   const [showScrollBottomBtn, setShowScrollBottomBtn] = useState(false);
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
+  const [autoReadOwner, setAutoReadOwner] = useState(false);
+  const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
+  const [speakingStatus, setSpeakingStatus] = useState<'idle' | 'loading' | 'playing'>('idle');
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const ttsAbortRef = useRef<AbortController | null>(null);
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+  const ttsUrlRef = useRef<string | null>(null);
+  const autoReadOwnerRef = useRef(autoReadOwner);
+  autoReadOwnerRef.current = autoReadOwner;
   const activeRequestSeqRef = useRef(0);
   const selectThreadSeqRef = useRef(0);
   const isSubmittingRef = useRef(false);
@@ -391,6 +401,106 @@ export const App: React.FC = () => {
     }
     setIsStreaming(false);
   }, []);
+
+  const stopVoicePlayback = useCallback(() => {
+    if (ttsAbortRef.current) {
+      ttsAbortRef.current.abort();
+      ttsAbortRef.current = null;
+    }
+    if (ttsAudioRef.current) {
+      ttsAudioRef.current.pause();
+      ttsAudioRef.current.src = '';
+      ttsAudioRef.current = null;
+    }
+    if (ttsUrlRef.current) {
+      URL.revokeObjectURL(ttsUrlRef.current);
+      ttsUrlRef.current = null;
+    }
+    setSpeakingMsgId(null);
+    setSpeakingStatus('idle');
+  }, []);
+
+  const speakMessage = useCallback(
+    async (msg: Pick<ChatMessageType, 'id' | 'content' | 'mode'>) => {
+      if ((msg.mode || activeMode) !== 'owner' || !msg.content.trim()) return;
+      if (speakingMsgId === msg.id && speakingStatus !== 'idle') {
+        stopVoicePlayback();
+        return;
+      }
+
+      stopVoicePlayback();
+      const controller = new AbortController();
+      ttsAbortRef.current = controller;
+      setSpeakingMsgId(msg.id);
+      setSpeakingStatus('loading');
+
+      try {
+        const res = await fetch('/api/v1/tts/stream', {
+          method: 'POST',
+          headers: buildAuthHeaders(undefined, {
+            'Content-Type': 'application/json',
+          }),
+          body: JSON.stringify({
+            text: msg.content,
+            mode: 'owner',
+            message_id: msg.id,
+          }),
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          let errMsg = `Voice synthesis failed (${res.status})`;
+          try {
+            const errJson = (await res.json()) as { detail?: string; error?: string };
+            const msgText = errJson?.detail || errJson?.error;
+            if (msgText) errMsg = msgText;
+          } catch {
+            // ignore non-JSON error
+          }
+          throw new Error(errMsg);
+        }
+
+        const audioBlob = await res.blob();
+        if (controller.signal.aborted) return;
+
+        const audioUrl = URL.createObjectURL(audioBlob);
+        ttsUrlRef.current = audioUrl;
+        const audio = new Audio(audioUrl);
+        ttsAudioRef.current = audio;
+
+        audio.onended = () => stopVoicePlayback();
+        audio.onerror = () => {
+          stopVoicePlayback();
+          pushToast({
+            type: 'error',
+            title: 'Audio Playback Error',
+            message: 'Could not play the generated voice clip.',
+          });
+        };
+
+        setSpeakingStatus('playing');
+        await audio.play();
+      } catch (err) {
+        const errObj = err as Error;
+        if (errObj.name === 'AbortError') return;
+        stopVoicePlayback();
+        pushToast({
+          type: 'error',
+          title: 'Voice Unavailable',
+          message: errObj.message || 'Unable to generate Dr. Sarah voice audio.',
+        });
+      }
+    },
+    [activeMode, buildAuthHeaders, pushToast, speakingMsgId, speakingStatus, stopVoicePlayback]
+  );
+
+  useEffect(() => {
+    stopVoicePlayback();
+  }, [activeMode, stopVoicePlayback]);
+
+  useEffect(() => {
+    return () => stopVoicePlayback();
+  }, [stopVoicePlayback]);
 
   const fetchWithTimeout = useCallback(
     async (
@@ -1123,6 +1233,14 @@ export const App: React.FC = () => {
                     } (${docNames})`
                   : undefined,
             }));
+
+            if (targetMode === 'owner' && autoReadOwnerRef.current && finalAns.trim()) {
+              void speakMessage({
+                id: assistantMsgId,
+                content: finalAns,
+                mode: 'owner',
+              });
+            }
           }
         };
 
@@ -1205,6 +1323,13 @@ export const App: React.FC = () => {
               ? data.recommended_products
               : [],
           }));
+          if (targetMode === 'owner' && autoReadOwnerRef.current && (data.answer || '').trim()) {
+            void speakMessage({
+              id: assistantMsgId,
+              content: data.answer || '',
+              mode: 'owner',
+            });
+          }
         } else if (!receivedDonePayload) {
           updateAssistantMsg((m) => ({ ...m, isStreaming: false }));
         }
@@ -1447,6 +1572,32 @@ export const App: React.FC = () => {
               </button>
             </div>
 
+            {activeMode === 'owner' && (
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !autoReadOwner;
+                  setAutoReadOwner(next);
+                  if (!next) stopVoicePlayback();
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-xs font-medium transition-colors ${
+                  autoReadOwner
+                    ? 'border-violet-500/50 bg-violet-500/15 text-violet-700 dark:text-violet-300'
+                    : 'border-slate-200 bg-slate-100 text-slate-600 hover:text-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+                title="Automatically read new Owner Agent replies aloud using ElevenLabs"
+              >
+                {autoReadOwner ? (
+                  <Volume2 className="h-3.5 w-3.5" />
+                ) : (
+                  <VolumeX className="h-3.5 w-3.5" />
+                )}
+                <span className="hidden sm:inline">
+                  {autoReadOwner ? 'Voice: Auto' : 'Voice: Manual'}
+                </span>
+              </button>
+            )}
+
             <div
               className="hidden items-center rounded-xl border border-slate-200 bg-slate-100 p-0.5 md:inline-flex dark:border-slate-800 dark:bg-slate-900"
               title="Filter displayed messages"
@@ -1583,6 +1734,8 @@ export const App: React.FC = () => {
                     message={msg}
                     userInitials={userInitials}
                     onRetry={handleRetryMessage}
+                    ttsState={speakingMsgId === msg.id ? speakingStatus : 'idle'}
+                    onToggleSpeak={speakMessage}
                   />
                 ))}
               </div>
