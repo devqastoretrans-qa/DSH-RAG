@@ -139,9 +139,13 @@ from src.config import (
     CLINICAL_COLLECTIONS,
     PLATFORM_COLLECTION,
     OWNER_COLLECTION,
+    LEARNING_COLLECTION,
+    COACHING_COLLECTION,
     get_collection_config,
     get_platform_collection_name,
     get_owner_collection_name,
+    get_learning_collection_name,
+    get_coaching_collection_name,
 )
 
 
@@ -277,6 +281,46 @@ def search_similar_chunks(
             except Exception as e:
                 print(f"[Search] Owner voice collection lookup skipped ({owner_col}): {e}")
 
+        # Learning Agent merges Curriculum & Study Guide docs with Clinical Science
+        elif mode == "learning":
+            learning_col = get_learning_collection_name()
+            try:
+                learning_candidates = qdrant.search_similar(
+                    query_vector,
+                    top_k=fetch_per_col,
+                    collection_name=learning_col
+                )
+                for c in learning_candidates:
+                    if not c.get("folder_display"):
+                        c["folder_display"] = LEARNING_COLLECTION["display_name"]
+                    if not c.get("collection_key"):
+                        c["collection_key"] = "learning"
+                    if not c.get("category"):
+                        c["category"] = "learning"
+                candidates.extend(learning_candidates)
+            except Exception as e:
+                print(f"[Search] Learning collection lookup skipped ({learning_col}): {e}")
+
+        # Coaching Agent merges Playbook & SOLACE docs with Clinical Science
+        elif mode == "coaching":
+            coaching_col = get_coaching_collection_name()
+            try:
+                coaching_candidates = qdrant.search_similar(
+                    query_vector,
+                    top_k=fetch_per_col,
+                    collection_name=coaching_col
+                )
+                for c in coaching_candidates:
+                    if not c.get("folder_display"):
+                        c["folder_display"] = COACHING_COLLECTION["display_name"]
+                    if not c.get("collection_key"):
+                        c["collection_key"] = "coaching"
+                    if not c.get("category"):
+                        c["category"] = "coaching"
+                candidates.extend(coaching_candidates)
+            except Exception as e:
+                print(f"[Search] Coaching collection lookup skipped ({coaching_col}): {e}")
+
         for k in target_keys:
             cfg = CLINICAL_COLLECTIONS.get(k)
             if not cfg:
@@ -317,12 +361,14 @@ def search_similar_chunks(
             and c.get("category") not in ("sales", "clinical")
         ]
     elif mode in ("generic", "owner", "learning", "coaching"):
-        excluded_cats = ("sales", "platform") if mode == "owner" else ("sales", "platform", "owner")
+        excluded_cats = ("sales", "platform") if mode in ("owner", "learning", "coaching") else ("sales", "platform", "owner")
         clinical_candidates = [
             c for c in candidates
             if c.get("category") not in excluded_cats
             and (
                 (mode == "owner" and (c.get("category") == "owner" or c.get("collection_key") == "owner"))
+                or (mode == "learning" and (c.get("category") == "learning" or c.get("collection_key") == "learning"))
+                or (mode == "coaching" and (c.get("category") == "coaching" or c.get("collection_key") == "coaching"))
                 or not any(k in (c.get("document_name") or c.get("filename") or "").lower() for k in ("sales", "catalog", "pricing", "checkout"))
             )
         ]

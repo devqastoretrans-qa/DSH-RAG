@@ -78,6 +78,38 @@ OWNER_FILE_KEYWORDS = (
     "lov_doc", "lov doc", "love_doc", "love doc", "sarah_hensley", "hensley_show"
 )
 
+# Dedicated Learning Agent Curriculum Collection Mapping
+LEARNING_COLLECTION: Dict[str, Any] = {
+    "folder_name": "Learning Agent",
+    "collection_name": os.getenv("QDRANT_LEARNING_COLLECTION_NAME", "learning_curriculum").strip() or "learning_curriculum",
+    "display_name": "Learning Agent Curriculum & Study Guide",
+    "folder_id": os.getenv("GOOGLE_DRIVE_LEARNING_FOLDER_ID", "16ntDc_e7sN6Z1-G3IioF01bdGT85C-F1").strip(),
+    "category": "learning"
+}
+
+LEARNING_FOLDER_KEYWORDS = (
+    "learning", "study", "curriculum", "tutor", "education", "coursework"
+)
+LEARNING_FILE_KEYWORDS = (
+    "learning", "curriculum", "study_guide", "study guide", "socratic"
+)
+
+# Dedicated Coaching Agent Playbook Collection Mapping
+COACHING_COLLECTION: Dict[str, Any] = {
+    "folder_name": "Coaching Agent",
+    "collection_name": os.getenv("QDRANT_COACHING_COLLECTION_NAME", "coaching_playbook").strip() or "coaching_playbook",
+    "display_name": "Coaching Agent Interactive Playbook",
+    "folder_id": os.getenv("GOOGLE_DRIVE_COACHING_FOLDER_ID", "1yP8L_t6Etm9sa4teXaxk4Yl7mzTPOUQo").strip(),
+    "category": "coaching"
+}
+
+COACHING_FOLDER_KEYWORDS = (
+    "coaching", "coach", "playbook", "solace", "reflection_coach", "conflict"
+)
+COACHING_FILE_KEYWORDS = (
+    "coaching", "playbook", "solace", "interactive_playbook"
+)
+
 def get_collection_config(key_or_name: str) -> Optional[Dict[str, Any]]:
     """
     Retrieves collection configuration by key ('journals'), folder name ('Journals'), or folder ID.
@@ -110,8 +142,12 @@ def resolve_target_collection(
     platform_folder_id = os.getenv("GOOGLE_DRIVE_PLATFORM_FOLDER_ID", PLATFORM_COLLECTION.get("folder_id", "")).strip()
     owner_col = get_owner_collection_name()
     owner_folder_id = os.getenv("GOOGLE_DRIVE_OWNER_FOLDER_ID", OWNER_COLLECTION.get("folder_id", "")).strip()
+    learning_col = get_learning_collection_name()
+    learning_folder_id = os.getenv("GOOGLE_DRIVE_LEARNING_FOLDER_ID", LEARNING_COLLECTION.get("folder_id", "")).strip()
+    coaching_col = get_coaching_collection_name()
+    coaching_folder_id = os.getenv("GOOGLE_DRIVE_COACHING_FOLDER_ID", COACHING_COLLECTION.get("folder_id", "")).strip()
 
-    # 1. Explicit Category Checks (Sales, Platform & Owner)
+    # 1. Explicit Category Checks (Sales, Platform, Owner, Learning & Coaching)
     cat_clean = (category or "").strip().lower()
     if cat_clean == "sales":
         return {
@@ -134,10 +170,52 @@ def resolve_target_collection(
             "folder_display": OWNER_COLLECTION["display_name"],
             "category": "owner"
         }
+    if cat_clean == "learning":
+        return {
+            "collection_name": learning_col,
+            "collection_key": "learning",
+            "folder_display": LEARNING_COLLECTION["display_name"],
+            "category": "learning"
+        }
+    if cat_clean == "coaching":
+        return {
+            "collection_name": coaching_col,
+            "collection_key": "coaching",
+            "folder_display": COACHING_COLLECTION["display_name"],
+            "category": "coaching"
+        }
 
     # 2. Check Match by Folder ID
     if folder_id:
         clean_fid = folder_id.strip()
+        if platform_folder_id and clean_fid == platform_folder_id:
+            return {
+                "collection_name": platform_col,
+                "collection_key": "platform",
+                "folder_display": PLATFORM_COLLECTION["display_name"],
+                "category": "platform"
+            }
+        if owner_folder_id and clean_fid == owner_folder_id:
+            return {
+                "collection_name": owner_col,
+                "collection_key": "owner",
+                "folder_display": OWNER_COLLECTION["display_name"],
+                "category": "owner"
+            }
+        if learning_folder_id and clean_fid == learning_folder_id:
+            return {
+                "collection_name": learning_col,
+                "collection_key": "learning",
+                "folder_display": LEARNING_COLLECTION["display_name"],
+                "category": "learning"
+            }
+        if coaching_folder_id and clean_fid == coaching_folder_id:
+            return {
+                "collection_name": coaching_col,
+                "collection_key": "coaching",
+                "folder_display": COACHING_COLLECTION["display_name"],
+                "category": "coaching"
+            }
         if platform_folder_id and clean_fid == platform_folder_id:
             return {
                 "collection_name": platform_col,
@@ -171,6 +249,20 @@ def resolve_target_collection(
                 "collection_key": "owner",
                 "folder_display": OWNER_COLLECTION["display_name"],
                 "category": "owner"
+            }
+        if f_low in ("learning", "learning agent", "study") or any(w in f_low for w in LEARNING_FOLDER_KEYWORDS):
+            return {
+                "collection_name": learning_col,
+                "collection_key": "learning",
+                "folder_display": LEARNING_COLLECTION["display_name"],
+                "category": "learning"
+            }
+        if f_low in ("coaching", "coaching agent", "playbook") or any(w in f_low for w in COACHING_FOLDER_KEYWORDS):
+            return {
+                "collection_name": coaching_col,
+                "collection_key": "coaching",
+                "folder_display": COACHING_COLLECTION["display_name"],
+                "category": "coaching"
             }
         if f_low in ("platform", "platform guide", "portal") or any(w in f_low for w in PLATFORM_FOLDER_KEYWORDS):
             return {
@@ -214,6 +306,20 @@ def resolve_target_collection(
                 "collection_key": "owner",
                 "folder_display": OWNER_COLLECTION["display_name"],
                 "category": "owner"
+            }
+        if any(w in fn_low for w in LEARNING_FILE_KEYWORDS):
+            return {
+                "collection_name": learning_col,
+                "collection_key": "learning",
+                "folder_display": LEARNING_COLLECTION["display_name"],
+                "category": "learning"
+            }
+        if any(w in fn_low for w in COACHING_FILE_KEYWORDS):
+            return {
+                "collection_name": coaching_col,
+                "collection_key": "coaching",
+                "folder_display": COACHING_COLLECTION["display_name"],
+                "category": "coaching"
             }
         if any(w in fn_low for w in PLATFORM_FILE_KEYWORDS):
             return {
@@ -261,3 +367,13 @@ def get_platform_collection_name() -> str:
 def get_owner_collection_name() -> str:
     """Returns the dedicated Qdrant collection name for Owner Agent / Founder Voice docs."""
     return os.getenv("QDRANT_OWNER_COLLECTION_NAME", OWNER_COLLECTION["collection_name"]).strip() or "owner_voice"
+
+
+def get_learning_collection_name() -> str:
+    """Returns the dedicated Qdrant collection name for Learning Agent curriculum docs."""
+    return os.getenv("QDRANT_LEARNING_COLLECTION_NAME", LEARNING_COLLECTION["collection_name"]).strip() or "learning_curriculum"
+
+
+def get_coaching_collection_name() -> str:
+    """Returns the dedicated Qdrant collection name for Coaching Agent playbook docs."""
+    return os.getenv("QDRANT_COACHING_COLLECTION_NAME", COACHING_COLLECTION["collection_name"]).strip() or "coaching_playbook"

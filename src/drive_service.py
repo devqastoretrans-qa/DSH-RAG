@@ -146,6 +146,8 @@ class GoogleDriveService:
         env_sales_id = os.getenv("GOOGLE_DRIVE_SALES_FOLDER_ID", "").strip()
         env_platform_id = os.getenv("GOOGLE_DRIVE_PLATFORM_FOLDER_ID", "").strip()
         env_owner_id = os.getenv("GOOGLE_DRIVE_OWNER_FOLDER_ID", "").strip()
+        env_learning_id = os.getenv("GOOGLE_DRIVE_LEARNING_FOLDER_ID", "").strip()
+        env_coaching_id = os.getenv("GOOGLE_DRIVE_COACHING_FOLDER_ID", "").strip()
         if env_clin_id:
             categorized_folders.append({"id": env_clin_id, "name": "Clinical (Env)", "category": "clinical"})
         if env_sales_id:
@@ -154,6 +156,10 @@ class GoogleDriveService:
             categorized_folders.append({"id": env_platform_id, "name": "Platform (Env)", "category": "platform"})
         if env_owner_id:
             categorized_folders.append({"id": env_owner_id, "name": "Owner Voice (Env)", "category": "owner"})
+        if env_learning_id:
+            categorized_folders.append({"id": env_learning_id, "name": "Learning Agent (Env)", "category": "learning"})
+        if env_coaching_id:
+            categorized_folders.append({"id": env_coaching_id, "name": "Coaching Agent (Env)", "category": "coaching"})
 
         # If not explicitly set via individual env vars, auto-discover subfolders inside self.folder_id
         if not categorized_folders and self.folder_id:
@@ -174,6 +180,10 @@ class GoogleDriveService:
                         categorized_folders.append({"id": sf["id"], "name": sf["name"], "category": "owner"})
                     elif any(k in name_low for k in ("platform", "portal", "helpdesk", "navigation", "website")):
                         categorized_folders.append({"id": sf["id"], "name": sf["name"], "category": "platform"})
+                    elif any(k in name_low for k in ("learning", "study", "curriculum", "tutor", "education", "coursework")):
+                        categorized_folders.append({"id": sf["id"], "name": sf["name"], "category": "learning"})
+                    elif any(k in name_low for k in ("coaching", "coach", "playbook", "solace", "reflection_coach", "conflict")):
+                        categorized_folders.append({"id": sf["id"], "name": sf["name"], "category": "coaching"})
                     elif "clinical" in name_low:
                         categorized_folders.append({"id": sf["id"], "name": sf["name"], "category": "clinical"})
                     elif any(k in name_low for k in ("sales", "course", "catalog", "pricing", "masterclass")):
@@ -251,6 +261,10 @@ class GoogleDriveService:
                     cat = "owner"
                 elif any(k in f_low for k in ("platform", "portal", "helpdesk", "navigation")):
                     cat = "platform"
+                elif any(k in f_low for k in ("learning", "curriculum", "study_guide", "study guide", "socratic")):
+                    cat = "learning"
+                elif any(k in f_low for k in ("coaching", "playbook", "solace", "interactive_playbook")):
+                    cat = "coaching"
                 elif any(k in f_low for k in ("sales", "catalog", "pricing", "checkout")):
                     cat = "sales"
                 else:
