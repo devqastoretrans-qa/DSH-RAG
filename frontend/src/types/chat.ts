@@ -1,4 +1,4 @@
-export type BotMode = 'generic' | 'sales' | 'platform' | 'owner';
+export type BotMode = 'generic' | 'sales' | 'platform' | 'owner' | 'learning' | 'coaching';
 
 export interface SuggestedAction {
   label: string;

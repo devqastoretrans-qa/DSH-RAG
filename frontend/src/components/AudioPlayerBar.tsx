@@ -448,6 +448,18 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
           fill: 'bg-sky-500',
           ring: 'border-sky-500/25 bg-sky-500/5 dark:border-sky-500/30 dark:bg-sky-500/10',
         }
+      : mode === 'learning'
+      ? {
+          btn: 'bg-indigo-600 text-white hover:bg-indigo-500',
+          fill: 'bg-indigo-500',
+          ring: 'border-indigo-500/25 bg-indigo-500/5 dark:border-indigo-500/30 dark:bg-indigo-500/10',
+        }
+      : mode === 'coaching'
+      ? {
+          btn: 'bg-rose-600 text-white hover:bg-rose-500',
+          fill: 'bg-rose-500',
+          ring: 'border-rose-500/25 bg-rose-500/5 dark:border-rose-500/30 dark:bg-rose-500/10',
+        }
       : {
           btn: 'bg-emerald-600 text-white hover:bg-emerald-500',
           fill: 'bg-emerald-500',

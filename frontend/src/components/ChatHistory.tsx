@@ -4,6 +4,8 @@ import {
   Check,
   Compass,
   Crown,
+  GraduationCap,
+  HeartHandshake,
   MessageSquare,
   Pencil,
   Stethoscope,
@@ -153,6 +155,10 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
                   ? 'Platform Help'
                   : activeMode === 'owner'
                   ? 'Owner Agent'
+                  : activeMode === 'learning'
+                  ? 'Learning Agent'
+                  : activeMode === 'coaching'
+                  ? 'Coaching Agent'
                   : 'Clinical Educator'
               } conversations yet.`}
         </p>
@@ -280,6 +286,10 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
                             <Compass className="h-3.5 w-3.5 shrink-0 text-sky-500" />
                           ) : thread.mode === 'owner' ? (
                             <Crown className="h-3.5 w-3.5 shrink-0 text-violet-500" />
+                          ) : thread.mode === 'learning' ? (
+                            <GraduationCap className="h-3.5 w-3.5 shrink-0 text-indigo-500" />
+                          ) : thread.mode === 'coaching' ? (
+                            <HeartHandshake className="h-3.5 w-3.5 shrink-0 text-rose-500" />
                           ) : (
                             <Stethoscope className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
                           )}

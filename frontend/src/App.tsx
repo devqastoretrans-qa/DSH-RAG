@@ -4,6 +4,8 @@ import {
   Briefcase,
   Compass,
   Crown,
+  GraduationCap,
+  HeartHandshake,
   Moon,
   PanelLeft,
   SlidersHorizontal,
@@ -40,6 +42,8 @@ const STORAGE_KEYS = {
   sessionSales: 'studio_active_session_sales',
   sessionPlatform: 'studio_active_session_platform',
   sessionOwner: 'studio_active_session_owner',
+  sessionLearning: 'studio_active_session_learning',
+  sessionCoaching: 'studio_active_session_coaching',
 } as const;
 
 const REQUEST_TIMEOUT_MS = 15000;
@@ -53,6 +57,10 @@ function createSessionId(mode: BotMode): string {
       ? 'sess_platform_'
       : mode === 'owner'
       ? 'sess_owner_'
+      : mode === 'learning'
+      ? 'sess_learning_'
+      : mode === 'coaching'
+      ? 'sess_coaching_'
       : 'sess_clinical_';
   const rand =
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -65,6 +73,8 @@ function getDefaultTitle(mode: BotMode): string {
   if (mode === 'sales') return 'New Program Advisor Chat';
   if (mode === 'platform') return 'New Platform Help Chat';
   if (mode === 'owner') return 'New Owner Agent Chat';
+  if (mode === 'learning') return 'New Learning Agent Chat';
+  if (mode === 'coaching') return 'New Coaching Agent Chat';
   return 'New Clinical Chat';
 }
 
@@ -77,6 +87,10 @@ function getStoredSessionId(mode: BotMode): string | null {
         ? STORAGE_KEYS.sessionPlatform
         : mode === 'owner'
         ? STORAGE_KEYS.sessionOwner
+        : mode === 'learning'
+        ? STORAGE_KEYS.sessionLearning
+        : mode === 'coaching'
+        ? STORAGE_KEYS.sessionCoaching
         : STORAGE_KEYS.sessionGeneric;
     const saved = sessionStorage.getItem(key);
     return saved && saved.trim() ? saved.trim() : null;
@@ -94,6 +108,10 @@ function persistSessionId(mode: BotMode, sessionId: string): void {
         ? STORAGE_KEYS.sessionPlatform
         : mode === 'owner'
         ? STORAGE_KEYS.sessionOwner
+        : mode === 'learning'
+        ? STORAGE_KEYS.sessionLearning
+        : mode === 'coaching'
+        ? STORAGE_KEYS.sessionCoaching
         : STORAGE_KEYS.sessionGeneric;
     sessionStorage.setItem(key, sessionId);
   } catch {
@@ -226,6 +244,48 @@ const QUICK_PRESETS: QuickPromptPreset[] = [
     prompt: 'What does earning secure attachment actually look and feel like in everyday relationships?',
     mode: 'owner',
   },
+  {
+    id: 'learning_module',
+    category: 'Curriculum',
+    label: 'Module 2 homework reflection help',
+    prompt: 'Can you give me a hint on understanding core triggers in Module 2 without giving away the full answer?',
+    mode: 'learning',
+  },
+  {
+    id: 'learning_socratic',
+    category: 'Study Tutor',
+    label: 'Explain anxious deactivation concept',
+    prompt: 'Help me understand how anxious deactivation presents in attachment theory through Socratic guidance.',
+    mode: 'learning',
+  },
+  {
+    id: 'learning_boundary',
+    category: 'Coursework',
+    label: 'Which module covers the Boundary Ladder?',
+    prompt: 'Which course module covers the Boundary Ladder and how do the levels progress?',
+    mode: 'learning',
+  },
+  {
+    id: 'coaching_solace',
+    category: 'Guided Tools',
+    label: 'Walk me through the SOLACE framework',
+    prompt: 'Can you walk me through the SOLACE framework step-by-step for a disagreement I had yesterday?',
+    mode: 'coaching',
+  },
+  {
+    id: 'coaching_trigger',
+    category: 'Active Reflection',
+    label: 'I feel emotionally triggered right now',
+    prompt: 'I feel very triggered and overwhelmed right now after talking to my partner. Can you help me reflect one step at a time?',
+    mode: 'coaching',
+  },
+  {
+    id: 'coaching_boundary',
+    category: 'De-escalation',
+    label: 'Set a level 1 boundary with empathy',
+    prompt: 'Help me craft a Level 1 Boundary statement that communicates my need without provoking defensive pushback.',
+    mode: 'coaching',
+  },
 ];
 
 interface ChannelBuffer {
@@ -238,7 +298,14 @@ export const App: React.FC = () => {
   const initialMode: BotMode = (() => {
     try {
       const m = sessionStorage.getItem(STORAGE_KEYS.mode);
-      if (m === 'sales' || m === 'platform' || m === 'owner') return m;
+      if (
+        m === 'sales' ||
+        m === 'platform' ||
+        m === 'owner' ||
+        m === 'learning' ||
+        m === 'coaching'
+      )
+        return m;
       return 'generic';
     } catch {
       return 'generic';
@@ -278,10 +345,14 @@ export const App: React.FC = () => {
     const salesSid = getStoredSessionId('sales') || createSessionId('sales');
     const platSid = getStoredSessionId('platform') || createSessionId('platform');
     const ownerSid = getStoredSessionId('owner') || createSessionId('owner');
+    const learnSid = getStoredSessionId('learning') || createSessionId('learning');
+    const coachSid = getStoredSessionId('coaching') || createSessionId('coaching');
     persistSessionId('generic', genSid);
     persistSessionId('sales', salesSid);
     persistSessionId('platform', platSid);
     persistSessionId('owner', ownerSid);
+    persistSessionId('learning', learnSid);
+    persistSessionId('coaching', coachSid);
     return {
       generic: {
         sessionId: genSid,
@@ -303,6 +374,16 @@ export const App: React.FC = () => {
         messages: [],
         title: getDefaultTitle('owner'),
       },
+      learning: {
+        sessionId: learnSid,
+        messages: [],
+        title: getDefaultTitle('learning'),
+      },
+      coaching: {
+        sessionId: coachSid,
+        messages: [],
+        title: getDefaultTitle('coaching'),
+      },
     };
   });
 
@@ -313,6 +394,8 @@ export const App: React.FC = () => {
     sales: [],
     platform: [],
     owner: [],
+    learning: [],
+    coaching: [],
   });
   const [platformGreeting, setPlatformGreeting] = useState('Hi there!');
   const [platformActions, setPlatformActions] = useState<SuggestedAction[]>([]);
@@ -609,20 +692,33 @@ export const App: React.FC = () => {
         sessionStorage.removeItem(STORAGE_KEYS.sessionSales);
         sessionStorage.removeItem(STORAGE_KEYS.sessionPlatform);
         sessionStorage.removeItem(STORAGE_KEYS.sessionOwner);
+        sessionStorage.removeItem(STORAGE_KEYS.sessionLearning);
+        sessionStorage.removeItem(STORAGE_KEYS.sessionCoaching);
         sessionStorage.removeItem(STORAGE_KEYS.token);
       } catch {
         // ignore
       }
       setUserId(nextUserId);
-      setThreadsByMode({ generic: [], sales: [], platform: [], owner: [] });
+      setThreadsByMode({
+        generic: [],
+        sales: [],
+        platform: [],
+        owner: [],
+        learning: [],
+        coaching: [],
+      });
       const genSid = createSessionId('generic');
       const salesSid = createSessionId('sales');
       const platSid = createSessionId('platform');
       const ownerSid = createSessionId('owner');
+      const learnSid = createSessionId('learning');
+      const coachSid = createSessionId('coaching');
       persistSessionId('generic', genSid);
       persistSessionId('sales', salesSid);
       persistSessionId('platform', platSid);
       persistSessionId('owner', ownerSid);
+      persistSessionId('learning', learnSid);
+      persistSessionId('coaching', coachSid);
       setChannels({
         generic: {
           sessionId: genSid,
@@ -643,6 +739,16 @@ export const App: React.FC = () => {
           sessionId: ownerSid,
           messages: [],
           title: getDefaultTitle('owner'),
+        },
+        learning: {
+          sessionId: learnSid,
+          messages: [],
+          title: getDefaultTitle('learning'),
+        },
+        coaching: {
+          sessionId: coachSid,
+          messages: [],
+          title: getDefaultTitle('coaching'),
         },
       });
       const tok = await authenticateUser(nextUserId);
@@ -1353,6 +1459,12 @@ export const App: React.FC = () => {
     if (activeMode === 'owner') {
       return QUICK_PRESETS.filter((p) => p.mode === 'owner');
     }
+    if (activeMode === 'learning') {
+      return QUICK_PRESETS.filter((p) => p.mode === 'learning');
+    }
+    if (activeMode === 'coaching') {
+      return QUICK_PRESETS.filter((p) => p.mode === 'coaching');
+    }
     return QUICK_PRESETS.filter(
       (p) => p.mode === activeMode || p.mode === 'generic'
     );
@@ -1468,6 +1580,32 @@ export const App: React.FC = () => {
                 <span className="hidden sm:inline">Owner Agent</span>
                 <span className="sm:hidden">Owner</span>
               </button>
+              <button
+                type="button"
+                onClick={() => handleModeSwitch('learning')}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
+                  activeMode === 'learning'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+              >
+                <GraduationCap className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Learning Agent</span>
+                <span className="sm:hidden">Learning</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleModeSwitch('coaching')}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
+                  activeMode === 'coaching'
+                    ? 'bg-rose-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+              >
+                <HeartHandshake className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Coaching Agent</span>
+                <span className="sm:hidden">Coaching</span>
+              </button>
             </div>
 
             {activeMode === 'owner' && (
@@ -1569,6 +1707,10 @@ export const App: React.FC = () => {
                       ? 'border-sky-500/30 bg-sky-500/15 text-sky-500'
                       : activeMode === 'owner'
                       ? 'border-violet-500/30 bg-violet-500/15 text-violet-500'
+                      : activeMode === 'learning'
+                      ? 'border-indigo-500/30 bg-indigo-500/15 text-indigo-500'
+                      : activeMode === 'coaching'
+                      ? 'border-rose-500/30 bg-rose-500/15 text-rose-500'
                       : 'border-emerald-500/30 bg-emerald-500/15 text-emerald-500'
                   }`}
                 >
@@ -1578,6 +1720,10 @@ export const App: React.FC = () => {
                     <Compass className="h-7 w-7" />
                   ) : activeMode === 'owner' ? (
                     <Crown className="h-7 w-7" />
+                  ) : activeMode === 'learning' ? (
+                    <GraduationCap className="h-7 w-7" />
+                  ) : activeMode === 'coaching' ? (
+                    <HeartHandshake className="h-7 w-7" />
                   ) : (
                     <Stethoscope className="h-7 w-7" />
                   )}
@@ -1590,6 +1736,10 @@ export const App: React.FC = () => {
                     ? 'Dr. Sarah Hensley Platform Navigation Assistant'
                     : activeMode === 'owner'
                     ? 'Dr. Sarah Hensley — Owner Agent'
+                    : activeMode === 'learning'
+                    ? 'Dr. Sarah Hensley — Learning Agent'
+                    : activeMode === 'coaching'
+                    ? 'Dr. Sarah Hensley — Coaching Agent'
                     : 'Dr. Sarah Hensley Clinical Educator'}
                 </h2>
                 <p className="mt-2 max-w-lg text-sm leading-relaxed text-slate-500 dark:text-slate-400">
@@ -1599,6 +1749,10 @@ export const App: React.FC = () => {
                     ? `${platformGreeting} Step-by-step help with website login, password reset, course dashboards, PDF workbooks, billing, and account support.`
                     : activeMode === 'owner'
                     ? "Speak directly with Dr. Sarah Hensley's first-person founder voice grounded in her clinical attachment frameworks and subconscious relational reprogramming work."
+                    : activeMode === 'learning'
+                    ? 'Socratic study companion for enrolled students. Get module hints, curriculum citations, and guided reflection questions without having homework solved for you.'
+                    : activeMode === 'coaching'
+                    ? 'Interactive step-by-step reflection coach applying the SOLACE framework, Boundary Ladder, and somatic regulation—one thoughtful question at a time.'
                     : 'Evidence-based clinical guidance on attachment styles, subconscious core wounds, and nervous system regulation with zero sales pitches.'}
                 </p>
 
