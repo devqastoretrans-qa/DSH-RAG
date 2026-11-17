@@ -23,6 +23,11 @@ else
     echo "      Virtual environment not found at venv or .venv, skipping pip install."
 fi
 
+if [ -d "frontend" ] && command -v npm >/dev/null 2>&1; then
+    echo "[2b/4] Building frontend bundle..."
+    (cd frontend && (npm ci --no-audit --no-fund 2>/dev/null || npm install --no-audit --no-fund) && npm run build)
+fi
+
 echo "[3/4] Restarting application service..."
 if systemctl is-active --quiet dsh-rag 2>/dev/null; then
     sudo systemctl restart dsh-rag
