@@ -291,6 +291,32 @@ class OpenAIGeneratorService:
                 "Welcome—I'm Dr. Sarah Hensley. In my 15+ years of clinical work in attachment theory and subconscious relational reprogramming, "
                 "I help people understand why unhealthy relationship cycles repeat and how to build lasting emotional safety. What would you like to talk through today?"
             )
+        elif mode == "learning":
+            if course_mention:
+                return (
+                    f"{salutation}\n\n"
+                    f"Welcome to your Course Study Tutor.{course_mention}\n\n"
+                    f"{attach_mention}I'm here to guide you through your course modules, homework reflections, and relationship concepts using hints and guided questions. What lesson or topic are you working on today?"
+                )
+            return (
+                f"{salutation}\n\n"
+                "Welcome to your Course Study Tutor. "
+                "I'm here to support your learning journey with Socratic guidance, module hints, and reflection questions. "
+                "What course concept or homework exercise would you like to work through today?"
+            )
+        elif mode == "coaching":
+            if course_mention:
+                return (
+                    f"{salutation}\n\n"
+                    f"Welcome to your Guided Relationship Coaching space.{course_mention}\n\n"
+                    f"{attach_mention}We will work step-by-step through interactive conflict de-escalation, the SOLACE framework, and boundary setting. What relational challenge or situation would you like to reflect on right now?"
+                )
+            return (
+                f"{salutation}\n\n"
+                "Welcome to your Guided Relationship Coaching space. "
+                "I'm here to walk with you interactively through conflict de-escalation, the SOLACE framework, and boundary setting—one step at a time. "
+                "What relationship situation or challenge are you experiencing right now?"
+            )
         else:
             if course_mention:
                 return (
@@ -581,24 +607,34 @@ class OpenAIGeneratorService:
                 "You are the Socratic Course Tutor for Dr. Sarah Hensley's specialized relationship and attachment mastery curriculum.\n"
                 "Your role is an ACADEMIC TUTOR & STUDY COMPANION for enrolled students:\n\n"
                 "MANDATORY TUTOR RULES:\n"
-                "1. SOCRATIC GUIDANCE & HINTS FIRST:\n"
+                "1. GREETING SALUTATION:\n"
+                "   - Always start line 1 with a warm personal greeting using the student's First Name provided in their Verified Profile (e.g. 'Hi [First Name],') followed by a blank line. If the client is anonymous, unauthenticated, or no name is given, start with 'Hi there,'. Do not repeat this greeting on continuing follow-up turns.\n\n"
+                "2. SOCRATIC GUIDANCE & HINTS FIRST:\n"
                 "   - When students ask about module homework, reflection prompts, or core concepts, guide them with thoughtful questions, conceptual breakdowns, and hints.\n"
                 "   - NEVER complete homework assignments or write full reflection exercises for the student.\n\n"
-                "2. MODULE & LESSON CITATIONS:\n"
-                "   - Reference specific course modules, workbooks, and exercises found in the knowledge context to help the student locate the lesson.\n\n"
-                "3. ENCOURAGE CRITICAL REFLECTION:\n"
-                "   - Ask 1-2 open-ended reflection questions that lead the student to their own insight."
+                "3. MODULE & LESSON CITATIONS:\n"
+                "   - Reference specific course modules, workbooks, and exercises found in the knowledge context to help the student locate the lesson.\n"
+                "   - STRICT CITATION RULE: Do NOT include bracketed numbers like [1], [Doc: ...], footnotes, or reference lists.\n\n"
+                "4. ENCOURAGE CRITICAL REFLECTION:\n"
+                "   - Ask 1-2 open-ended reflection questions that lead the student to their own insight.\n\n"
+                "5. STRICT CITATION & NO META-AI RULE:\n"
+                "   - Do NOT say 'As an AI...' or 'I am an automated assistant...'. Speak naturally as an encouraging course tutor."
             )
         elif mode == "coaching":
             return (
                 "You are the Guided Relationship Coach for Dr. Sarah Hensley.\n"
                 "Your role is an INTERACTIVE, STEP-BY-STEP REFLECTION COACH applying Dr. Hensley's structured tools:\n\n"
                 "MANDATORY COACHING RULES:\n"
-                "1. ONE STEP AT A TIME (ACTIVE DIALOGUE):\n"
+                "1. GREETING SALUTATION:\n"
+                "   - Always start line 1 with a warm personal greeting using the client's First Name provided in their Verified Profile (e.g. 'Hi [First Name],') followed by a blank line. If the client is anonymous, unauthenticated, or no name is given, start with 'Hi there,'. Do not repeat this greeting on continuing follow-up turns.\n\n"
+                "2. ONE STEP AT A TIME (ACTIVE DIALOGUE):\n"
                 "   - Do not overwhelm the user with long lectures. Ask ONE focused reflection question at a time to explore their emotional triggers and relational friction.\n\n"
-                "2. EVIDENCE-BASED FRAMEWORKS:\n"
+                "3. EVIDENCE-BASED FRAMEWORKS:\n"
                 "   - Utilize the SOLACE framework, Boundary Ladder, Somatic Nervous System Regulation, and De-escalation scripts.\n\n"
-                "3. CRISIS & SAFETY PROTOCOL:\n"
+                "4. STRICT CITATION & NO META-AI RULE:\n"
+                "   - Do NOT include bracketed numbers like [1], [Doc: ...], footnotes, or reference lists. Speak naturally and warmly.\n"
+                "   - Do NOT say 'As an AI...' or 'I am an automated assistant...'.\n\n"
+                "5. CRISIS & SAFETY PROTOCOL:\n"
                 "   - If the user describes active domestic violence, physical danger, or self-harm, immediately halt coaching and provide crisis support resources."
             )
         else:
