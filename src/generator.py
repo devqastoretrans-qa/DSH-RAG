@@ -464,6 +464,20 @@ class OpenAIGeneratorService:
             return bool(PLATFORM_DOMAIN_REGEX.search(query))
         if mode == "owner":
             return bool(CLINICAL_DOMAIN_REGEX.search(query) or OWNER_DOMAIN_REGEX.search(query))
+        if mode == "coaching":
+            coaching_match = bool(re.search(
+                r"\b(text|message|respond|reply|response|say|partner|ex|husband|wife|boyfriend|girlfriend|spouse|argue|argument|fight|fighting|defensive|defensiveness|appreciate|appreciated|appreciation|never\s+enough|enough|fear|afraid|scared|anxious|anxiety|avoidant|wound|wounding|solace|boundary|ladder|talk|conversation|conflict|unmet\s+need|need|needs|validation|validate|script)\b",
+                query,
+                re.I,
+            ))
+            return coaching_match or bool(CLINICAL_DOMAIN_REGEX.search(query))
+        if mode == "learning":
+            learning_match = bool(re.search(
+                r"\b(module|lesson|course|curriculum|exercise|exercises|homework|prompt|prompts|reflection|reflections|workbook|workbooks|study|concept|concepts|theory|attachment|chapter|syllabus|hint|hints)\b",
+                query,
+                re.I,
+            ))
+            return learning_match or bool(CLINICAL_DOMAIN_REGEX.search(query))
         has_sales_match = (
             mode == "sales"
             and bool(re.search(
@@ -771,7 +785,7 @@ class OpenAIGeneratorService:
         is_low_confidence = (max_vector_score < min_vector_threshold and max_rerank_score < min_rerank_threshold)
         is_hard_irrelevant = (has_rerank_scores and max_rerank_score < strict_rerank_floor and max_vector_score < 0.50)
 
-        if not is_follow_up and not has_domain_match and (is_hard_irrelevant or (not chat_history and is_low_confidence)):
+        if not is_follow_up and not chat_history and not has_domain_match and (is_hard_irrelevant or is_low_confidence):
             chit_chat = self._get_chit_chat_reply(query, user_context=user_context, mode=mode)
             if chit_chat:
                 return {
@@ -996,7 +1010,7 @@ class OpenAIGeneratorService:
         is_low_confidence = (max_vector_score < min_vector_threshold and max_rerank_score < min_rerank_threshold)
         is_hard_irrelevant = (has_rerank_scores and max_rerank_score < strict_rerank_floor and max_vector_score < 0.50)
 
-        if not is_follow_up and not has_domain_match and (is_hard_irrelevant or (not chat_history and is_low_confidence)):
+        if not is_follow_up and not chat_history and not has_domain_match and (is_hard_irrelevant or is_low_confidence):
             chit_chat = self._get_chit_chat_reply(query, user_context=user_context, mode=mode)
             if chit_chat:
                 yield {"token": chit_chat, "done": False}
