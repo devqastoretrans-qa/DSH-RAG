@@ -1728,14 +1728,12 @@ async def chat_endpoint(
     sid = request.session_id or request.conversation_id or f"sess_{uuid.uuid4().hex}"
     req_mode = request.mode or auth_claims.get("mode") or "generic"
 
-    # T10: Enforce Server-Side Truth for user_profile and chat_history
+    # T10: Enforce Server-Side Truth for user_profile; preserve thread history for multi-turn continuity
     if not is_admin:
         if request.user_profile:
             logger.info(f"[T10 Security] Discarding client-submitted user_profile for user '{uid}'. Loading strictly from MySQL.")
-        if request.chat_history:
-            logger.info(f"[T10 Security] Discarding client-submitted chat_history for user '{uid}'. Loading strictly from conversation memory.")
         safe_user_profile = None  # Triggers server-side MySQL query
-        safe_chat_history = None  # Triggers server-side conversation turns query
+        safe_chat_history = request.chat_history if request.chat_history else None
     else:
         safe_user_profile = request.user_profile
         safe_chat_history = request.chat_history
@@ -1830,14 +1828,12 @@ async def chat_stream_endpoint(
     sid = request.session_id or request.conversation_id or f"sess_{uuid.uuid4().hex}"
     req_mode = request.mode or auth_claims.get("mode") or "generic"
 
-    # T10: Enforce Server-Side Truth for user_profile and chat_history
+    # T10: Enforce Server-Side Truth for user_profile; preserve thread history for multi-turn continuity
     if not is_admin:
         if request.user_profile:
             logger.info(f"[T10 Security] Discarding client-submitted user_profile for user '{uid}'. Loading strictly from MySQL.")
-        if request.chat_history:
-            logger.info(f"[T10 Security] Discarding client-submitted chat_history for user '{uid}'. Loading strictly from conversation memory.")
         safe_user_profile = None
-        safe_chat_history = None
+        safe_chat_history = request.chat_history if request.chat_history else None
     else:
         safe_user_profile = request.user_profile
         safe_chat_history = request.chat_history
